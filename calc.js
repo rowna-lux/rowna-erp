@@ -144,6 +144,8 @@
     o.feeRate = num(cfg.npay) + feeSale * (1 + vat);
     var buy = it.buyPrice === "" || it.buyPrice == null ? null : num(it.buyPrice);
     o.linkDiff = x.linkPrice != null && x.linkPrice !== "" && buy != null ? num(x.linkPrice) - buy : null;
+    /* 매입가는 링크 현재가로 자동 맞춤 — 최근 24시간 안에 바뀌었으면 그 차액을 '매입가 변동'에 표시 */
+    if (!o.linkDiff && x.lastBuyChange && x.lastBuyChangeAt && Date.now() - Date.parse(x.lastBuyChangeAt) < 864e5) o.linkDiff = num(x.lastBuyChange);
     if (buy == null || buy <= 0) { o.warn = (it.name || x.line || it.sku) ? "원가없음" : ""; return o; }
     o.cost = buy * (1 - num(it.cardRate));
     o.mBase = it.tier === "하이엔드" ? num(cfg.margin_high) : num(cfg.margin_contemp);

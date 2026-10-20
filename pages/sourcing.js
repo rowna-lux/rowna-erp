@@ -375,6 +375,8 @@ var AUTO = (function () {
     x.linkStatus = d.soldOut ? "품절" : "정상"; x.linkCheckedAt = now; x.linkPriceSrc = d.priceSrc || ""; x.linkDebug = d.debug || null; if (d.basePrice) x.linkBasePrice = d.basePrice; if (d.price && !d.soldOut) x.linkPrice = d.price;
     if (d.price && oldLP && d.price !== oldLP) x.priceHistory = (x.priceHistory || []).concat([{ at: now, from: oldLP, to: d.price }]).slice(-20);
     it.extra = x;
+    var oldBuy = it.buyPrice;
+    if (d.price && !d.soldOut && oldBuy != null && oldBuy !== "" && num(oldBuy) !== d.price) { it.buyPrice = d.price; it.extra.lastBuyChange = d.price - num(oldBuy); it.extra.lastBuyChangeAt = now; it.extra.prevBuyPrice = num(oldBuy); }
     var filled = 0;
     if (mode === "fill") {
       var o = parse(d); Object.keys(o).forEach(function (k) { var cur = get(it, k); if (cur == null || cur === "" || (k === "tier" && !it0.brand)) { setv(it, k, o[k]); filled++; } });
@@ -385,7 +387,7 @@ var AUTO = (function () {
     ERP.DATA.price_items.set(id, it); queueSave(it);
     var nm = (calc(it).finalName || it.sku || "상품").slice(0, 20);
     if (mode === "fill") { ERP.toast("‘" + nm + "’ " + filled + "칸 자동입력"); if (d.soldOut) alertUser(nm + ": 매입처 품절"); }
-    else { var msg = []; if (d.soldOut && oldSt !== "품절") msg.push("매입처 품절"); if (!d.soldOut && oldSt === "품절") msg.push("재입고"); if (d.price && it.buyPrice && d.price !== it.buyPrice && d.price !== oldLP) msg.push("매입가 " + Number(it.buyPrice).toLocaleString() + " → " + d.price.toLocaleString()); if (msg.length) alertUser(nm + ": " + msg.join(", ")); }
+    else { var msg = []; if (d.soldOut && oldSt !== "품절") msg.push("매입처 품절"); if (!d.soldOut && oldSt === "품절") msg.push("재입고"); if (d.price && oldBuy && d.price !== num(oldBuy)) msg.push("매입가 " + Number(oldBuy).toLocaleString() + " → " + d.price.toLocaleString() + " (자동 반영)"); if (msg.length) alertUser(nm + ": " + msg.join(", ")); }
     scheduleR();
   });
   function alertUser(m) { ERP.toast("⚠ " + m); try { if (window.Notification && Notification.permission === "granted") new Notification("로우나 소싱 변동", { body: m }); } catch (e) {} }
