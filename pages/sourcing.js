@@ -13,6 +13,7 @@ var OPT = { status: ["판매중", "판매대기", "품절", "판매중지"], tie
 /* 열 정의: k=저장 위치('x.'은 extra), t=입력 형식(txt/num/pct/sel/link) 없으면 계산값, c=계산키, f=표시형식, w=너비, g=묶음 */
 var COLS = [ /* 대표님 지정 순서 2026-10-20 */
   { g: "① 기본정보", k: "buyLink", l: "매입처 링크", t: "link", w: 200 },
+  { k: "vendor", l: "매입처", t: "txt", w: 100 },
   { k: "sku", l: "SKU 넘버", t: "txt", w: 140 },
   { k: "x.ssNo", l: "스마트스토어 상품번호", t: "txt", w: 120 },
   { k: "x.storeLink", l: "내 스토어 링크", t: "link", w: 180 },
