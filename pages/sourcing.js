@@ -29,6 +29,8 @@ var COLS = [ /* 대표님 지정 순서 2026-10-20 */
   { g: "③ 판매가", k: "x.marginSet", l: "적용마진(1~30%)", t: "pct", w: 96, ph: "margin" },
   { c: "feeRate", l: "수수료율", w: 70, f: "pct2" },
   { c: "final", l: "최종판매가", w: 110, f: "won", key: 1 },
+  { c: "storeInput", l: "스토어 설정가격(할인전)", w: 120, f: "won", key: 1 },
+  { c: "discount", l: "즉시할인액", w: 90, f: "won" },
   { k: "x.storeLivePrice", l: "내 스토어 현재가(AI)", w: 112, f: "won", ro: 1 },
   { c: "mActual", l: "실제 마진(스토어가 기준)", w: 104, f: "pct" },
   { c: "mGap", l: "마진 차이(±3%p 알림)", w: 104, f: "pct" },
