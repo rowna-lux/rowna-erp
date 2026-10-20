@@ -147,7 +147,7 @@ function render() {
 }
 function head(n) {
   var w = ERP.canWrite("price_items");
-  var h = '<div class="head"><div><h1>스마트스토어 소싱</h1><p>엑셀처럼 칸을 눌러 바로 입력 · Enter/Tab/방향키 이동 · 여러 칸 복사·붙여넣기 · 칸을 벗어나면 자동 저장 · 흰 칸=입력, 회색=자동계산, 분홍=핵심 결과</p></div><div class="tools">' +
+  var h = '<div class="head sc-head"><div><h1>스마트스토어 소싱</h1><p>칸을 눌러 바로 입력 · Enter/Tab/방향키 이동 · 여러 칸 Ctrl+V · 칸을 벗어나면 자동 저장 · 흰 칸=입력, 회색=자동계산, 분홍=핵심 결과</p></div><div class="tools"><button class="btn" data-act="scrail">' + (document.body.classList.contains("rail-hide") ? "메뉴 보이기" : "메뉴 숨기고 넓게") + '</button>' +
     (w ? '<button class="btn" data-act="scimport">소싱폼 엑셀 올리기</button>' : "") + '<button class="btn" data-act="scexport">엑셀로 받기</button>' + (ERP.isOwner() ? '<button class="btn danger" data-act="scdel" id="scdel" disabled>선택 줄 삭제</button>' : "") + "</div></div>";
   if (n) h += '<div class="tools filters">' + ERP.chips("data-view", "scF=" + v.scF, [["scF=all", "전체 " + n.all], ["scF=change", "가격 변경 필요 " + n.change], ["scF=warn", "손해·저마진 " + n.warn], ["scF=link", "매입가 변동 " + n.link], ["scF=nocost", "원가 없음 " + n.nocost]]) + '<input class="ctl search" data-search="scQ" type="search" aria-label="검색" placeholder="품번·브랜드·상품명·매입처·코드" value="' + esc(v.scQ) + '">' + (v.scSort ? '<button class="btn sm" data-act="scunsort">정렬 해제</button>' : "") + "</div>";
   return h;
@@ -271,6 +271,8 @@ function live() { /* 다른 사람·AI가 바꾼 내용 반영: 입력 중이면
 
 /* ---------- 버튼 ---------- */
 ERP.acts.scadd = async function () { var m = await addRows(1); if (!m.length) return; v.scSort = null; ERP.render(); var tr = document.querySelector('tr[data-id="' + m[0].id + '"]'); if (tr) focusCell(tr.querySelector("td.in")); };
+ERP.acts.scrail = function () { var on = !document.body.classList.contains("rail-hide"); document.body.classList.toggle("rail-hide", on); try { localStorage.setItem("rowna-sc-rail", on ? "1" : ""); } catch (e) {} ERP.render(); };
+try { if (localStorage.getItem("rowna-sc-rail")) document.body.classList.add("rail-hide"); } catch (e) {}
 ERP.acts.scunsort = function () { v.scSort = null; ERP.render(); };
 ERP.acts.scdel = async function (btn) { if (!selected) return; var it = ERP.DATA.price_items.get(selected); if (!btn.dataset.arm) { btn.dataset.arm = "1"; btn.textContent = "‘" + ((it && (calc(it).finalName || it.sku)) || "").slice(0, 18) + "’ 삭제할까요? 한 번 더"; return; } if (await ERP.remove("price_items", selected)) ERP.toast("삭제했어요."); selected = null; };
 ERP.acts.scaddkey = function (btn) { var key = btn.dataset.key, inp = document.querySelector('[data-newkey="' + key + '"]'), name = inp && inp.value.trim(); if (!name) return; var o = Object.assign({}, cfg()), m = Object.assign({}, o[key] || {}); m[name] = 0; o[key] = m; saveCfg(o); };
@@ -303,5 +305,5 @@ ERP.acts.scimport = function () {
     } catch (e) { ERP.toast("엑셀을 읽지 못했어요: " + (e.message || e)); }
   });
 };
-ERP.page({ id: "sourcing", title: "스마트스토어 소싱", render: render, bind: bind, live: live, badge: function () { var n = 0; all().forEach(function (it) { if (calc(it).linkDiff) n++; }); return n || ""; } });
+ERP.page({ id: "sourcing", title: "스마트스토어 소싱", wide: true, render: render, bind: bind, live: live, badge: function () { var n = 0; all().forEach(function (it) { if (calc(it).linkDiff) n++; }); return n || ""; } });
 })();

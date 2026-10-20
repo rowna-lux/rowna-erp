@@ -274,3 +274,14 @@ table.sheet .pill{font-size:10.5px;padding:1px 6px}
 .kv.add input{width:auto;flex:1;text-align:left}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) table.sheet td.key{background:#3a1f2b;color:#ffb3cf}:root:not([data-theme="light"]) table.sheet .ce:focus{background:#2b2715}}
 :root[data-theme="dark"] table.sheet td.key{background:#3a1f2b;color:#ffb3cf}:root[data-theme="dark"] table.sheet .ce:focus{background:#2b2715}
+/* 넓은 화면 메뉴(스마트스토어 소싱) */
+body.wide .main{max-width:none;padding:14px 18px 16px}
+body.wide.rail-hide .rail{display:none}
+body.wide .sc-head{margin-bottom:8px}body.wide .sc-head h1{font-size:20px}body.wide .sc-head p{font-size:12px}
+body.wide .filters{margin-bottom:8px}
+body.wide .sheet-wrap{max-height:none;height:calc(100vh - 222px);min-height:420px}
+body.wide table.sheet{font-size:13.5px}
+body.wide table.sheet th,body.wide table.sheet td{height:32px}
+body.wide table.sheet .ce,body.wide table.sheet select{height:32px;line-height:32px}
+body.wide table.sheet tr.hd th{top:26px}body.wide table.sheet tr.grp th{height:26px}
+@media (max-width:900px){body.wide .sheet-wrap{height:calc(100vh - 260px)}}

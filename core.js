@@ -236,6 +236,7 @@ ERP.render = function () {
   if (ids.indexOf(ERP.view.tab) === -1) ERP.view.tab = ids[0];
   renderNav();
   var p = ERP.pages[ERP.view.tab], main = $("main");
+  document.body.classList.toggle("wide", !!(p && p.wide));
   try { main.innerHTML = p.render(); bindCommon(main); if (p.bind) p.bind(main); }
   catch (e) { console.error(e); main.innerHTML = '<div class="panel empty"><b>이 화면을 그리다 문제가 생겼어요</b>' + esc(e.message) + "</div>"; }
 };
