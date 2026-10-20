@@ -35,7 +35,7 @@
   function retLoss(r) { return num(r.shipCost) - num(r.shipIncome) + num(r.refundLoss); }
   function retDate(r) { return (r.dates && (r.dates["완료"] || r.dates["회수중"] || r.dates["접수"])) || r.date || ""; }
   function effCost(p) { return p.effectiveUnitCost != null && p.effectiveUnitCost !== "" ? num(p.effectiveUnitCost) : num(p.unitCost); }
-  function isExcluded(sale, retBySale) { var r = retBySale.get(sale.id); return !!r && (r.type === "취소" || r.type === "반품"); // 반품·취소는 진행 상태와 상관없이 매출에서 뺌(대표님 지시 2026-10-20) }
+  function isExcluded(sale, retBySale) { var r = retBySale.get(sale.id); /* 반품·취소는 진행 상태와 상관없이 매출에서 뺌(대표님 지시 2026-10-20) */ return !!r && (r.type === "취소" || r.type === "반품"); }
 
   /* 기간 집계. 마진은 원가가 입력된 주문만 합산(원가 없는 주문이 이익을 부풀리지 않도록) */
   function aggregate(sales, returns, platById, retBySale, inRange) {
