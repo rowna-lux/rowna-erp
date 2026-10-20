@@ -380,7 +380,7 @@ var AUTO = (function () {
     var it = Object.assign({}, pending[id] || it0), x = Object.assign({}, it.extra || {}), now = new Date().toISOString(), d = e.data.data;
     if (!d) { x.linkStatus = e.data.error || "열기실패"; x.linkCheckedAt = now; it.extra = x; ERP.DATA.price_items.set(id, it); queueSave(it); if (mode === "fill") ERP.toast("자동입력 실패: " + x.linkStatus); scheduleR(); return; }
     var oldLP = x.linkPrice, oldSt = x.linkStatus;
-    x.linkStatus = d.soldOut ? "품절" : "정상"; x.linkCheckedAt = now; if (d.price && !d.soldOut) x.linkPrice = d.price;
+    x.linkStatus = d.soldOut ? "품절" : "정상"; x.linkCheckedAt = now; x.linkPriceSrc = d.priceSrc || ""; if (d.basePrice) x.linkBasePrice = d.basePrice; if (d.price && !d.soldOut) x.linkPrice = d.price;
     if (d.price && oldLP && d.price !== oldLP) x.priceHistory = (x.priceHistory || []).concat([{ at: now, from: oldLP, to: d.price }]).slice(-20);
     it.extra = x;
     var filled = 0;
