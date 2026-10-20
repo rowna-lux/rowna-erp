@@ -362,7 +362,7 @@ var AUTO = (function () {
     if (e.source !== window || !e.data || e.data.rowna !== "result") return;
     var id = e.data.id, mode = wait[id]; delete wait[id];
     if (mode === "store") { id = id.slice(2); var s0 = ERP.DATA.price_items.get(id); if (!s0) return; var si = Object.assign({}, pending[id] || s0), sx = Object.assign({}, si.extra || {}), sd = e.data.data;
-      sx.storeCheckedAt = new Date().toISOString(); if (sd && sd.price) sx.storeLivePrice = sd.price; sx.storeStatus = sd ? (sd.soldOut ? "품절" : "정상") : (e.data.error || "열기실패"); si.extra = sx; ERP.DATA.price_items.set(id, si); queueSave(si);
+      sx.storeCheckedAt = new Date().toISOString(); if (sd && sd.price) sx.storeLivePrice = sd.price; sx.storePriceSrc = sd && sd.priceSrc || ""; sx.storeDebug = sd && sd.debug || null; sx.storeStatus = sd ? (sd.soldOut ? "품절" : "정상") : (e.data.error || "열기실패"); si.extra = sx; ERP.DATA.price_items.set(id, si); queueSave(si);
       var cc = calc(si), gap = cc.mGap, lim = num(cfg().store_alert_gap) || 0.03;
       if (sd && sd.price && gap != null && Math.abs(gap) >= lim - 1e-9) alertUser((cc.finalName || si.sku || "상품").slice(0, 20) + ": 실제 마진 " + (Math.round(cc.mActual * 1000) / 10) + "% (기준 " + (Math.round(cc.margin * 1000) / 10) + "%, " + (gap > 0 ? "+" : "") + (Math.round(gap * 1000) / 10) + "%p) — 내 스토어가 " + sd.price.toLocaleString() + "원, 매입가 " + Number(si.buyPrice || 0).toLocaleString() + "원");
       scheduleR(); return; }
