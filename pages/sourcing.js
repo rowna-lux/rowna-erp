@@ -353,7 +353,7 @@ var AUTO = (function () {
     var line = t.replace(/\[[^\]]*\]|\([^)]*\)/g, " ");
     [brand, o["x.brandKr"], sku].concat(COLORS.map(function (x) { return x[0]; })).forEach(function (w2) { if (w2) line = line.split(w2).join(" ").split(String(w2).toLowerCase()).join(" "); });
     line = line.replace(/여성|남성|공용|우먼|정품|국내배송|당일발송|무료배송|새상품|백화점|명품/g, " ").replace(/\s+/g, " ").trim(); if (line) o["x.line"] = line.slice(0, 40);
-    if (t) o["x.nameOverride"] = t.replace(/\s*:\s*[^:]{1,30}$/, "").replace(/(^|[\s\[(])(?:\d{2}|20\d{2})\s*(?:S\/?S|F\/?W|AW|SS|FW|PF|RESORT|CRUISE)(?=[\s\])]|$)|(^|[\s\[(])(?:SS|FW|AW)\s*\d{2}(?=[\s\])]|$)/gi, " ").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 100);
+    if (t) o["x.nameOverride"] = t.replace(/\s*:\s*[^:]{1,30}$/, "").replace(/(^|[\s\[(])(?:\d{2}|20\d{2})\s*(?:S\/?S|F\/?W|AW|SS|FW|PF|RESORT|CRUISE)(?=[\s\])]|$)|(^|[\s\[(])(?:SS|FW|AW)\s*\d{2}(?=[\s\])]|$)/gi, " ").replace(/\[[^\]]*\]/g, " ").replace(/[\[\]]/g, " ").replace(/\s+/g, " ").trim().slice(0, 100);
     var vn = vendorOf(d.url || "", d); if (vn) o.vendor = vn;
     if (d.price && !d.soldOut) o.buyPrice = d.price;
     return o;
