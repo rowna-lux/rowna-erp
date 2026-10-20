@@ -33,7 +33,7 @@ function bindUsers(root) { root.querySelectorAll("[data-role]").forEach(function
 ERP.acts.reloadusers = async function () { var pr = await S.sb.from("profiles").select("*").order("created_at"); S.PROFILES = pr.data || []; ERP.render(); };
 
 /* ----- 작업 기록 ----- */
-var LOG = null, TNAME = { sales: "매출", purchases: "매입", returns: "반품·취소", documents: "증빙", kream_wholesale: "크림 도매", price_items: "가격 관리" };
+var LOG = null, TNAME = { sales: "매출", purchases: "매입", returns: "반품·취소", documents: "증빙", kream_wholesale: "크림 도매", price_items: "스마트스토어 소싱" };
 function renderActivity() {
   if (!LOG) { loadLog(); return '<div class="head"><div><h1>작업 기록</h1><p>누가 언제 무엇을 바꿨는지 남아요 · AI 직원 작업 확인용</p></div></div><div class="panel empty"><b>불러오는 중</b></div>'; }
   var h = '<div class="head"><div><h1>작업 기록</h1><p>최근 300건 · 누가 언제 무엇을 바꿨는지 남아요 · AI 직원 작업 확인용</p></div><div class="tools"><button class="btn" data-act="reloadlog">새로고침</button></div></div>';

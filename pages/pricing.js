@@ -38,11 +38,11 @@ function render() {
       '<td class="r num strong">' + (c.final != null ? won(c.final) : "–") + (num(it.fixedPrice) > 0 ? '<small class="muted">직접지정</small>' : "") + '</td><td class="r num">' + (c.storeInput != null ? won(c.storeInput) : "–") + '</td><td class="r num strong ' + (c.profit < 0 ? "neg" : "") + '">' + (c.profit != null ? won(c.profit) : "–") + '</td><td class="r num">' + (c.rate != null ? pct(c.rate) : "–") + "</td>" +
       '<td class="r">' + inp("storePrice", it.storePrice, "won", "현재가") + "</td><td>" + chgPill(c) + "</td><td>" + warnPill(c.warn) + "</td></tr>";
   }).join("");
-  var h = '<div class="head"><div><h1>가격 관리</h1><p>스마트스토어 판매가·마진 · 칸을 고치면 바로 다시 계산돼요 · 마진율을 비우면 기본마진(하이엔드 ' + pct(cf.margin_high) + " · 컨템포러리 " + pct(cf.margin_contemp) + ")" + (num(cf.global_adj) ? " + 전체조정 " + pct(cf.global_adj) : "") + '</p></div><div class="tools">' + (w ? '<button class="btn pri" data-act="pradd">+ 상품 추가</button>' : "") + '<button class="btn" data-act="prexport">변경분 엑셀</button>' + (w && n.change ? '<button class="btn" data-act="prapply">보이는 변경분 반영 완료</button>' : "") + "</div></div>";
+  var h = '<div class="head"><div><h1>스마트스토어 소싱</h1><p>스마트스토어 판매가·마진 · 칸을 고치면 바로 다시 계산돼요 · 마진율을 비우면 기본마진(하이엔드 ' + pct(cf.margin_high) + " · 컨템포러리 " + pct(cf.margin_contemp) + ")" + (num(cf.global_adj) ? " + 전체조정 " + pct(cf.global_adj) : "") + '</p></div><div class="tools">' + (w ? '<button class="btn pri" data-act="pradd">+ 상품 추가</button>' : "") + '<button class="btn" data-act="prexport">변경분 엑셀</button>' + (w && n.change ? '<button class="btn" data-act="prapply">보이는 변경분 반영 완료</button>' : "") + "</div></div>";
   h += '<div class="tiles">' + ERP.tile("상품", n.all + "개") + ERP.tile("가격 변경 필요", n.change + "개", "신규·변경 — 스마트스토어에 반영할 것", n.change ? "hl" : "") + ERP.tile("손해", '<span class="' + (n.loss ? "neg" : "") + '">' + n.loss + "개</span>", "순이익 마이너스") + ERP.tile("저마진", n.low + "개", "순이익률 " + pct(cf.low_margin) + " 미만") + ERP.tile("원가 미입력", n.nocost + "개") + "</div>";
   h += '<div class="tools filters">' + ERP.chips("data-view", "prF=" + v.prF, [["prF=all", "전체"], ["prF=하이엔드", "하이엔드"], ["prF=컨템포러리", "컨템포러리"], ["prF=change", "변경 필요"], ["prF=warn", "손해·저마진"], ["prF=nocost", "원가 미입력"]]) + '<input class="ctl search" data-search="prQ" type="search" aria-label="검색" placeholder="품번·브랜드·상품명·매입처" value="' + esc(v.prQ) + '"></div>';
   h += list.length ? '<div class="table-wrap"><table class="pr" style="min-width:1220px"><thead><tr><th>구분</th><th>상품 (누르면 수정)</th><th class="r">매입가</th><th class="r">실질원가</th><th class="r">마진율 %</th><th class="r">수수료</th><th class="r">최종판매가</th><th class="r">스토어 입력가<br><small>할인 전</small></th><th class="r">순이익</th><th class="r">순이익률</th><th class="r">현재 스토어가</th><th>변동</th><th>경고</th></tr></thead><tbody>' + body + "</tbody></table></div>"
-    : '<div class="panel empty"><b>' + (all().length ? "조건에 맞는 상품이 없어요" : "가격 관리 상품이 아직 없어요") + "</b>" + (all().length ? "" : "[데이터·백업]에서 가격관리 가져오기 파일을 넣거나 ‘+ 상품 추가’로 입력하세요.") + "</div>";
+    : '<div class="panel empty"><b>' + (all().length ? "조건에 맞는 상품이 없어요" : "스마트스토어 소싱 상품이 아직 없어요") + "</b>" + (all().length ? "" : "[데이터·백업]에서 가격관리 가져오기 파일을 넣거나 ‘+ 상품 추가’로 입력하세요.") + "</div>";
   return h + settingsPanel();
 }
 function settingsPanel() {
@@ -69,7 +69,7 @@ function open(it) {
     fd("마진율 % (비우면 기본 " + pct(it.tier === "하이엔드" ? cf.margin_high : cf.margin_contemp) + ")", "marginPct", "number", pv(it.margin)) + fd("마켓수수료 % (비우면 네이버 유입)", "feePct", "number", pv(it.feeRate)) +
     fd("판매가 직접지정 (원, 선택)", "fixedPrice", "number", it.fixedPrice) + fd("현재 스토어가 (원)", "storePrice", "number", it.storePrice) + fd("메모", "memo", "text", it.memo, "full") + '</div><div class="preview" id="prpv"></div>' +
     (it.buyLink ? '<p class="note"><a href="' + esc(it.buyLink) + '" target="_blank" rel="noopener">매입처 상품 페이지 열기 ↗</a></p>' : "");
-  ERP.openDrawer(isNew ? "가격 관리 상품 추가" : "가격 관리 상품", f, "price_items", it, isNew);
+  ERP.openDrawer(isNew ? "소싱 상품 추가" : "소싱 상품", f, "price_items", it, isNew);
 }
 function fromForm(o) {
   var p = function (k) { return o[k] === "" || o[k] == null ? null : num(o[k]) / 100; };
@@ -105,7 +105,7 @@ ERP.importers = ERP.importers || {};
 ERP.importers["rowna-erp-price-v1"] = async function (data, say) {
   say("가격 관리 상품 저장 중"); await ERP.saveBatch("price_items", data.items || []);
   if (data.settings) await S.sb.from("app_settings").upsert({ key: "price_settings", value: data.settings });
-  return { kind: "가격 관리", summary: "상품 " + (data.items || []).length + "개" + (data.settings ? " · 가격 설정 포함" : "") };
+  return { kind: "스마트스토어 소싱", summary: "상품 " + (data.items || []).length + "개" + (data.settings ? " · 가격 설정 포함" : "") };
 };
-ERP.page({ id: "pricing", title: "가격 관리", render: render, bind: bind, badge: function () { var n = 0; all().forEach(function (it) { var c = calc(it); if (c.warn === "손해") n++; }); return n || ""; } });
+ERP.page({ id: "pricing", title: "스마트스토어 소싱", render: render, bind: bind, badge: function () { var n = 0; all().forEach(function (it) { var c = calc(it); if (c.warn === "손해") n++; }); return n || ""; } });
 })();
