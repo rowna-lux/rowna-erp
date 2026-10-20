@@ -108,7 +108,7 @@ function cellHtml(it, ci, c, w) {
   var fz = FROZEN_KEYS.indexOf(col.k) !== -1; if (fz) cls.push("fz");
   return '<td class="' + cls.join(" ") + '" data-ci="' + ci + '"' + (fz ? ' style="left:38px"' : "") + ">" + inner + "</td>";
 }
-function rowHtml(it, i, w) { var c = calc(it); return '<tr data-id="' + esc(it.id) + '"><th class="rn" scope="row" data-sel="' + esc(it.id) + '">' + (i + 1) + "</th>" + vis().map(function (ci) { return cellHtml(it, ci, c, w); }).join("") + "</tr>"; }
+function rowHtml(it, i, w) { var c = calc(it); var so = (it.extra || {}).linkStatus === "품절"; return '<tr data-id="' + esc(it.id) + '"' + (so ? ' class="so" title="매입처 품절"' : "") + '><th class="rn" scope="row" data-sel="' + esc(it.id) + '">' + (i + 1) + "</th>" + vis().map(function (ci) { return cellHtml(it, ci, c, w); }).join("") + "</tr>"; }
 function counts() { var n = { all: 0, change: 0, warn: 0, link: 0, nocost: 0 }; all().filter(function (it) { return v.scTab === "전체" || it.tier === v.scTab; }).forEach(function (it) { var c = calc(it); n.all++; if (c.change) n.change++; if (/손해|저마진/.test(c.warn || "")) n.warn++; if (c.linkDiff) n.link++; if (c.warn === "원가없음") n.nocost++; }); return n; }
 
 function render() {
@@ -382,8 +382,8 @@ var AUTO = (function () {
     }
     ERP.DATA.price_items.set(id, it); queueSave(it);
     var nm = (calc(it).finalName || it.sku || "상품").slice(0, 20);
-    if (mode === "fill") ERP.toast("‘" + nm + "’ " + filled + "칸 자동입력" + (d.soldOut ? " (품절 상태)" : ""));
-    else { var msg = []; if (d.soldOut && oldSt !== "품절") msg.push("품절됨"); if (!d.soldOut && oldSt === "품절") msg.push("재입고"); if (d.price && it.buyPrice && d.price !== it.buyPrice && d.price !== oldLP) msg.push("매입가 " + Number(it.buyPrice).toLocaleString() + " → " + d.price.toLocaleString()); if (msg.length) alertUser(nm + ": " + msg.join(", ")); }
+    if (mode === "fill") { ERP.toast("‘" + nm + "’ " + filled + "칸 자동입력"); if (d.soldOut) alertUser(nm + ": 매입처 품절"); }
+    else { var msg = []; if (d.soldOut && oldSt !== "품절") msg.push("매입처 품절"); if (!d.soldOut && oldSt === "품절") msg.push("재입고"); if (d.price && it.buyPrice && d.price !== it.buyPrice && d.price !== oldLP) msg.push("매입가 " + Number(it.buyPrice).toLocaleString() + " → " + d.price.toLocaleString()); if (msg.length) alertUser(nm + ": " + msg.join(", ")); }
     scheduleR();
   });
   function alertUser(m) { ERP.toast("⚠ " + m); try { if (window.Notification && Notification.permission === "granted") new Notification("로우나 소싱 변동", { body: m }); } catch (e) {} }
