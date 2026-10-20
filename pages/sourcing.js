@@ -12,7 +12,8 @@ var SEED = {"category_adj":{"가방/숄더백":0,"가방/토트백":0,"가방/�
 var OPT = { status: ["판매중", "판매대기", "품절", "판매중지"], tier: ["하이엔드", "컨템포러리"], gender: ["", "여성", "남성", "공용"], channel: ["네이버유입", "마케팅링크"], proof: ["카드·세금계산서", "현금영수증", "증빙없음"] };
 /* 열 정의: k=저장 위치('x.'은 extra), t=입력 형식(txt/num/pct/sel/link) 없으면 계산값, c=계산키, f=표시형식, w=너비, g=묶음 */
 var COLS = [
-  { g: "① 기본정보", k: "x.code", l: "판매자관리코드", t: "txt", w: 120 },
+  { g: "① 기본정보", k: "buyLink", l: "매입처 링크", t: "link", w: 200 },
+  { k: "x.code", l: "판매자관리코드", t: "txt", w: 120 },
   { k: "x.ssNo", l: "스마트스토어 상품번호", t: "txt", w: 120 },
   { k: "status", l: "상태", t: "sel", o: "status", w: 82 },
   { k: "tier", l: "구분", t: "sel", o: "tier", w: 92 },
@@ -35,7 +36,6 @@ var COLS = [
   { c: "cost", l: "실질원가", w: 104, f: "won" },
   { k: "x.proof", l: "매입증빙", t: "sel", o: "proof", w: 120 },
   { k: "x.refPrice", l: "백화점정가(참고)", t: "num", w: 110 },
-  { k: "buyLink", l: "매입처 링크", t: "link", w: 160 },
   { k: "x.linkPrice", l: "링크 현재가(AI)", w: 104, f: "won", ro: 1 },
   { k: "x.linkCheckedAt", l: "가격 확인(AI)", w: 110, f: "dt", ro: 1 },
   { c: "linkDiff", l: "매입가 변동", w: 96, f: "diff" },
