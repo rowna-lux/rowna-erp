@@ -157,7 +157,7 @@ function render() {
 function head(n) {
   var w = ERP.canWrite("price_items");
   var h = '<div class="head sc-head"><div><h1>스마트스토어 소싱</h1><p>칸을 눌러 바로 입력 · Enter/Tab/방향키 이동 · 여러 칸 Ctrl+V · 칸을 벗어나면 자동 저장 · 흰 칸=입력, 회색=자동계산, 분홍=핵심 결과</p></div><div class="tools"><button class="btn" data-act="scrail">' + (document.body.classList.contains("rail-hide") ? "메뉴 보이기" : "메뉴 숨기고 넓게") + '</button>' +
-    ('<button class="btn' + (v.scCols ? " pri" : "") + '" data-act="sccols">열 숨기기·보이기' + (LAY.h.length ? " (" + LAY.h.length + "개 숨김)" : "") + "</button>") + (w ? '<button class="btn" data-act="scimport">소싱폼 엑셀 올리기</button>' : "") + '<button class="btn" data-act="scexport">엑셀로 받기</button>' + (ERP.isOwner() ? '<button class="btn danger" data-act="scdel" id="scdel" disabled>선택 줄 삭제</button>' : "") + "</div></div>";
+    ('<button class="btn' + (v.scCols ? " pri" : "") + '" data-act="sccols">열 숨기기·보이기' + (LAY.h.length ? " (" + LAY.h.length + "개 숨김)" : "") + "</button>") + (w ? '<button class="btn" data-act="scautofill" title="링크는 있는데 빈칸이 있는 줄을 자동으로 채워요">링크로 빈칸 채우기</button><button class="btn" data-act="sccheck" title="모든 링크의 가격·재고를 지금 확인해요(ERP 창이 켜져 있으면 3시간마다 자동)">가격·재고 지금 확인</button>' + AUTO.badge() : "") + (w ? '<button class="btn" data-act="scimport">소싱폼 엑셀 올리기</button>' : "") + '<button class="btn" data-act="scexport">엑셀로 받기</button>' + (ERP.isOwner() ? '<button class="btn danger" data-act="scdel" id="scdel" disabled>선택 줄 삭제</button>' : "") + "</div></div>";
   if (n) h += '<div class="tools filters">' + ERP.chips("data-view", "scF=" + v.scF, [["scF=all", "전체 " + n.all], ["scF=change", "가격 변경 필요 " + n.change], ["scF=warn", "손해·저마진 " + n.warn], ["scF=link", "매입가 변동 " + n.link], ["scF=nocost", "원가 없음 " + n.nocost]]) + '<input class="ctl search" data-search="scQ" type="search" aria-label="검색" placeholder="품번·브랜드·상품명·매입처·코드" value="' + esc(v.scQ) + '">' + (v.scSort ? '<button class="btn sm" data-act="scunsort">정렬 해제</button>' : "") + "</div>";
   return h;
 }
@@ -217,6 +217,7 @@ function commitCell(span) {
   setv(it, col.k, val);
   if (col.k === "buyLink") { /* 링크 바뀌면 AI 확인값 초기화 */ it.extra = Object.assign({}, it.extra || {}, { linkPrice: null, linkCheckedAt: null }); }
   ERP.DATA.price_items.set(it.id, it); queueSave(it);
+  if (col.k === "buyLink" && val) AUTO.fill(it.id, val);
   if (span.tagName !== "SELECT") { span.textContent = inVal(col, val); span.classList.remove("ph"); }
   refreshRow(tr, it);
 }
@@ -249,10 +250,10 @@ async function onPaste(e, span) {
   grid.forEach(function (cells, ri) {
     var id = ids[r0 + ri]; var it0 = id && ERP.DATA.price_items.get(id); if (!it0) return; var it = Object.assign({}, pending[id] || it0);
     var V = vis(), p0 = V.indexOf(ci0);
-    cells.forEach(function (raw, k) { var col = COLS[V[p0 + k]]; if (!col || !col.t || col.ro) return; setv(it, col.k, parseIn(col, raw)); changed++; });
+    cells.forEach(function (raw, k) { var col = COLS[V[p0 + k]]; if (!col || !col.t || col.ro) return; var nv = parseIn(col, raw); if (col.k === "buyLink" && nv && nv !== it.buyLink) AUTO.later.push([id, nv]); setv(it, col.k, nv); changed++; });
     ERP.DATA.price_items.set(id, it); queueSave(it);
   });
-  ERP.render(); ERP.toast(changed + "칸을 붙여넣었어요.");
+  ERP.render(); ERP.toast(changed + "칸을 붙여넣었어요."); AUTO.later.splice(0).forEach(function (a) { AUTO.fill(a[0], a[1]); });
 }
 var selected = null;
 function bind(root) {
@@ -336,5 +337,80 @@ ERP.acts.scimport = function () {
     } catch (e) { ERP.toast("엑셀을 읽지 못했어요: " + (e.message || e)); }
   });
 };
+
+/* ---------- 자동입력·가격/재고 확인 (크롬 확장 '로우나 소싱 도우미'가 페이지를 5~7초에 1개씩 열어 읽음) ---------- */
+var AUTO = (function () {
+  var wait = {}, later = [], warned = false, KEY = "rowna-sc-lastcheck", EVERY = 3 * 3600e3;
+  function on() { return document.documentElement.dataset.rownaHelper === "1"; }
+  function badge() { var n = Object.keys(wait).length; return on() ? (n ? '<span class="pill warn">자동입력·확인 중 ' + n + "건</span>" : '<span class="pill ok" title="크롬 확장이 켜져 있어요">자동입력 켜짐</span>') : '<span class="pill bad" title="크롬 확장 로우나 소싱 도우미를 설치하면 링크만 넣어도 자동으로 채워져요">자동입력 꺼짐(도우미 미설치)</span>'; }
+  function send(id, url, mode) {
+    if (!on()) { if (!warned) { warned = true; ERP.toast("자동입력 도우미(크롬 확장)가 없어서 채우지 못했어요. 설치 후 ‘링크로 빈칸 채우기’를 누르세요."); } return false; }
+    if (wait[id]) return true; wait[id] = mode; window.postMessage({ rowna: "fetch", id: id, url: url }, location.origin); return true;
+  }
+  function fill(id, url) { if (send(id, url, "fill")) { ERP.toast("링크를 읽는 중… 5~10초 뒤 채워져요."); scheduleR(); } }
+  var rt; function scheduleR() { clearTimeout(rt); rt = setTimeout(function () { if (!document.querySelector("table.sheet")) return; var a = document.activeElement; if (a && a.classList && a.classList.contains("ce")) { scheduleR(); return; } ERP.render(); }, 400); }
+  var COLORS = [["오프화이트","오프화이트"],["블랙","블랙"],["BLACK","블랙"],["NOIR","블랙"],["화이트","화이트"],["WHITE","화이트"],["아이보리","아이보리"],["IVORY","아이보리"],["크림","크림"],["베이지","베이지"],["BEIGE","베이지"],["브라운","브라운"],["BROWN","브라운"],["카멜","카멜"],["CAMEL","카멜"],["TAN","탄"],["네이비","네이비"],["NAVY","네이비"],["블루","블루"],["BLUE","블루"],["그레이","그레이"],["GREY","그레이"],["GRAY","그레이"],["차콜","차콜"],["그린","그린"],["GREEN","그린"],["카키","카키"],["KHAKI","카키"],["레드","레드"],["RED","레드"],["버건디","버건디"],["핑크","핑크"],["PINK","핑크"],["퍼플","퍼플"],["옐로우","옐로우"],["오렌지","오렌지"],["실버","실버"],["SILVER","실버"],["골드","골드"],["GOLD","골드"],["멀티","멀티"]];
+  var CATS = [["카드지갑","지갑/카드지갑"],["카드케이스","지갑/카드지갑"],["카드홀더","지갑/카드지갑"],["동전지갑","지갑/동전지갑"],["코인","지갑/동전지갑"],["장지갑","지갑/장지갑"],["반지갑","지갑/반지갑"],["지갑","지갑/반지갑"],["토트","가방/토트백"],["숄더","가방/숄더백"],["호보","가방/숄더백"],["버킷","가방/숄더백"],["크로스","가방/크로스백"],["메신저","가방/크로스백"],["클러치","가방/클러치"],["파우치","가방/클러치"],["백팩","가방/백팩"],["미니백","가방/미니백"],["스니커즈","신발/스니커즈"],["운동화","신발/스니커즈"],["로퍼","신발/로퍼"],["샌들","신발/샌들"],["슬리퍼","신발/샌들"],["뮬","신발/샌들"],["부츠","신발/부츠"],["플랫","신발/플랫"],["발레리나","신발/플랫"],["맨투맨","의류/맨투맨/후드"],["후드","의류/맨투맨/후드"],["티셔츠","의류/티셔츠"],["반팔","의류/티셔츠"],["니트","의류/니트"],["가디건","의류/니트"],["스웨터","의류/니트"],["셔츠","의류/셔츠"],["자켓","의류/아우터"],["재킷","의류/아우터"],["코트","의류/아우터"],["패딩","의류/아우터"],["점퍼","의류/아우터"],["벨트","액세서리/벨트"],["스카프","액세서리/스카프"],["머플러","액세서리/스카프"],["모자","액세서리/모자"],["볼캡","액세서리/모자"],["비니","액세서리/모자"],["키링","액세서리/키링/참"],["키홀더","액세서리/키링/참"],["선글라스","액세서리/선글라스"],["목걸이","주얼리/시계/목걸이"],["팔찌","주얼리/시계/팔찌"],["귀걸이","주얼리/시계/귀걸이"],["이어링","주얼리/시계/귀걸이"],["반지","주얼리/시계/반지"],["시계","주얼리/시계/시계"]];
+  var MATS = ["램스킨","카프스킨","소가죽","가죽","레더","캔버스","나일론","스웨이드","데님","캐시미어","코튼","트위드","라피아","PVC","에나멜","페이턴트"];
+  function parse(d) {
+    var c = cfg(), B = c.brands || {}, t = String(d.name || ""), T = t.toUpperCase(), o = {};
+    var bn = String(d.brandName || "").trim(), BN = bn.toUpperCase(), brand = "";
+    Object.keys(B).forEach(function (en) { var kr = B[en].kr || ""; if (!brand && (BN === en || (kr && bn === kr))) brand = en; });
+    if (!brand) Object.keys(B).sort(function (a, b) { return b.length - a.length; }).forEach(function (en) { var kr = B[en].kr || ""; if (!brand && (T.indexOf(en) !== -1 || (kr && t.indexOf(kr) !== -1))) brand = en; });
+    if (!brand && bn && !/[가-힣]/.test(bn) && !/^(NONE|ETC)$/i.test(bn)) brand = BN;
+    if (brand) { o.brand = brand; if (B[brand] && B[brand].kr) o["x.brandKr"] = B[brand].kr; o.tier = (B[brand] && B[brand].tier) || TIER_SEED[brand] || "컨템포러리"; }
+    var sku = String(d.modelName || "").trim();
+    if (!/\d/.test(sku) || sku.length < 4) { var m = (t.match(/[A-Z0-9][A-Z0-9\-\.\/]{4,}[A-Z0-9]/gi) || []).filter(function (x) { return /\d/.test(x) && /[A-Z]/i.test(x) || /^\d{6,}$/.test(x); }).sort(function (a, b) { return b.length - a.length; }); sku = m[0] || ""; }
+    if (sku) o.sku = sku.toUpperCase();
+    for (var i = 0; i < COLORS.length; i++) { var w = COLORS[i][0]; if (/[A-Z]/.test(w) ? new RegExp("\\b" + w + "\\b").test(T) : t.indexOf(w) !== -1) { o["x.color"] = COLORS[i][1]; break; } }
+    if (/여성|우먼|WOMEN|레이디/i.test(t)) o["x.gender"] = "여성"; else if (/남성|맨즈|\bMEN'?S?\b/i.test(t)) o["x.gender"] = "남성"; else if (/공용|유니섹스|UNISEX/i.test(t)) o["x.gender"] = "공용";
+    var cs = t + " " + (d.category || ""); for (var j = 0; j < CATS.length; j++) if (cs.indexOf(CATS[j][0]) !== -1) { var cc = CATS[j][1].split("/"); o.category = cc[0]; o["x.sub"] = cc.slice(1).join("/"); break; }
+    var mats = MATS.filter(function (mm) { return t.indexOf(mm) !== -1; }); if (mats.length) o["x.material"] = mats.slice(0, 2).join(" ");
+    var line = t.replace(/\[[^\]]*\]|\([^)]*\)/g, " ");
+    [brand, o["x.brandKr"], sku].concat(COLORS.map(function (x) { return x[0]; })).forEach(function (w2) { if (w2) line = line.split(w2).join(" ").split(String(w2).toLowerCase()).join(" "); });
+    line = line.replace(/여성|남성|공용|우먼|정품|국내배송|당일발송|무료배송|새상품|백화점|명품/g, " ").replace(/\s+/g, " ").trim(); if (line) o["x.line"] = line.slice(0, 40);
+    if (d.channelName) o.vendor = String(d.channelName).slice(0, 30);
+    if (d.price && !d.soldOut) o.buyPrice = d.price;
+    return o;
+  }
+  window.addEventListener("message", function (e) {
+    if (e.source !== window || !e.data || e.data.rowna !== "result") return;
+    var id = e.data.id, mode = wait[id]; delete wait[id];
+    var it0 = ERP.DATA.price_items.get(id); if (!it0) return;
+    var it = Object.assign({}, pending[id] || it0), x = Object.assign({}, it.extra || {}), now = new Date().toISOString(), d = e.data.data;
+    if (!d) { x.linkStatus = e.data.error || "열기실패"; x.linkCheckedAt = now; it.extra = x; ERP.DATA.price_items.set(id, it); queueSave(it); if (mode === "fill") ERP.toast("자동입력 실패: " + x.linkStatus); scheduleR(); return; }
+    var oldLP = x.linkPrice, oldSt = x.linkStatus;
+    x.linkStatus = d.soldOut ? "품절" : "정상"; x.linkCheckedAt = now; if (d.price && !d.soldOut) x.linkPrice = d.price;
+    if (d.price && oldLP && d.price !== oldLP) x.priceHistory = (x.priceHistory || []).concat([{ at: now, from: oldLP, to: d.price }]).slice(-20);
+    it.extra = x;
+    var filled = 0;
+    if (mode === "fill") {
+      var o = parse(d); Object.keys(o).forEach(function (k) { var cur = get(it, k); if (cur == null || cur === "" || (k === "tier" && !it0.brand)) { setv(it, k, o[k]); filled++; } });
+      it.extra.autoFilledAt = now;
+      var miss = ["brand", "sku", "buyPrice"].filter(function (k) { var v0 = get(it, k); return v0 == null || v0 === ""; });
+      if (miss.length && !/AI확인필요/.test(it.memo || "")) it.memo = (it.memo ? it.memo + " · " : "") + "AI확인필요: " + miss.map(function (k) { return { brand: "브랜드", sku: "품번", buyPrice: "매입가" }[k]; }).join(",");
+    }
+    ERP.DATA.price_items.set(id, it); queueSave(it);
+    var nm = (calc(it).finalName || it.sku || "상품").slice(0, 20);
+    if (mode === "fill") ERP.toast("‘" + nm + "’ " + filled + "칸 자동입력" + (d.soldOut ? " (품절 상태)" : ""));
+    else { var msg = []; if (d.soldOut && oldSt !== "품절") msg.push("품절됨"); if (!d.soldOut && oldSt === "품절") msg.push("재입고"); if (d.price && it.buyPrice && d.price !== it.buyPrice && d.price !== oldLP) msg.push("매입가 " + Number(it.buyPrice).toLocaleString() + " → " + d.price.toLocaleString()); if (msg.length) alertUser(nm + ": " + msg.join(", ")); }
+    scheduleR();
+  });
+  function alertUser(m) { ERP.toast("⚠ " + m); try { if (window.Notification && Notification.permission === "granted") new Notification("로우나 소싱 변동", { body: m }); } catch (e) {} }
+  function checkAll(manual) {
+    if (!on()) { if (manual) ERP.toast("자동입력 도우미(크롬 확장)를 먼저 설치해 주세요."); return; }
+    var L = all().filter(function (it) { return it.buyLink && /^https?:/i.test(it.buyLink) && it.status !== "판매종료"; });
+    try { localStorage.setItem(KEY, String(Date.now())); } catch (e) {}
+    L.forEach(function (it) { send(it.id, it.buyLink, "check"); });
+    if (manual) ERP.toast(L.length + "개 링크를 6초에 1개씩 확인해요. 약 " + Math.ceil(L.length * 6 / 60) + "분 걸려요.");
+    try { if (window.Notification && Notification.permission === "default") Notification.requestPermission(); } catch (e) {}
+    scheduleR();
+  }
+  setInterval(function () { var t0 = 0; try { t0 = +localStorage.getItem(KEY) || 0; } catch (e) {} if (on() && S.user && Date.now() - t0 > EVERY) checkAll(false); }, 10 * 60e3);
+  return { fill: fill, later: later, badge: badge, checkAll: checkAll, send: send, parse: parse };
+})();
+ERP.acts.scautofill = function () { var L = all().filter(function (it) { return it.buyLink && /^https?:/i.test(it.buyLink) && (!it.brand || !it.sku || it.buyPrice == null); }).slice(0, 30); if (!L.length) { ERP.toast("채울 줄이 없어요(링크 있고 빈칸 있는 줄)."); return; } L.forEach(function (it) { AUTO.send(it.id, it.buyLink, "fill"); }); ERP.toast(L.length + "줄을 6초에 1개씩 채워요."); ERP.render(); };
+ERP.acts.sccheck = function () { AUTO.checkAll(true); };
+
 ERP.page({ id: "sourcing", title: "스마트스토어 소싱", wide: true, render: render, bind: bind, live: live, badge: function () { var n = 0; all().forEach(function (it) { if (calc(it).linkDiff) n++; }); return n || ""; } });
 })();

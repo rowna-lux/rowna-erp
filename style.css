@@ -293,3 +293,4 @@ body.resizing,body.resizing *{cursor:col-resize!important;user-select:none!impor
 .cols-panel .cols-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px 18px}
 .cols-panel .cols-grid b{display:block;font-size:12px;color:var(--accent-ink);margin-bottom:4px}
 .cols-panel label.ck{display:flex;align-items:center;gap:6px;font-size:12.5px;padding:2px 0;cursor:pointer}
+.pill.ok{background:#e6f6ec;color:#17803d}.pill.warn{background:#fff4dc;color:#a35d00}.pill.bad{background:#fdeaea;color:#b42318}
