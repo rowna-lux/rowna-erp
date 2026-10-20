@@ -139,7 +139,7 @@ function subscribe() {
   channel.subscribe(function (st) { if (st === "SUBSCRIBED") ERP.sync("ok", "실시간 동기화"); else if (st === "CHANNEL_ERROR" || st === "TIMED_OUT") ERP.sync("err", "실시간 연결 끊김 · 새로고침"); });
 }
 var renderTimer = null;
-function scheduleRender() { clearTimeout(renderTimer); renderTimer = setTimeout(function () { if (!$("dbody")) ERP.render(); else renderNav(); }, 80); }
+function scheduleRender() { clearTimeout(renderTimer); renderTimer = setTimeout(function () { var p = ERP.pages[ERP.view.tab]; if ($("dbody")) renderNav(); else if (p && p.live) { renderNav(); p.live(); } else ERP.render(); }, 80); }
 ERP.scheduleRender = scheduleRender;
 
 /* ---------- 로그인 ---------- */
@@ -204,7 +204,7 @@ async function afterLogin() {
 /* 메뉴 순서·묶음은 여기서만 정합니다. 화면 내용은 pages/*.js */
 var MENU = ERP.MENU = [
   { g: "운영" }, { id: "home" }, { id: "sales" }, { id: "purchases" }, { id: "returns" }, { id: "documents" },
-  { g: "소싱관리" }, { id: "pricing" },
+  { g: "소싱관리" }, { id: "sourcing" },
   { g: "크림" }, { id: "kream-yeolmu" }, { soon: "크림 시세 소싱" },
   { g: "분석", roles: ["owner", "accountant"] }, { id: "reports" }, { id: "channels" },
   { g: "설정", roles: ["owner", "accountant"] }, { id: "settings" }, { id: "users" }, { id: "activity" }, { id: "data" },

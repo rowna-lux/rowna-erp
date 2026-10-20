@@ -240,3 +240,37 @@ td .cell-in{width:96px}
 .fg.four{grid-template-columns:repeat(4,minmax(0,1fr))}
 @media (max-width:900px){.fg.four{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .pr td.name{max-width:340px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 스마트스토어 소싱 — 엑셀형 표 */
+.sheet-wrap{overflow:auto;max-height:calc(100vh - 250px);border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table.sheet{border-collapse:separate;border-spacing:0;font-size:12.5px;table-layout:fixed}
+table.sheet th,table.sheet td{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:0;height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}
+table.sheet thead th{position:sticky;background:var(--surface-2);font-weight:600;font-size:11.5px;padding:4px 6px;white-space:normal;line-height:1.25;z-index:3}
+table.sheet tr.grp th{top:0;height:24px;text-align:left;color:var(--accent-ink);background:var(--accent-soft)}
+table.sheet tr.hd th{top:24px;cursor:pointer}
+table.sheet th.h-in{background:#5d3fd3;color:#fff}
+table.sheet th.h-key{background:#d9467a;color:#fff}
+table.sheet th.rn{position:sticky;left:0;z-index:4;width:38px;min-width:38px;text-align:center;color:var(--muted);background:var(--surface-2);font-weight:500;cursor:pointer}
+table.sheet thead th.rn{z-index:6}
+table.sheet td.fz,table.sheet th.fz{position:sticky;z-index:2}
+table.sheet thead th.fz{z-index:5}
+table.sheet td.calc{background:var(--surface-2);color:var(--ink);padding:0 6px}
+table.sheet td.key{background:#fde7f1;color:#9b1c4f;font-weight:700;padding:0 6px}
+table.sheet td.r,table.sheet .ce.r{text-align:right;font-family:var(--f-num)}
+table.sheet td.in{background:var(--surface)}
+table.sheet .ce{display:block;height:28px;line-height:28px;padding:0 6px;outline:none;overflow:hidden;white-space:nowrap}
+table.sheet .ce:focus{box-shadow:inset 0 0 0 2px var(--accent);background:#fffbe6;overflow:visible;position:relative;z-index:1;min-width:100%;width:max-content}
+table.sheet .ce.ph:empty::before{content:attr(data-ph);color:var(--faint)}
+table.sheet select{border:0;background:transparent;width:100%;height:28px;font:inherit;color:inherit;padding:0 4px}
+table.sheet select:focus{outline:2px solid var(--accent)}
+table.sheet .lk{display:flex;align-items:center}table.sheet .lk .ce{flex:1}table.sheet .lk a{padding:0 6px;text-decoration:none}
+table.sheet tr.sel td,table.sheet tr.sel th.rn{background:var(--accent-soft)!important}
+table.sheet tr.newrow td{padding:6px 10px;background:var(--surface)}
+table.sheet .pill{font-size:10.5px;padding:1px 6px}
+.sheet-tabs{display:flex;gap:2px;margin-top:8px;border-top:1px solid var(--line);padding-top:4px}
+.sheet-tabs button{all:unset;cursor:pointer;padding:6px 14px;border-radius:0 0 8px 8px;color:var(--muted);font-size:13px;font-weight:500}
+.sheet-tabs button.on{background:var(--surface);color:var(--accent-ink);box-shadow:0 2px 0 var(--accent) inset;font-weight:700}
+.kv-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px 12px}
+.kv{display:flex;align-items:center;gap:6px;font-size:12.5px}.kv span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.kv input{width:70px;text-align:right}.kv em{font-style:normal;color:var(--muted);font-size:11px}
+.kv.add input{width:auto;flex:1;text-align:left}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) table.sheet td.key{background:#3a1f2b;color:#ffb3cf}:root:not([data-theme="light"]) table.sheet .ce:focus{background:#2b2715}}
+:root[data-theme="dark"] table.sheet td.key{background:#3a1f2b;color:#ffb3cf}:root[data-theme="dark"] table.sheet .ce:focus{background:#2b2715}

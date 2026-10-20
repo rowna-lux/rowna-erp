@@ -128,6 +128,48 @@
     return out;
   }
 
-  var api = { priceCalc: priceCalc, ceilTo: ceilTo, kream: kream, num: num, ym: ym, fee: fee, derive: derive, retLoss: retLoss, retDate: retDate, effCost: effCost, isExcluded: isExcluded, aggregate: aggregate, agingBucket: agingBucket, findCol: findCol, normDate: normDate, toCamel: toCamel, toSnake: toSnake };
+
+  /* 스마트스토어 소싱 (소싱폼 엑셀과 같은 계산 + 정산·부가세)
+     it: price_items(camel) + it.extra.{brandKr,sub,line,color,gender,material,nameOverride,refPrice,adjIndiv,channel,proof,linkPrice}
+     cfg: price_settings (+ category_adj, brands, vendor_adj) */
+  function sourcing(it, cfg) {
+    var x = it.extra || {}, o = {}, br = (cfg.brands || {})[String(it.brand || "").trim().toUpperCase()] || (cfg.brands || {})[String(it.brand || "").trim()] || {};
+    var brandKr = x.brandKr || br.kr || "";
+    o.brandKr = brandKr;
+    o.autoName = [brandKr, x.line, x.sub, x.color, x.gender, x.material, it.sku].filter(function (v) { return v != null && String(v).trim() !== ""; }).map(function (v) { return String(v).trim(); }).join(" ");
+    o.finalName = (x.nameOverride && String(x.nameOverride).trim()) || o.autoName || it.name || "";
+    o.nameLen = o.finalName.length;
+    var vat = num(cfg.vat || 0.1), unit = cfg.round_unit || 100, extra = num(cfg.extra_cost);
+    var mk = x.channel === "마케팅링크", feeSale = mk ? num(cfg.fee_mkt) : num(cfg.fee_naver);
+    o.feeRate = num(cfg.npay) + feeSale * (1 + vat);
+    var buy = it.buyPrice === "" || it.buyPrice == null ? null : num(it.buyPrice);
+    o.linkDiff = x.linkPrice != null && x.linkPrice !== "" && buy != null ? num(x.linkPrice) - buy : null;
+    if (buy == null || buy <= 0) { o.warn = (it.name || x.line || it.sku) ? "원가없음" : ""; return o; }
+    o.cost = buy * (1 - num(it.cardRate));
+    o.mBase = it.tier === "하이엔드" ? num(cfg.margin_high) : num(cfg.margin_contemp);
+    o.mCat = num((cfg.category_adj || {})[(it.category || "") + "/" + (x.sub || "")]);
+    o.mBrand = num(br.adj);
+    o.mVendor = num((cfg.vendor_adj || {})[it.vendor || ""]);
+    o.mIndiv = num(x.adjIndiv);
+    o.mGlobal = num(cfg.global_adj);
+    o.margin = o.mBase + o.mCat + o.mBrand + o.mVendor + o.mIndiv + o.mGlobal;
+    o.calcPrice = ceilTo((o.cost + extra) * (1 + o.margin) / (1 - o.feeRate), unit);
+    var fin = num(it.fixedPrice) > 0 ? num(it.fixedPrice) : o.calcPrice; o.final = fin;
+    var cur = num(it.storePrice); o.diff = cur ? fin - cur : null;
+    o.change = !cur ? "신규" : fin === cur ? "" : (fin > cur ? "▲" : "▼") + Math.abs(fin - cur).toLocaleString("ko-KR");
+    o.storeInput = ceilTo(fin / (1 - num(cfg.discount_rate)), unit); o.discount = o.storeInput - fin;
+    o.feeNpay = fin * num(cfg.npay); o.feeSales = fin * feeSale * (1 + vat); o.feeSum = o.feeNpay + o.feeSales;
+    o.settle = fin - o.feeSum;
+    o.marginAmt = fin - o.cost; o.marginRate = fin ? o.marginAmt / fin : 0;
+    o.profit = fin - o.feeSum - o.cost - extra; o.rate = fin ? o.profit / fin : 0;
+    o.refRatio = num(x.refPrice) > 0 ? fin / num(x.refPrice) : null;
+    var deduct = (x.proof || "카드·세금계산서") === "카드·세금계산서";
+    o.vatOut = Math.round(fin / 11); o.vatIn = deduct ? Math.round(buy / 11) : 0; o.vatFee = Math.round(o.feeSum / 11);
+    o.vatDue = o.vatOut - o.vatIn - o.vatFee; o.netAfterVat = o.profit - o.vatDue;
+    o.warn = o.profit < 0 ? "손해" : o.rate < num(cfg.low_margin) ? "저마진" : "";
+    if (o.linkDiff) o.warn = (o.warn ? o.warn + " · " : "") + "매입가 변동";
+    return o;
+  }
+  var api = { sourcing: sourcing, priceCalc: priceCalc, ceilTo: ceilTo, kream: kream, num: num, ym: ym, fee: fee, derive: derive, retLoss: retLoss, retDate: retDate, effCost: effCost, isExcluded: isExcluded, aggregate: aggregate, agingBucket: agingBucket, findCol: findCol, normDate: normDate, toCamel: toCamel, toSnake: toSnake };
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.RownaCalc = api;
 })(this);
