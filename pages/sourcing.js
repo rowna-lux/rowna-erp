@@ -11,66 +11,37 @@ var DEF = { global_adj: 0, margin_high: 0.04, margin_contemp: 0.15, extra_cost: 
 var SEED = {"category_adj":{"가방/숄더백":0,"가방/토트백":0,"가방/크로스백":0,"가방/클러치":0,"가방/백팩":0,"가방/미니백":0,"지갑/장지갑":0,"지갑/반지갑":0,"지갑/카드지갑":0,"지갑/동전지갑":0,"신발/스니커즈":0,"신발/로퍼":0,"신발/샌들":0,"신발/부츠":0,"신발/플랫":0,"의류/티셔츠":0,"의류/맨투맨/후드":0,"의류/니트":0,"의류/아우터":0,"의류/셔츠":0,"액세서리/벨트":0,"액세서리/스카프":0,"액세서리/모자":0,"액세서리/키링/참":0,"액세서리/선글라스":0,"주얼리/시계/목걸이":0,"주얼리/시계/팔찌":0,"주얼리/시계/귀걸이":0,"주얼리/시계/반지":0,"주얼리/시계/시계":0}};
 var OPT = { status: ["판매중", "판매대기", "품절", "판매중지"], tier: ["하이엔드", "컨템포러리"], gender: ["", "여성", "남성", "공용"], channel: ["네이버유입", "마케팅링크"], proof: ["카드·세금계산서", "현금영수증", "증빙없음"] };
 /* 열 정의: k=저장 위치('x.'은 extra), t=입력 형식(txt/num/pct/sel/link) 없으면 계산값, c=계산키, f=표시형식, w=너비, g=묶음 */
-var COLS = [
+var COLS = [ /* 대표님 지정 순서 2026-10-20 */
   { g: "① 기본정보", k: "buyLink", l: "매입처 링크", t: "link", w: 200 },
-  { k: "x.code", l: "판매자관리코드", t: "txt", w: 120 },
+  { k: "sku", l: "SKU 넘버", t: "txt", w: 140 },
   { k: "x.ssNo", l: "스마트스토어 상품번호", t: "txt", w: 120 },
-  { k: "status", l: "상태", t: "sel", o: "status", w: 82 },
-  { k: "tier", l: "구분", t: "sel", o: "tier", w: 92 },
-  { k: "vendor", l: "매입처", t: "txt", w: 100 },
-  { k: "brand", l: "브랜드(영문)", t: "txt", w: 120 },
-  { k: "x.brandKr", l: "브랜드(한글)", t: "txt", w: 90, ph: "brandKr" },
-  { k: "category", l: "대분류", t: "txt", w: 80 },
-  { k: "x.sub", l: "중분류", t: "txt", w: 80 },
-  { k: "sku", l: "모델명/품번", t: "txt", w: 140 },
-  { k: "x.line", l: "상품명칭(라인·특징)", t: "txt", w: 170 },
-  { k: "x.color", l: "컬러", t: "txt", w: 70 },
-  { k: "x.gender", l: "성별", t: "sel", o: "gender", w: 66 },
-  { k: "x.material", l: "소재/사이즈", t: "txt", w: 90 },
-  { g: "② 상품명", c: "autoName", l: "상품명 자동생성", w: 240, f: "txt" },
-  { k: "x.nameOverride", l: "상품명 직접수정(선택)", t: "txt", w: 200 },
-  { c: "finalName", l: "최종 상품명", w: 260, f: "txt", key: 1 },
-  { c: "nameLen", l: "글자수", w: 58, f: "len" },
-  { g: "③ 매입", k: "buyPrice", l: "매입가·기준가", t: "num", w: 110 },
+  { k: "x.storeLink", l: "내 스토어 링크", t: "link", w: 180 },
+  { k: "x.nameOverride", l: "상품명", t: "txt", w: 280, key: 1 },
+  { k: "brand", l: "브랜드", t: "txt", w: 120 },
+  { k: "x.sub", l: "중분류", t: "txt", w: 90 },
+  { g: "② 매입", k: "buyPrice", l: "매입가", t: "num", w: 110 },
   { k: "cardRate", l: "카드혜택%", t: "pct", w: 76 },
   { c: "cost", l: "실질원가", w: 104, f: "won" },
-  { k: "x.proof", l: "매입증빙", t: "sel", o: "proof", w: 120 },
-  { k: "x.refPrice", l: "백화점정가(참고)", t: "num", w: 110 },
   { k: "x.linkPrice", l: "링크 현재가(AI)", w: 104, f: "won", ro: 1 },
   { k: "x.linkCheckedAt", l: "가격 확인(AI)", w: 110, f: "dt", ro: 1 },
   { c: "linkDiff", l: "매입가 변동", w: 96, f: "diff" },
-  { g: "④ 마진 %", c: "mBase", l: "기본마진", w: 70, f: "pct" },
-  { c: "mCat", l: "카테고리조정", w: 78, f: "pct" },
-  { c: "mBrand", l: "브랜드조정", w: 72, f: "pct" },
-  { c: "mVendor", l: "매입처조정", w: 72, f: "pct" },
-  { k: "x.adjIndiv", l: "개별조정", t: "pct", w: 72 },
-  { c: "mGlobal", l: "전체조정", w: 66, f: "pct" },
-  { c: "margin", l: "적용마진", w: 72, f: "pct" },
-  { g: "⑤ 판매가", k: "x.channel", l: "유입경로", t: "sel", o: "channel", w: 100 },
+  { g: "③ 판매가", k: "x.marginSet", l: "적용마진(1~30%)", t: "pct", w: 96, ph: "margin" },
   { c: "feeRate", l: "수수료율", w: 70, f: "pct2" },
-  { c: "calcPrice", l: "계산판매가", w: 104, f: "won" },
-  { k: "fixedPrice", l: "판매가 직접지정", t: "num", w: 106 },
-  { c: "final", l: "최종판매가", w: 108, f: "won", key: 1 },
-  { k: "storePrice", l: "현재 스토어가", t: "num", w: 104 },
-  { c: "change", l: "변동", w: 90, f: "chg" },
-  { c: "storeInput", l: "스토어 입력가(할인전)", w: 116, f: "won" },
-  { c: "discount", l: "즉시할인액", w: 90, f: "won" },
-  { g: "⑥ 정산·수익", c: "feeNpay", l: "Npay수수료", w: 90, f: "won" },
-  { c: "feeSales", l: "판매수수료(VAT포함)", w: 104, f: "won" },
-  { c: "feeSum", l: "수수료 합계", w: 96, f: "won" },
+  { c: "final", l: "최종판매가", w: 110, f: "won", key: 1 },
+  { k: "x.storeLivePrice", l: "내 스토어 현재가(AI)", w: 112, f: "won", ro: 1 },
+  { c: "mActual", l: "실제 마진(스토어가 기준)", w: 104, f: "pct" },
+  { c: "mGap", l: "마진 차이(±3%p 알림)", w: 104, f: "pct" },
+  { g: "④ 정산·수익", c: "feeSum", l: "수수료 합계", w: 96, f: "won" },
   { c: "settle", l: "정산예정액", w: 106, f: "won" },
-  { c: "marginAmt", l: "마진액(판매가−원가)", w: 108, f: "won" },
+  { c: "marginAmt", l: "마진액", w: 100, f: "won" },
   { c: "marginRate", l: "마진율", w: 66, f: "pct" },
   { c: "profit", l: "순이익", w: 100, f: "won", key: 1 },
-  { c: "rate", l: "순이익률", w: 72, f: "pct" },
-  { c: "refRatio", l: "정가대비", w: 70, f: "pct0" },
-  { g: "⑦ 부가세(추정)", c: "vatOut", l: "매출세액", w: 90, f: "won" },
+  { g: "⑤ 부가세 정리", c: "vatOut", l: "매출세액", w: 90, f: "won" },
   { c: "vatIn", l: "매입세액", w: 90, f: "won" },
   { c: "vatFee", l: "수수료 세액", w: 86, f: "won" },
   { c: "vatDue", l: "납부 부가세", w: 92, f: "won" },
   { c: "netAfterVat", l: "세후 순수익", w: 104, f: "won", key: 1 },
-  { g: "⑧ 확인", c: "warn", l: "경고", w: 120, f: "warn" },
-  { k: "memo", l: "메모", t: "txt", w: 200 }
+  { g: "⑥ 상태", k: "status", l: "상태", t: "sel", o: "status", w: 86 }
 ];
 var FROZEN_KEYS = ["sku"]; /* 가로로 스크롤해도 품번은 왼쪽에 고정 */
 /* 열 숨기기·너비 (엑셀처럼) — 이 PC/브라우저에 기억 */
@@ -125,7 +96,8 @@ function cellHtml(it, ci, c, w) {
     } else if (col.t === "link") {
       inner = '<div class="lk"><span class="ce" ' + (w ? 'contenteditable="plaintext-only" ' : "") + 'data-ci="' + ci + '" spellcheck="false">' + esc(val || "") + "</span>" + (val ? '<a href="' + esc(val) + '" target="_blank" rel="noopener" title="새 창으로 열기" tabindex="-1">↗</a>' : "") + "</div>";
     } else {
-      if (col.ph === "brandKr" && !val && c.brandKr) inner = '<span class="ce ph" ' + (w ? 'contenteditable="plaintext-only" ' : "") + 'data-ci="' + ci + '" spellcheck="false" data-ph="' + esc(c.brandKr) + '"></span>';
+      var phv = col.ph === "brandKr" ? c.brandKr : col.ph === "margin" ? (Math.round(num(c.margin) * 1000) / 10) + "%" : "";
+      if (col.ph && (val == null || val === "") && phv) inner = '<span class="ce ph' + (col.t !== "txt" ? " r" : "") + '" ' + (w ? 'contenteditable="plaintext-only" ' : "") + 'data-ci="' + ci + '" spellcheck="false" data-ph="' + esc(phv) + '"></span>';
       else inner = '<span class="ce' + (col.t !== "txt" ? " r" : "") + '" ' + (w ? 'contenteditable="plaintext-only" ' : "") + 'data-ci="' + ci + '" spellcheck="false">' + esc(inVal(col, val)) + "</span>";
     }
   } else {
@@ -208,16 +180,18 @@ function parseIn(col, raw) {
 }
 function refreshRow(tr, it) {
   var c = calc(it), w = ERP.canWrite("price_items");
-  tr.querySelectorAll("td").forEach(function (td) { var ci = +td.dataset.ci, col = COLS[ci]; if (col.t && !col.ro) { if (col.ph === "brandKr") { var sp = td.querySelector(".ce"); if (sp && !get(it, col.k)) { sp.dataset.ph = c.brandKr || ""; sp.classList.add("ph"); } } return; } var nh = cellHtml(it, ci, c, w); var tmp = document.createElement("tbody"); tmp.innerHTML = "<tr>" + nh + "</tr>"; td.innerHTML = tmp.firstChild.firstChild.innerHTML; });
+  tr.querySelectorAll("td").forEach(function (td) { var ci = +td.dataset.ci, col = COLS[ci]; if (col.t && !col.ro) { if (col.ph) { var sp = td.querySelector(".ce"), gv = get(it, col.k); if (sp && (gv == null || gv === "")) { sp.dataset.ph = col.ph === "margin" ? (Math.round(num(c.margin) * 1000) / 10) + "%" : (c.brandKr || ""); sp.classList.add("ph"); } } return; } var nh = cellHtml(it, ci, c, w); var tmp = document.createElement("tbody"); tmp.innerHTML = "<tr>" + nh + "</tr>"; td.innerHTML = tmp.firstChild.firstChild.innerHTML; });
 }
 function commitCell(span) {
   var td = span.closest("td"), tr = span.closest("tr"), it0 = ERP.DATA.price_items.get(tr.dataset.id); if (!it0) return;
   var col = COLS[+td.dataset.ci], it = Object.assign({}, pending[it0.id] || it0), val = parseIn(col, span.tagName === "SELECT" ? span.value : span.textContent);
   var old = get(it, col.k); if ((old == null ? "" : old) === (val == null ? "" : val)) { if (span.tagName !== "SELECT") span.textContent = inVal(col, old); return; }
+  if (col.k === "x.marginSet" && val != null && (val < 0.01 || val > 0.30)) { ERP.toast("적용마진은 1~30% 사이로 넣어 주세요."); span.textContent = inVal(col, old); return; }
   setv(it, col.k, val);
   if (col.k === "buyLink") { /* 링크 바뀌면 AI 확인값 초기화 */ it.extra = Object.assign({}, it.extra || {}, { linkPrice: null, linkCheckedAt: null }); }
   ERP.DATA.price_items.set(it.id, it); queueSave(it);
   if (col.k === "buyLink" && val) AUTO.fill(it.id, val);
+  if (col.k === "x.storeLink" && val) AUTO.store(it.id, val, true);
   if (span.tagName !== "SELECT") { span.textContent = inVal(col, val); span.classList.remove("ph"); }
   refreshRow(tr, it);
 }
@@ -347,6 +321,7 @@ var AUTO = (function () {
     if (!on()) { if (!warned) { warned = true; ERP.toast("자동입력 도우미(크롬 확장)가 없어서 채우지 못했어요. 설치 후 ‘링크로 빈칸 채우기’를 누르세요."); } return false; }
     if (wait[id]) return true; wait[id] = mode; window.postMessage({ rowna: "fetch", id: id, url: url }, location.origin); return true;
   }
+  function store(id, url, manual) { if (send("s:" + id, url, "store")) { if (manual) ERP.toast("내 스토어 가격을 읽는 중… 5~10초 뒤 표시돼요."); scheduleR(); } }
   function fill(id, url) { if (send(id, url, "fill")) { ERP.toast("링크를 읽는 중… 5~10초 뒤 채워져요."); scheduleR(); } }
   var rt; function scheduleR() { clearTimeout(rt); rt = setTimeout(function () { if (!document.querySelector("table.sheet")) return; var a = document.activeElement; if (a && a.classList && a.classList.contains("ce")) { scheduleR(); return; } ERP.render(); }, 400); }
   var COLORS = [["오프화이트","오프화이트"],["블랙","블랙"],["BLACK","블랙"],["NOIR","블랙"],["화이트","화이트"],["WHITE","화이트"],["아이보리","아이보리"],["IVORY","아이보리"],["크림","크림"],["베이지","베이지"],["BEIGE","베이지"],["브라운","브라운"],["BROWN","브라운"],["카멜","카멜"],["CAMEL","카멜"],["TAN","탄"],["네이비","네이비"],["NAVY","네이비"],["블루","블루"],["BLUE","블루"],["그레이","그레이"],["GREY","그레이"],["GRAY","그레이"],["차콜","차콜"],["그린","그린"],["GREEN","그린"],["카키","카키"],["KHAKI","카키"],["레드","레드"],["RED","레드"],["버건디","버건디"],["핑크","핑크"],["PINK","핑크"],["퍼플","퍼플"],["옐로우","옐로우"],["오렌지","오렌지"],["실버","실버"],["SILVER","실버"],["골드","골드"],["GOLD","골드"],["멀티","멀티"]];
@@ -358,7 +333,7 @@ var AUTO = (function () {
     Object.keys(B).forEach(function (en) { var kr = B[en].kr || ""; if (!brand && (BN === en || (kr && bn === kr))) brand = en; });
     if (!brand) Object.keys(B).sort(function (a, b) { return b.length - a.length; }).forEach(function (en) { var kr = B[en].kr || ""; if (!brand && (T.indexOf(en) !== -1 || (kr && t.indexOf(kr) !== -1))) brand = en; });
     if (!brand && bn && !/[가-힣]/.test(bn) && !/^(NONE|ETC)$/i.test(bn)) brand = BN;
-    if (brand) { o.brand = brand; if (B[brand] && B[brand].kr) o["x.brandKr"] = B[brand].kr; o.tier = (B[brand] && B[brand].tier) || TIER_SEED[brand] || "컨템포러리"; }
+    if (brand) { o.brand = brand; if (B[brand] && B[brand].kr) o["x.brandKr"] = B[brand].kr; }
     var sku = String(d.modelName || "").trim();
     if (!/\d/.test(sku) || sku.length < 4) { var m = (t.match(/[A-Z0-9][A-Z0-9\-\.\/]{4,}[A-Z0-9]/gi) || []).filter(function (x) { return /\d/.test(x) && /[A-Z]/i.test(x) || /^\d{6,}$/.test(x); }).sort(function (a, b) { return b.length - a.length; }); sku = m[0] || ""; }
     if (sku) o.sku = sku.toUpperCase();
@@ -369,6 +344,7 @@ var AUTO = (function () {
     var line = t.replace(/\[[^\]]*\]|\([^)]*\)/g, " ");
     [brand, o["x.brandKr"], sku].concat(COLORS.map(function (x) { return x[0]; })).forEach(function (w2) { if (w2) line = line.split(w2).join(" ").split(String(w2).toLowerCase()).join(" "); });
     line = line.replace(/여성|남성|공용|우먼|정품|국내배송|당일발송|무료배송|새상품|백화점|명품/g, " ").replace(/\s+/g, " ").trim(); if (line) o["x.line"] = line.slice(0, 40);
+    if (t) o["x.nameOverride"] = t.replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 100);
     if (d.channelName) o.vendor = String(d.channelName).slice(0, 30);
     if (d.price && !d.soldOut) o.buyPrice = d.price;
     return o;
@@ -376,6 +352,11 @@ var AUTO = (function () {
   window.addEventListener("message", function (e) {
     if (e.source !== window || !e.data || e.data.rowna !== "result") return;
     var id = e.data.id, mode = wait[id]; delete wait[id];
+    if (mode === "store") { id = id.slice(2); var s0 = ERP.DATA.price_items.get(id); if (!s0) return; var si = Object.assign({}, pending[id] || s0), sx = Object.assign({}, si.extra || {}), sd = e.data.data;
+      sx.storeCheckedAt = new Date().toISOString(); if (sd && sd.price) sx.storeLivePrice = sd.price; sx.storeStatus = sd ? (sd.soldOut ? "품절" : "정상") : (e.data.error || "열기실패"); si.extra = sx; ERP.DATA.price_items.set(id, si); queueSave(si);
+      var cc = calc(si), gap = cc.mGap, lim = num(cfg().store_alert_gap) || 0.03;
+      if (sd && sd.price && gap != null && Math.abs(gap) >= lim - 1e-9) alertUser((cc.finalName || si.sku || "상품").slice(0, 20) + ": 실제 마진 " + (Math.round(cc.mActual * 1000) / 10) + "% (기준 " + (Math.round(cc.margin * 1000) / 10) + "%, " + (gap > 0 ? "+" : "") + (Math.round(gap * 1000) / 10) + "%p) — 내 스토어가 " + sd.price.toLocaleString() + "원, 매입가 " + Number(si.buyPrice || 0).toLocaleString() + "원");
+      scheduleR(); return; }
     var it0 = ERP.DATA.price_items.get(id); if (!it0) return;
     var it = Object.assign({}, pending[id] || it0), x = Object.assign({}, it.extra || {}), now = new Date().toISOString(), d = e.data.data;
     if (!d) { x.linkStatus = e.data.error || "열기실패"; x.linkCheckedAt = now; it.extra = x; ERP.DATA.price_items.set(id, it); queueSave(it); if (mode === "fill") ERP.toast("자동입력 실패: " + x.linkStatus); scheduleR(); return; }
@@ -399,15 +380,16 @@ var AUTO = (function () {
   function alertUser(m) { ERP.toast("⚠ " + m); try { if (window.Notification && Notification.permission === "granted") new Notification("로우나 소싱 변동", { body: m }); } catch (e) {} }
   function checkAll(manual) {
     if (!on()) { if (manual) ERP.toast("자동입력 도우미(크롬 확장)를 먼저 설치해 주세요."); return; }
-    var L = all().filter(function (it) { return it.buyLink && /^https?:/i.test(it.buyLink) && it.status !== "판매종료"; });
+    var L = all().filter(function (it) { return it.buyLink && /^https?:/i.test(it.buyLink) && it.status !== "판매종료"; }), nS = all().filter(function (it) { return (it.extra || {}).storeLink; }).length;
     try { localStorage.setItem(KEY, String(Date.now())); } catch (e) {}
     L.forEach(function (it) { send(it.id, it.buyLink, "check"); });
-    if (manual) ERP.toast(L.length + "개 링크를 6초에 1개씩 확인해요. 약 " + Math.ceil(L.length * 6 / 60) + "분 걸려요.");
+    all().forEach(function (it) { var sl = (it.extra || {}).storeLink; if (sl && /^https?:/i.test(sl) && it.status !== "판매종료") send("s:" + it.id, sl, "store"); });
+    if (manual) ERP.toast((L.length + nS) + "개 링크(매입처 " + L.length + " · 내 스토어 " + nS + ")를 6초에 1개씩 확인해요. 약 " + Math.ceil(L.length * 6 / 60) + "분 걸려요.");
     try { if (window.Notification && Notification.permission === "default") Notification.requestPermission(); } catch (e) {}
     scheduleR();
   }
   setInterval(function () { var t0 = 0; try { t0 = +localStorage.getItem(KEY) || 0; } catch (e) {} if (on() && S.user && Date.now() - t0 > EVERY) checkAll(false); }, 10 * 60e3);
-  return { fill: fill, later: later, badge: badge, checkAll: checkAll, send: send, parse: parse };
+  return { store: store, fill: fill, later: later, badge: badge, checkAll: checkAll, send: send, parse: parse };
 })();
 ERP.acts.scautofill = function () { var L = all().filter(function (it) { return it.buyLink && /^https?:/i.test(it.buyLink) && (!it.brand || !it.sku || it.buyPrice == null); }).slice(0, 30); if (!L.length) { ERP.toast("채울 줄이 없어요(링크 있고 빈칸 있는 줄)."); return; } L.forEach(function (it) { AUTO.send(it.id, it.buyLink, "fill"); }); ERP.toast(L.length + "줄을 6초에 1개씩 채워요."); ERP.render(); };
 ERP.acts.sccheck = function () { AUTO.checkAll(true); };

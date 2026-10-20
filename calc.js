@@ -153,6 +153,7 @@
     o.mIndiv = num(x.adjIndiv);
     o.mGlobal = num(cfg.global_adj);
     o.margin = o.mBase + o.mCat + o.mBrand + o.mVendor + o.mIndiv + o.mGlobal;
+    if (x.marginSet != null && x.marginSet !== "") o.margin = num(x.marginSet); /* 대표님이 직접 정한 마진(1~30%) 우선 */
     o.calcPrice = ceilTo((o.cost + extra) * (1 + o.margin) / (1 - o.feeRate), unit);
     var fin = num(it.fixedPrice) > 0 ? num(it.fixedPrice) : o.calcPrice; o.final = fin;
     var cur = num(it.storePrice); o.diff = cur ? fin - cur : null;
@@ -161,6 +162,9 @@
     o.feeNpay = fin * num(cfg.npay); o.feeSales = fin * feeSale * (1 + vat); o.feeSum = o.feeNpay + o.feeSales;
     o.settle = fin - o.feeSum;
     o.marginAmt = fin - o.cost; o.marginRate = fin ? o.marginAmt / fin : 0;
+    /* 내 스토어 실제가 기준 마진(매입가는 링크 현재가가 있으면 그 값) — 기준 마진과 ±3%p 넘게 벌어지면 알림 */
+    var sl = num(x.storeLivePrice), lb = num(x.linkPrice) || num(it.buyPrice), lc = lb * (1 - num(it.cardRate));
+    if (sl && lc) { o.mActual = (sl * (1 - o.feeRate) / (lc + extra)) - 1; o.mGap = o.mActual - o.margin; } else { o.mActual = null; o.mGap = null; }
     o.profit = fin - o.feeSum - o.cost - extra; o.rate = fin ? o.profit / fin : 0;
     o.refRatio = num(x.refPrice) > 0 ? fin / num(x.refPrice) : null;
     var deduct = (x.proof || "카드·세금계산서") === "카드·세금계산서";
