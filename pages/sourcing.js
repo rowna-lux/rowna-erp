@@ -21,7 +21,11 @@ var COLS = [ /* 대표님 지정 순서 2026-10-20 */
   { k: "brand", l: "브랜드", t: "txt", w: 120 },
   { k: "x.sub", l: "중분류", t: "txt", w: 90 },
   { g: "② 매입", k: "buyPrice", l: "매입가", t: "num", w: 110 },
-  { k: "cardRate", l: "카드혜택%", t: "pct", w: 76 },
+  { k: "x.payCard", l: "결제카드", t: "sel", o: "card", w: 140 },
+  { c: "cardBase", l: "카드 기본혜택", w: 80, f: "pct" },
+  { c: "cardPromo", l: "매입처 카드행사", w: 86, f: "pct" },
+  { k: "cardRate", l: "카드혜택%(합계)", t: "pct", w: 90, ph: "card" },
+  { k: "x.cardPromoText", l: "페이지 카드행사(참고)", w: 170, f: "txt", ro: 1 },
   { c: "cost", l: "실질원가", w: 104, f: "won" },
   { k: "x.linkPrice", l: "링크 현재가(AI)", w: 104, f: "won", ro: 1 },
   { k: "x.linkCheckedAt", l: "가격 확인(AI)", w: 110, f: "dt", ro: 1 },
@@ -56,7 +60,15 @@ function vis() { var out = []; COLS.forEach(function (c, i) { if (LAY.h.indexOf(
 var TIER_SEED = {"CHANEL":"하이엔드","HERMES":"하이엔드","LOUIS VUITTON":"하이엔드","DIOR":"하이엔드","GUCCI":"하이엔드","PRADA":"하이엔드","SAINT LAURENT":"하이엔드","BOTTEGA VENETA":"하이엔드","CELINE":"하이엔드","MIU MIU":"하이엔드","LOEWE":"하이엔드","VAN CLEEF & ARPELS":"하이엔드"};
 v.scCols = v.scCols || false;
 function cfg() { var c = Object.assign({}, DEF, S.SET.price_settings || {}); if (!c.category_adj || !Object.keys(c.category_adj).length) c.category_adj = SEED.category_adj; c.brands = c.brands || {}; c.vendor_adj = c.vendor_adj || {}; return c; }
-function calc(it) { return C.sourcing(it, cfg()); }
+/* 카드혜택 = 결제카드 기본 할인율(설정›채널·카드) + 매입처 카드행사(설정 탭 '매입처/카드') — 카드혜택% 칸에 직접 넣으면 그 값 우선 */
+function cardOpts() { OPT.card = [""].concat((S.CARDS || []).map(function (c) { return c.name; })); }
+function cardAuto(it, c0) {
+  var x = it.extra || {}, nm = x.payCard || "", card = (S.CARDS || []).filter(function (c) { return c.name === nm; })[0], pr = (c0 || cfg()).card_promo || {};
+  var base = card ? num(card.discount_rate != null ? card.discount_rate : card.discountRate) + num(card.point_rate != null ? card.point_rate : card.pointRate) : 0;
+  var promo = nm ? num(pr[(it.vendor || "") + "/" + nm] != null ? pr[(it.vendor || "") + "/" + nm] : pr["전체/" + nm]) : 0;
+  return { base: base, promo: promo, sum: base + promo };
+}
+function calc(it) { var c0 = cfg(), a = cardAuto(it, c0), manual = it.cardRate != null && it.cardRate !== "", o = C.sourcing(manual ? it : Object.assign({}, it, { cardRate: a.sum }), c0); o.cardBase = a.base; o.cardPromo = a.promo; o.cardAuto = a.sum; return o; }
 function get(it, k) { if (k.indexOf("x.") === 0) { var x = it.extra || {}; return x[k.slice(2)]; } return it[k]; }
 function setv(it, k, val) { if (k.indexOf("x.") === 0) { it.extra = Object.assign({}, it.extra || {}); it.extra[k.slice(2)] = val; } else it[k] = val; }
 function all() { return ERP.list("price_items"); }
@@ -99,7 +111,7 @@ function cellHtml(it, ci, c, w) {
     } else if (col.t === "link") {
       inner = '<div class="lk"><span class="ce" ' + (w ? 'contenteditable="plaintext-only" ' : "") + 'data-ci="' + ci + '" spellcheck="false">' + esc(val || "") + "</span>" + (val ? '<a href="' + esc(val) + '" target="_blank" rel="noopener" title="새 창으로 열기" tabindex="-1">↗</a>' : "") + "</div>";
     } else {
-      var phv = col.ph === "brandKr" ? c.brandKr : col.ph === "margin" ? (Math.round(num(c.margin) * 1000) / 10) + "%" : "";
+      var phv = col.ph === "brandKr" ? c.brandKr : col.ph === "margin" ? (Math.round(num(c.margin) * 1000) / 10) + "%" : col.ph === "card" ? (c.cardAuto ? (Math.round(num(c.cardAuto) * 1000) / 10) + "%" : "") : "";
       if (col.ph && (val == null || val === "") && phv) inner = '<span class="ce ph' + (col.t !== "txt" ? " r" : "") + '" ' + (w ? 'contenteditable="plaintext-only" ' : "") + 'data-ci="' + ci + '" spellcheck="false" data-ph="' + esc(phv) + '"></span>';
       else inner = '<span class="ce' + (col.t !== "txt" ? " r" : "") + '" ' + (w ? 'contenteditable="plaintext-only" ' : "") + 'data-ci="' + ci + '" spellcheck="false">' + esc(inVal(col, val)) + "</span>";
     }
@@ -114,6 +126,7 @@ function rowHtml(it, i, w) { var c = calc(it); var so = (it.extra || {}).linkSta
 function counts() { var n = { all: 0, change: 0, warn: 0, link: 0, nocost: 0 }; all().filter(function (it) { return v.scTab === "전체" || it.tier === v.scTab; }).forEach(function (it) { var c = calc(it); n.all++; if (c.change) n.change++; if (/손해|저마진/.test(c.warn || "")) n.warn++; if (c.linkDiff) n.link++; if (c.warn === "원가없음") n.nocost++; }); return n; }
 
 function render() {
+  cardOpts();
   if (v.scTab === "설정") return head() + settingsHtml() + tabsHtml();
   var w = ERP.canWrite("price_items"), list = rows(), n = counts();
   var groups = "", g = null, span = 0, gl = [];
@@ -132,7 +145,7 @@ function render() {
 function head(n) {
   var w = ERP.canWrite("price_items");
   var h = '<div class="head sc-head"><div><h1>스마트스토어 소싱</h1><p>칸을 눌러 바로 입력 · Enter/Tab/방향키 이동 · 여러 칸 Ctrl+V · 칸을 벗어나면 자동 저장 · 흰 칸=입력, 회색=자동계산, 분홍=핵심 결과</p></div><div class="tools"><button class="btn" data-act="scrail">' + (document.body.classList.contains("rail-hide") ? "메뉴 보이기" : "메뉴 숨기고 넓게") + '</button>' +
-    ('<button class="btn' + (v.scCols ? " pri" : "") + '" data-act="sccols">열 숨기기·보이기' + (LAY.h.length ? " (" + LAY.h.length + "개 숨김)" : "") + "</button>") + (w ? '<button class="btn" data-act="scautofill" title="링크는 있는데 빈칸이 있는 줄을 자동으로 채워요">링크로 빈칸 채우기</button><button class="btn" data-act="sccheck" title="모든 링크의 가격·재고를 지금 확인해요(ERP 창이 켜져 있으면 3시간마다 자동)">가격·재고 지금 확인</button>' + AUTO.badge() : "") + (w ? '<button class="btn" data-act="scimport">소싱폼 엑셀 올리기</button>' : "") + '<button class="btn" data-act="scexport">엑셀로 받기</button>' + (ERP.isOwner() ? '<button class="btn danger" data-act="scdel" id="scdel" disabled>선택 줄 삭제</button>' : "") + "</div></div>";
+    ('<button class="btn' + (v.scCols ? " pri" : "") + '" data-act="sccols">열 숨기기·보이기' + (LAY.h.length ? " (" + LAY.h.length + "개 숨김)" : "") + "</button>") + (w ? '<button class="btn" data-act="scautofill" title="링크는 있는데 빈칸이 있는 줄을 자동으로 채워요">링크로 빈칸 채우기</button><button class="btn" data-act="sccheck" title="모든 링크의 가격·재고를 지금 확인해요(ERP 창이 켜져 있으면 3시간마다 자동)">가격·재고 지금 확인</button>' + AUTO.badge() : "") + (w ? '<button class="btn" data-act="scimport">소싱폼 엑셀 올리기</button>' : "") + '<button class="btn" data-act="scexport">엑셀로 받기</button>' + (w ? '<button class="btn" data-act="scsold" id="scso" disabled title="왼쪽 줄 번호를 누른 뒤 사용">줄 번호 눌러 품절 표시</button>' : "") + (ERP.isOwner() ? '<button class="btn danger" data-act="scdel" id="scdel" disabled>선택 줄 삭제</button>' : "") + "</div></div>";
   if (n) h += '<div class="tools filters">' + ERP.chips("data-view", "scF=" + v.scF, [["scF=all", "전체 " + n.all], ["scF=change", "가격 변경 필요 " + n.change], ["scF=warn", "손해·저마진 " + n.warn], ["scF=link", "매입가 변동 " + n.link], ["scF=nocost", "원가 없음 " + n.nocost]]) + '<input class="ctl search" data-search="scQ" type="search" aria-label="검색" placeholder="품번·브랜드·상품명·매입처·코드" value="' + esc(v.scQ) + '">' + (v.scSort ? '<button class="btn sm" data-act="scunsort">정렬 해제</button>' : "") + "</div>";
   return h;
 }
@@ -148,6 +161,7 @@ function settingsHtml() {
     f("round_unit", "가격 올림 단위 (원)") + f("discount_rate", "즉시할인 노출률 %", 1) + f("low_margin", "저마진 경고 기준 %", 1) + '<div class="fd"></div>' +
     f("npay", "Npay 주문관리수수료 % (VAT포함)", 1) + f("fee_naver", "판매수수료 - 네이버 유입 % (VAT별도)", 1) + f("fee_mkt", "판매수수료 - 마케팅링크 % (VAT별도)", 1) + f("vat", "부가세율 %", 1) +
     '</div><p class="note">판매가 = 올림((실질원가+부대비용)×(1+적용마진)÷(1−수수료율)). 적용마진 = 기본 + 카테고리 + 브랜드 + 매입처 + 개별 + 전체 조정. 순이익 = 최종판매가 − 수수료 − 실질원가 − 부대비용. 부가세(추정) = 판매가÷11 − 매입가÷11(매입증빙이 카드·세금계산서일 때) − 수수료÷11 — 신고 전 세무사 확인 필요.</p></div>';
+  h += '<div class="grid2">' + kv("매입처 카드행사", "card_promo", Object.keys(c.card_promo || {}), "형식: 매입처/카드이름 (예: 롯데온/국민카드 → 5) · 모든 매입처면 전체/국민카드 · 카드이름은 설정›채널·카드와 같게 · 카드 기본 할인율은 설정›채널·카드에서") + "</div>";
   h += '<div class="grid2">' + kv("매입처 조정", "vendor_adj", Object.keys(c.vendor_adj || {}), "그 매입처 상품에만 더하는 마진") + kv("카테고리 조정", "category_adj", Object.keys(c.category_adj || {}), "대분류/중분류 별 마진 가감") + "</div>";
   var bt = function (b) { return brands[b].tier || TIER_SEED[b] || "컨템포러리"; };
   var btable = function (tier) { var L = Object.keys(brands).filter(function (b) { return bt(b) === tier; }).sort(); return '<div class="panel"><h2>' + tier + ' 브랜드<span class="sub">' + L.length + '개 · 영문이 같으면 한글명 자동, 브랜드조정 %p가 붙어요</span></h2><div class="table-wrap"><table><thead><tr><th>브랜드(영문)</th><th>브랜드(한글)</th><th class="r">브랜드조정 %p</th><th>구분</th></tr></thead><tbody>' +
@@ -183,7 +197,7 @@ function parseIn(col, raw) {
 }
 function refreshRow(tr, it) {
   var c = calc(it), w = ERP.canWrite("price_items");
-  tr.querySelectorAll("td").forEach(function (td) { var ci = +td.dataset.ci, col = COLS[ci]; if (col.t && !col.ro) { if (col.ph) { var sp = td.querySelector(".ce"), gv = get(it, col.k); if (sp && (gv == null || gv === "")) { sp.dataset.ph = col.ph === "margin" ? (Math.round(num(c.margin) * 1000) / 10) + "%" : (c.brandKr || ""); sp.classList.add("ph"); } } return; } var nh = cellHtml(it, ci, c, w); var tmp = document.createElement("tbody"); tmp.innerHTML = "<tr>" + nh + "</tr>"; td.innerHTML = tmp.firstChild.firstChild.innerHTML; });
+  tr.querySelectorAll("td").forEach(function (td) { var ci = +td.dataset.ci, col = COLS[ci]; if (col.t && !col.ro) { if (col.ph) { var sp = td.querySelector(".ce"), gv = get(it, col.k); if (sp && (gv == null || gv === "")) { sp.dataset.ph = col.ph === "margin" ? (Math.round(num(c.margin) * 1000) / 10) + "%" : col.ph === "card" ? (c.cardAuto ? (Math.round(num(c.cardAuto) * 1000) / 10) + "%" : "") : (c.brandKr || ""); sp.classList.add("ph"); } } return; } var nh = cellHtml(it, ci, c, w); var tmp = document.createElement("tbody"); tmp.innerHTML = "<tr>" + nh + "</tr>"; td.innerHTML = tmp.firstChild.firstChild.innerHTML; });
 }
 function commitCell(span) {
   var td = span.closest("td"), tr = span.closest("tr"), it0 = ERP.DATA.price_items.get(tr.dataset.id); if (!it0) return;
@@ -249,7 +263,7 @@ function bind(root) {
       else if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && t.classList.contains("ce")) { var sel = getSelection(), len = t.textContent.length, off = sel.focusOffset, all = sel.toString().length === len; if (all || (e.key === "ArrowLeft" && off === 0) || (e.key === "ArrowRight" && off >= len)) { e.preventDefault(); t.blur(); move(td, 0, e.key === "ArrowRight" ? 1 : -1); } }
     });
     sheet.addEventListener("click", function (e) {
-      var th = e.target.closest && e.target.closest("th[data-sel]"); if (th && ERP.isOwner()) { sheet.querySelectorAll("tr.sel").forEach(function (r) { r.classList.remove("sel"); }); var tr = th.parentElement; if (selected === tr.dataset.id) { selected = null; } else { selected = tr.dataset.id; tr.classList.add("sel"); } var b = document.getElementById("scdel"); if (b) { b.disabled = !selected; b.textContent = "선택 줄 삭제"; delete b.dataset.arm; } return; }
+      var th = e.target.closest && e.target.closest("th[data-sel]"); if (th && ERP.canWrite("price_items")) { sheet.querySelectorAll("tr.sel").forEach(function (r) { r.classList.remove("sel"); }); var tr = th.parentElement; if (selected === tr.dataset.id) { selected = null; } else { selected = tr.dataset.id; tr.classList.add("sel"); } var b = document.getElementById("scdel"); if (b) { b.disabled = !selected; b.textContent = "선택 줄 삭제"; delete b.dataset.arm; } soBtn(); return; }
       var td = e.target.closest && e.target.closest("td.in"); if (td && e.target === td) focusCell(td);
     });
   }
@@ -280,6 +294,8 @@ ERP.acts.scadd = async function () { var m = await addRows(1); if (!m.length) re
 ERP.acts.scrail = function () { var on = !document.body.classList.contains("rail-hide"); document.body.classList.toggle("rail-hide", on); try { localStorage.setItem("rowna-sc-rail", on ? "1" : ""); } catch (e) {} ERP.render(); };
 try { if (localStorage.getItem("rowna-sc-rail")) document.body.classList.add("rail-hide"); } catch (e) {}
 ERP.acts.scunsort = function () { v.scSort = null; ERP.render(); };
+function soBtn() { var b = document.getElementById("scso"); if (!b) return; var it = selected && ERP.DATA.price_items.get(selected); b.disabled = !it; b.textContent = !it ? "줄 번호 눌러 품절 표시" : ((it.extra || {}).linkStatus === "품절" ? "선택 줄 품절 해제" : "선택 줄 품절로 표시"); }
+ERP.acts.scsold = function () { var it0 = selected && ERP.DATA.price_items.get(selected); if (!it0) return; var it = Object.assign({}, pending[it0.id] || it0), x = Object.assign({}, it.extra || {}), on = x.linkStatus !== "품절"; x.linkStatus = on ? "품절" : "정상"; x.soldManual = on; x.soldManualAt = new Date().toISOString(); it.extra = x; if (on) it.status = "품절"; else if (it.status === "품절") it.status = "판매중"; ERP.DATA.price_items.set(it.id, it); queueSave(it); ERP.toast(on ? "품절로 표시했어요." : "품절을 해제했어요."); ERP.render(); };
 ERP.acts.scdel = async function (btn) { if (!selected) return; var it = ERP.DATA.price_items.get(selected); if (!btn.dataset.arm) { btn.dataset.arm = "1"; btn.textContent = "‘" + ((it && (calc(it).finalName || it.sku)) || "").slice(0, 18) + "’ 삭제할까요? 한 번 더"; return; } if (await ERP.remove("price_items", selected)) ERP.toast("삭제했어요."); selected = null; };
 ERP.acts.scaddkey = function (btn) { var key = btn.dataset.key, inp = document.querySelector('[data-newkey="' + key + '"]'), name = inp && inp.value.trim(); if (!name) return; var o = Object.assign({}, cfg()), m = Object.assign({}, o[key] || {}); m[name] = 0; o[key] = m; saveCfg(o); };
 ERP.acts.scaddbrand = function (btn) { var t = btn.dataset.tier || "컨템포러리", en = (document.getElementById("nb-en-" + t).value || "").trim().toUpperCase(), kr = (document.getElementById("nb-kr-" + t).value || "").trim(); if (!en) { ERP.toast("영문 브랜드명을 넣어 주세요."); return; } var o = Object.assign({}, cfg()), b = Object.assign({}, o.brands || {}); b[en] = Object.assign({}, b[en] || {}, { kr: kr || (b[en] && b[en].kr) || "", adj: (b[en] && b[en].adj) || 0, tier: t }); o.brands = b; saveCfg(o); };
@@ -372,7 +388,7 @@ var AUTO = (function () {
     var it = Object.assign({}, pending[id] || it0), x = Object.assign({}, it.extra || {}), now = new Date().toISOString(), d = e.data.data;
     if (!d) { x.linkStatus = e.data.error || "열기실패"; x.linkCheckedAt = now; it.extra = x; ERP.DATA.price_items.set(id, it); queueSave(it); if (mode === "fill") ERP.toast("자동입력 실패: " + x.linkStatus); scheduleR(); return; }
     var oldLP = x.linkPrice, oldSt = x.linkStatus;
-    x.linkStatus = d.soldOut ? "품절" : "정상"; x.linkCheckedAt = now; x.linkPriceSrc = d.priceSrc || ""; x.linkDebug = d.debug || null; if (d.basePrice) x.linkBasePrice = d.basePrice; if (d.price && !d.soldOut) x.linkPrice = d.price;
+    x.linkStatus = d.soldOut ? "품절" : "정상"; x.linkCheckedAt = now; x.linkPriceSrc = d.priceSrc || ""; if (d.cardPromo != null) x.cardPromoText = d.cardPromo; x.linkDebug = d.debug || null; if (d.basePrice) x.linkBasePrice = d.basePrice; if (d.price && !d.soldOut) x.linkPrice = d.price;
     if (d.price && oldLP && d.price !== oldLP) x.priceHistory = (x.priceHistory || []).concat([{ at: now, from: oldLP, to: d.price }]).slice(-20);
     it.extra = x;
     var oldBuy = it.buyPrice;
