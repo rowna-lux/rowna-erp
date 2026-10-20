@@ -285,3 +285,11 @@ body.wide table.sheet th,body.wide table.sheet td{height:32px}
 body.wide table.sheet .ce,body.wide table.sheet select{height:32px;line-height:32px}
 body.wide table.sheet tr.hd th{top:26px}body.wide table.sheet tr.grp th{height:26px}
 @media (max-width:900px){body.wide .sheet-wrap{height:calc(100vh - 260px)}}
+table.sheet tr.hd th{position:sticky}
+table.sheet .rz{position:absolute;right:-3px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:2}
+table.sheet .rz:hover{background:rgba(255,255,255,.45)}
+table.sheet tr.hd th{overflow:visible}
+body.resizing,body.resizing *{cursor:col-resize!important;user-select:none!important}
+.cols-panel .cols-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px 18px}
+.cols-panel .cols-grid b{display:block;font-size:12px;color:var(--accent-ink);margin-bottom:4px}
+.cols-panel label.ck{display:flex;align-items:center;gap:6px;font-size:12.5px;padding:2px 0;cursor:pointer}

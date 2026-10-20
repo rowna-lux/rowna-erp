@@ -73,6 +73,14 @@ var COLS = [
   { k: "memo", l: "메모", t: "txt", w: 200 }
 ];
 var FROZEN_KEYS = ["sku"]; /* 가로로 스크롤해도 품번은 왼쪽에 고정 */
+/* 열 숨기기·너비 (엑셀처럼) — 이 PC/브라우저에 기억 */
+var LAY = { w: {}, h: [] }; try { LAY = Object.assign(LAY, JSON.parse(localStorage.getItem("rowna-sc-layout") || "{}")); } catch (e) {}
+function saveLay() { try { localStorage.setItem("rowna-sc-layout", JSON.stringify(LAY)); } catch (e) {} }
+function cid(col) { return col.k || col.c; }
+function cw(col) { return LAY.w[cid(col)] || col.w; }
+function vis() { var out = []; COLS.forEach(function (c, i) { if (LAY.h.indexOf(cid(c)) === -1) out.push(i); }); return out; }
+var TIER_SEED = {"CHANEL":"하이엔드","HERMES":"하이엔드","LOUIS VUITTON":"하이엔드","DIOR":"하이엔드","GUCCI":"하이엔드","PRADA":"하이엔드","SAINT LAURENT":"하이엔드","BOTTEGA VENETA":"하이엔드","CELINE":"하이엔드","MIU MIU":"하이엔드","LOEWE":"하이엔드","VAN CLEEF & ARPELS":"하이엔드"};
+v.scCols = v.scCols || false;
 function cfg() { var c = Object.assign({}, DEF, S.SET.price_settings || {}); if (!c.category_adj || !Object.keys(c.category_adj).length) c.category_adj = SEED.category_adj; c.brands = c.brands || {}; c.vendor_adj = c.vendor_adj || {}; return c; }
 function calc(it) { return C.sourcing(it, cfg()); }
 function get(it, k) { if (k.indexOf("x.") === 0) { var x = it.extra || {}; return x[k.slice(2)]; } return it[k]; }
@@ -127,20 +135,21 @@ function cellHtml(it, ci, c, w) {
   var fz = FROZEN_KEYS.indexOf(col.k) !== -1; if (fz) cls.push("fz");
   return '<td class="' + cls.join(" ") + '" data-ci="' + ci + '"' + (fz ? ' style="left:38px"' : "") + ">" + inner + "</td>";
 }
-function rowHtml(it, i, w) { var c = calc(it); return '<tr data-id="' + esc(it.id) + '"><th class="rn" scope="row" data-sel="' + esc(it.id) + '">' + (i + 1) + "</th>" + COLS.map(function (col, ci) { return cellHtml(it, ci, c, w); }).join("") + "</tr>"; }
+function rowHtml(it, i, w) { var c = calc(it); return '<tr data-id="' + esc(it.id) + '"><th class="rn" scope="row" data-sel="' + esc(it.id) + '">' + (i + 1) + "</th>" + vis().map(function (ci) { return cellHtml(it, ci, c, w); }).join("") + "</tr>"; }
 function counts() { var n = { all: 0, change: 0, warn: 0, link: 0, nocost: 0 }; all().filter(function (it) { return v.scTab === "전체" || it.tier === v.scTab; }).forEach(function (it) { var c = calc(it); n.all++; if (c.change) n.change++; if (/손해|저마진/.test(c.warn || "")) n.warn++; if (c.linkDiff) n.link++; if (c.warn === "원가없음") n.nocost++; }); return n; }
 
 function render() {
   if (v.scTab === "설정") return head() + settingsHtml() + tabsHtml();
   var w = ERP.canWrite("price_items"), list = rows(), n = counts();
   var groups = "", g = null, span = 0, gl = [];
-  COLS.forEach(function (col) { if (col.g) { if (g !== null) gl.push([g, span]); g = col.g; span = 1; } else span++; }); gl.push([g, span]);
+  var V = vis(), curG = null; COLS.forEach(function (col, i) { if (col.g) curG = col.g; if (V.indexOf(i) === -1) return; if (curG !== g) { if (g !== null) gl.push([g, span]); g = curG; span = 1; } else span++; }); if (g !== null) gl.push([g, span]);
   groups = '<tr class="grp"><th class="rn"></th>' + gl.map(function (x) { return '<th colspan="' + x[1] + '">' + esc(x[0]) + "</th>"; }).join("") + "</tr>";
-  var hdr = '<tr class="hd"><th class="rn">#</th>' + COLS.map(function (col, ci) { var s = v.scSort && v.scSort.i === ci ? (v.scSort.d > 0 ? " ▲" : " ▼") : "", fz = FROZEN_KEYS.indexOf(col.k) !== -1; return '<th style="width:' + col.w + 'px;min-width:' + col.w + 'px' + (fz ? ";left:38px" : "") + '" class="' + (col.t && !col.ro ? "h-in" : col.key ? "h-key" : "h-calc") + (fz ? " fz" : "") + '" data-sort="' + ci + '" title="눌러서 정렬">' + esc(col.l) + s + "</th>"; }).join("") + "</tr>";
+  var hdr = '<tr class="hd"><th class="rn">#</th>' + V.map(function (ci) { var col = COLS[ci]; var s = v.scSort && v.scSort.i === ci ? (v.scSort.d > 0 ? " ▲" : " ▼") : "", fz = FROZEN_KEYS.indexOf(col.k) !== -1; return '<th style="width:' + cw(col) + 'px;min-width:' + cw(col) + 'px' + (fz ? ";left:38px" : "") + '" class="' + (col.t && !col.ro ? "h-in" : col.key ? "h-key" : "h-calc") + (fz ? " fz" : "") + '" data-sort="' + ci + '" title="누르면 정렬 · 오른쪽 끝을 끌면 너비 조절 · 마우스 오른쪽 버튼 = 열 숨기기">' + esc(col.l) + s + '<span class="rz" data-rz="' + ci + '"></span></th>'; }).join("") + "</tr>";
   var body = list.map(function (it, i) { return rowHtml(it, i, w); }).join("");
-  if (w) body += '<tr class="newrow"><th class="rn">+</th><td colspan="' + COLS.length + '"><button class="linkbtn" data-act="scadd">+ 새 상품 줄 추가</button> <span class="muted">· 엑셀에서 여러 줄을 복사해 아무 칸에서 Ctrl+V 해도 돼요(모자라는 줄은 자동으로 늘어나요)</span></td></tr>';
+  if (w) body += '<tr class="newrow"><th class="rn">+</th><td colspan="' + V.length + '"><button class="linkbtn" data-act="scadd">+ 새 상품 줄 추가</button> <span class="muted">· 엑셀에서 여러 줄을 복사해 아무 칸에서 Ctrl+V 해도 돼요(모자라는 줄은 자동으로 늘어나요)</span></td></tr>';
   var h = head(n);
-  var tw = 38 + COLS.reduce(function (a, c) { return a + c.w; }, 0), cg = '<colgroup><col style="width:38px">' + COLS.map(function (c) { return '<col style="width:' + c.w + 'px">'; }).join("") + "</colgroup>";
+  var tw = 38 + V.reduce(function (a, i) { return a + cw(COLS[i]); }, 0), cg = '<colgroup><col style="width:38px">' + V.map(function (i) { return '<col data-ci="' + i + '" style="width:' + cw(COLS[i]) + 'px">'; }).join("") + "</colgroup>";
+  if (v.scCols) h += colsPanel();
   h += '<div class="sheet-wrap" id="sheet"><table class="sheet" style="width:' + tw + 'px">' + cg + '<thead>' + groups + hdr + "</thead><tbody>" + body + "</tbody></table></div>";
   if (!list.length) h += '<div class="panel empty"><b>' + (all().length ? "조건에 맞는 상품이 없어요" : "아직 상품이 없어요") + "</b>‘+ 새 상품 줄 추가’를 누르거나 소싱폼 엑셀을 올려 주세요.</div>";
   return h + tabsHtml();
@@ -148,7 +157,7 @@ function render() {
 function head(n) {
   var w = ERP.canWrite("price_items");
   var h = '<div class="head sc-head"><div><h1>스마트스토어 소싱</h1><p>칸을 눌러 바로 입력 · Enter/Tab/방향키 이동 · 여러 칸 Ctrl+V · 칸을 벗어나면 자동 저장 · 흰 칸=입력, 회색=자동계산, 분홍=핵심 결과</p></div><div class="tools"><button class="btn" data-act="scrail">' + (document.body.classList.contains("rail-hide") ? "메뉴 보이기" : "메뉴 숨기고 넓게") + '</button>' +
-    (w ? '<button class="btn" data-act="scimport">소싱폼 엑셀 올리기</button>' : "") + '<button class="btn" data-act="scexport">엑셀로 받기</button>' + (ERP.isOwner() ? '<button class="btn danger" data-act="scdel" id="scdel" disabled>선택 줄 삭제</button>' : "") + "</div></div>";
+    ('<button class="btn' + (v.scCols ? " pri" : "") + '" data-act="sccols">열 숨기기·보이기' + (LAY.h.length ? " (" + LAY.h.length + "개 숨김)" : "") + "</button>") + (w ? '<button class="btn" data-act="scimport">소싱폼 엑셀 올리기</button>' : "") + '<button class="btn" data-act="scexport">엑셀로 받기</button>' + (ERP.isOwner() ? '<button class="btn danger" data-act="scdel" id="scdel" disabled>선택 줄 삭제</button>' : "") + "</div></div>";
   if (n) h += '<div class="tools filters">' + ERP.chips("data-view", "scF=" + v.scF, [["scF=all", "전체 " + n.all], ["scF=change", "가격 변경 필요 " + n.change], ["scF=warn", "손해·저마진 " + n.warn], ["scF=link", "매입가 변동 " + n.link], ["scF=nocost", "원가 없음 " + n.nocost]]) + '<input class="ctl search" data-search="scQ" type="search" aria-label="검색" placeholder="품번·브랜드·상품명·매입처·코드" value="' + esc(v.scQ) + '">' + (v.scSort ? '<button class="btn sm" data-act="scunsort">정렬 해제</button>' : "") + "</div>";
   return h;
 }
@@ -165,10 +174,18 @@ function settingsHtml() {
     f("npay", "Npay 주문관리수수료 % (VAT포함)", 1) + f("fee_naver", "판매수수료 - 네이버 유입 % (VAT별도)", 1) + f("fee_mkt", "판매수수료 - 마케팅링크 % (VAT별도)", 1) + f("vat", "부가세율 %", 1) +
     '</div><p class="note">판매가 = 올림((실질원가+부대비용)×(1+적용마진)÷(1−수수료율)). 적용마진 = 기본 + 카테고리 + 브랜드 + 매입처 + 개별 + 전체 조정. 순이익 = 최종판매가 − 수수료 − 실질원가 − 부대비용. 부가세(추정) = 판매가÷11 − 매입가÷11(매입증빙이 카드·세금계산서일 때) − 수수료÷11 — 신고 전 세무사 확인 필요.</p></div>';
   h += '<div class="grid2">' + kv("매입처 조정", "vendor_adj", Object.keys(c.vendor_adj || {}), "그 매입처 상품에만 더하는 마진") + kv("카테고리 조정", "category_adj", Object.keys(c.category_adj || {}), "대분류/중분류 별 마진 가감") + "</div>";
-  h += '<div class="panel"><h2>브랜드<span class="sub">영문 브랜드명이 같으면 한글명이 자동으로 채워지고 브랜드조정이 붙어요</span></h2><div class="table-wrap"><table><thead><tr><th>브랜드(영문)</th><th>브랜드(한글)</th><th class="r">브랜드조정 %p</th></tr></thead><tbody>' +
-    Object.keys(brands).sort().map(function (b) { return '<tr><td>' + esc(b) + '</td><td><input class="cell-in" style="width:130px;text-align:left" data-brand="' + esc(b) + '" data-bk="kr" value="' + esc(brands[b].kr || "") + '"' + dis + '></td><td class="r"><input class="cell-in" type="number" step="any" data-brand="' + esc(b) + '" data-bk="adj" value="' + Math.round(num(brands[b].adj) * 100000) / 1000 + '"' + dis + "></td></tr>"; }).join("") +
-    "</tbody></table></div>" + (ERP.isOwner() ? '<div class="tools" style="margin-top:8px"><input class="ctl" id="nb-en" placeholder="브랜드(영문) 예: PRADA"><input class="ctl" id="nb-kr" placeholder="한글 예: 프라다"><button class="btn sm" data-act="scaddbrand">브랜드 추가</button></div>' : "") + "</div>";
+  var bt = function (b) { return brands[b].tier || TIER_SEED[b] || "컨템포러리"; };
+  var btable = function (tier) { var L = Object.keys(brands).filter(function (b) { return bt(b) === tier; }).sort(); return '<div class="panel"><h2>' + tier + ' 브랜드<span class="sub">' + L.length + '개 · 영문이 같으면 한글명 자동, 브랜드조정 %p가 붙어요</span></h2><div class="table-wrap"><table><thead><tr><th>브랜드(영문)</th><th>브랜드(한글)</th><th class="r">브랜드조정 %p</th><th>구분</th></tr></thead><tbody>' +
+    L.map(function (b) { return '<tr><td>' + esc(b) + '</td><td><input class="cell-in" style="width:130px;text-align:left" data-brand="' + esc(b) + '" data-bk="kr" value="' + esc(brands[b].kr || "") + '"' + dis + '></td><td class="r"><input class="cell-in" type="number" step="any" data-brand="' + esc(b) + '" data-bk="adj" value="' + Math.round(num(brands[b].adj) * 100000) / 1000 + '"' + dis + '></td><td><select class="ctl sm" data-brand="' + esc(b) + '" data-bk="tier"' + dis + '><option' + (tier === "하이엔드" ? " selected" : "") + '>하이엔드</option><option' + (tier === "컨템포러리" ? " selected" : "") + ">컨템포러리</option></select></td></tr>"; }).join("") +
+    "</tbody></table></div>" + (ERP.isOwner() ? '<div class="tools" style="margin-top:8px"><input class="ctl" id="nb-en-' + tier + '" placeholder="브랜드(영문) 예: ' + (tier === "하이엔드" ? "HERMES" : "MAX MARA") + '"><input class="ctl" id="nb-kr-' + tier + '" placeholder="한글 예: ' + (tier === "하이엔드" ? "에르메스" : "막스마라") + '"><button class="btn sm" data-act="scaddbrand" data-tier="' + tier + '">' + tier + " 브랜드 추가</button></div>" : "") + "</div>"; };
+  h += '<div class="grid2 even">' + btable("하이엔드") + btable("컨템포러리") + "</div>";
   return h;
+}
+function colsPanel() {
+  var groups = [], g = null; COLS.forEach(function (c, i) { if (c.g) { g = { name: c.g, items: [] }; groups.push(g); } g.items.push(i); });
+  return '<div class="panel cols-panel"><h2>열 숨기기·보이기<span class="sub">체크를 끄면 숨겨져요 · 머리글 오른쪽 끝을 끌면 너비 조절 · 머리글에서 마우스 오른쪽 버튼을 눌러도 바로 숨겨져요 · 이 컴퓨터에 기억돼요</span></h2><div class="cols-grid">' +
+    groups.map(function (gr) { return '<div><b>' + esc(gr.name) + "</b>" + gr.items.map(function (i) { var c = COLS[i], id = cid(c); return '<label class="ck"><input type="checkbox" data-colvis="' + esc(id) + '"' + (LAY.h.indexOf(id) === -1 ? " checked" : "") + "> " + esc(c.l) + "</label>"; }).join("") + "</div>"; }).join("") +
+    '</div><div class="tools" style="margin-top:8px"><button class="btn sm" data-act="scshowall">모두 보이기</button><button class="btn sm" data-act="scwreset">열 너비 처음대로</button><button class="btn sm" data-act="sccols">닫기</button></div></div>';
 }
 function saveCfg(o) { return ERP.saveSetting("price_settings", o); }
 
@@ -231,7 +248,8 @@ async function onPaste(e, span) {
   var changed = 0;
   grid.forEach(function (cells, ri) {
     var id = ids[r0 + ri]; var it0 = id && ERP.DATA.price_items.get(id); if (!it0) return; var it = Object.assign({}, pending[id] || it0);
-    cells.forEach(function (raw, k) { var col = COLS[ci0 + k]; if (!col || !col.t || col.ro) return; setv(it, col.k, parseIn(col, raw)); changed++; });
+    var V = vis(), p0 = V.indexOf(ci0);
+    cells.forEach(function (raw, k) { var col = COLS[V[p0 + k]]; if (!col || !col.t || col.ro) return; setv(it, col.k, parseIn(col, raw)); changed++; });
     ERP.DATA.price_items.set(id, it); queueSave(it);
   });
   ERP.render(); ERP.toast(changed + "칸을 붙여넣었어요.");
@@ -257,9 +275,19 @@ function bind(root) {
       var td = e.target.closest && e.target.closest("td.in"); if (td && e.target === td) focusCell(td);
     });
   }
+  root.querySelectorAll("[data-colvis]").forEach(function (el) { el.onchange = function () { var id = el.dataset.colvis, k = LAY.h.indexOf(id); if (el.checked && k !== -1) LAY.h.splice(k, 1); if (!el.checked && k === -1) LAY.h.push(id); saveLay(); ERP.render(); }; });
+  if (sheet) {
+    sheet.querySelectorAll("th[data-sort]").forEach(function (th) { th.addEventListener("contextmenu", function (e) { e.preventDefault(); var col = COLS[+th.dataset.sort]; LAY.h.push(cid(col)); saveLay(); ERP.render(); ERP.toast("‘" + col.l + "’ 열을 숨겼어요. 다시 보려면 ‘열 숨기기·보이기’를 누르세요."); }); });
+    sheet.querySelectorAll(".rz").forEach(function (rz) { rz.addEventListener("click", function (e) { e.stopPropagation(); }); rz.addEventListener("mousedown", function (e) {
+      e.preventDefault(); e.stopPropagation(); var ci = +rz.dataset.rz, col = COLS[ci], th = rz.parentElement, cg = sheet.querySelector('col[data-ci="' + ci + '"]'), tb = sheet.querySelector("table.sheet"), x0 = e.clientX, w0 = cw(col), tw0 = tb.offsetWidth;
+      document.body.classList.add("resizing");
+      var mv = function (ev) { var w = Math.max(40, Math.round(w0 + ev.clientX - x0)); cg.style.width = w + "px"; th.style.width = th.style.minWidth = w + "px"; tb.style.width = (tw0 + w - w0) + "px"; LAY.w[cid(col)] = w; };
+      var up = function () { document.removeEventListener("mousemove", mv); document.removeEventListener("mouseup", up); document.body.classList.remove("resizing"); saveLay(); };
+      document.addEventListener("mousemove", mv); document.addEventListener("mouseup", up); }); rz.addEventListener("dblclick", function (e) { e.stopPropagation(); delete LAY.w[cid(COLS[+rz.dataset.rz])]; saveLay(); ERP.render(); }); });
+  }
   root.querySelectorAll("[data-ps]").forEach(function (el) { el.onchange = function () { var o = Object.assign({}, cfg()); o[el.dataset.ps] = el.dataset.pct ? num(el.value) / 100 : num(el.value); saveCfg(o); }; });
   root.querySelectorAll("[data-map]").forEach(function (el) { el.onchange = function () { var o = Object.assign({}, cfg()), m = Object.assign({}, o[el.dataset.map] || {}); m[el.dataset.mk] = num(el.value) / 100; o[el.dataset.map] = m; saveCfg(o); }; });
-  root.querySelectorAll("[data-brand]").forEach(function (el) { el.onchange = function () { var o = Object.assign({}, cfg()), b = Object.assign({}, o.brands || {}), r = Object.assign({}, b[el.dataset.brand] || {}); if (el.dataset.bk === "kr") r.kr = el.value.trim(); else r.adj = num(el.value) / 100; b[el.dataset.brand] = r; o.brands = b; saveCfg(o); }; });
+  root.querySelectorAll("[data-brand]").forEach(function (el) { el.onchange = function () { var o = Object.assign({}, cfg()), b = Object.assign({}, o.brands || {}), r = Object.assign({}, b[el.dataset.brand] || {}); if (el.dataset.bk === "kr") r.kr = el.value.trim(); else if (el.dataset.bk === "tier") r.tier = el.value; else r.adj = num(el.value) / 100; b[el.dataset.brand] = r; o.brands = b; saveCfg(o); }; });
 }
 function live() { /* 다른 사람·AI가 바꾼 내용 반영: 입력 중이면 그 줄만 건드리지 않음 */
   var sheet = document.getElementById("sheet"); if (!sheet || v.scTab === "설정") { ERP.render(); return; }
@@ -276,7 +304,10 @@ try { if (localStorage.getItem("rowna-sc-rail")) document.body.classList.add("ra
 ERP.acts.scunsort = function () { v.scSort = null; ERP.render(); };
 ERP.acts.scdel = async function (btn) { if (!selected) return; var it = ERP.DATA.price_items.get(selected); if (!btn.dataset.arm) { btn.dataset.arm = "1"; btn.textContent = "‘" + ((it && (calc(it).finalName || it.sku)) || "").slice(0, 18) + "’ 삭제할까요? 한 번 더"; return; } if (await ERP.remove("price_items", selected)) ERP.toast("삭제했어요."); selected = null; };
 ERP.acts.scaddkey = function (btn) { var key = btn.dataset.key, inp = document.querySelector('[data-newkey="' + key + '"]'), name = inp && inp.value.trim(); if (!name) return; var o = Object.assign({}, cfg()), m = Object.assign({}, o[key] || {}); m[name] = 0; o[key] = m; saveCfg(o); };
-ERP.acts.scaddbrand = function () { var en = (document.getElementById("nb-en").value || "").trim().toUpperCase(), kr = (document.getElementById("nb-kr").value || "").trim(); if (!en) return; var o = Object.assign({}, cfg()), b = Object.assign({}, o.brands || {}); b[en] = { kr: kr, adj: 0 }; o.brands = b; saveCfg(o); };
+ERP.acts.scaddbrand = function (btn) { var t = btn.dataset.tier || "컨템포러리", en = (document.getElementById("nb-en-" + t).value || "").trim().toUpperCase(), kr = (document.getElementById("nb-kr-" + t).value || "").trim(); if (!en) { ERP.toast("영문 브랜드명을 넣어 주세요."); return; } var o = Object.assign({}, cfg()), b = Object.assign({}, o.brands || {}); b[en] = Object.assign({}, b[en] || {}, { kr: kr || (b[en] && b[en].kr) || "", adj: (b[en] && b[en].adj) || 0, tier: t }); o.brands = b; saveCfg(o); };
+ERP.acts.sccols = function () { v.scCols = !v.scCols; ERP.render(); };
+ERP.acts.scshowall = function () { LAY.h = []; saveLay(); ERP.render(); };
+ERP.acts.scwreset = function () { LAY.w = {}; saveLay(); ERP.render(); };
 function exportRows(list) { return list.map(function (it) { var c = calc(it), o = {}; COLS.forEach(function (col) { var val = col.c ? c[col.c] : get(it, col.k); if (typeof val === "number" && /won/.test(col.f || (col.t === "num" ? "won" : ""))) val = Math.round(val); o[col.l] = val == null ? "" : val; }); return o; }); }
 ERP.acts.scexport = function () { var L = all(); var ch = L.filter(function (it) { return calc(it).change; }); ERP.downloadBlob("스마트스토어소싱_" + U.today() + ".xlsx", ERP.xlsxBlob([{ name: "하이엔드", rows: exportRows(L.filter(function (x) { return x.tier === "하이엔드"; })) }, { name: "컨템포러리", rows: exportRows(L.filter(function (x) { return x.tier === "컨템포러리"; })) }, { name: "스토어반영용(변경분)", rows: ch.map(function (it) { var c = calc(it), x = it.extra || {}; return { "스마트스토어 상품번호": x.ssNo || "", "판매자관리코드": x.code || "", "최종 상품명": c.finalName, "스토어 판매가(할인전)": c.storeInput, "즉시할인액": c.discount, "최종판매가": c.final, "현재 스토어가": it.storePrice || "", "변동": c.change }; }) }])); };
 /* 소싱폼 엑셀(하이엔드_백화점구매대행 / 컨템포러리 시트, 4행 머리글) 그대로 올리기 */
