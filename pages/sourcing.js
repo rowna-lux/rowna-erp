@@ -122,7 +122,8 @@ function cellHtml(it, ci, c, w) {
   var fz = FROZEN_KEYS.indexOf(col.k) !== -1; if (fz) cls.push("fz");
   return '<td class="' + cls.join(" ") + '" data-ci="' + ci + '"' + (fz ? ' style="left:38px"' : "") + ">" + inner + "</td>";
 }
-function rowHtml(it, i, w) { var c = calc(it); var so = (it.extra || {}).linkStatus === "품절"; return '<tr data-id="' + esc(it.id) + '"' + (so ? ' class="so" title="매입처 품절"' : "") + '><th class="rn" scope="row" data-sel="' + esc(it.id) + '">' + (i + 1) + "</th>" + vis().map(function (ci) { return cellHtml(it, ci, c, w); }).join("") + "</tr>"; }
+function isSold(it) { return it.status === "품절" || (it.extra || {}).linkStatus === "품절"; }
+function rowHtml(it, i, w) { var c = calc(it); var so = isSold(it); return '<tr data-id="' + esc(it.id) + '"' + (so ? ' class="so" title="매입처 품절"' : "") + '><th class="rn" scope="row" data-sel="' + esc(it.id) + '">' + (i + 1) + "</th>" + vis().map(function (ci) { return cellHtml(it, ci, c, w); }).join("") + "</tr>"; }
 function counts() { var n = { all: 0, change: 0, warn: 0, link: 0, nocost: 0 }; all().filter(function (it) { return v.scTab === "전체" || it.tier === v.scTab; }).forEach(function (it) { var c = calc(it); n.all++; if (c.change) n.change++; if (/손해|저마진/.test(c.warn || "")) n.warn++; if (c.linkDiff) n.link++; if (c.warn === "원가없음") n.nocost++; }); return n; }
 
 function render() {
@@ -210,7 +211,7 @@ function commitCell(span) {
   if (col.k === "buyLink" && val) { if (!it.vendor) { var vn0 = vendorOf(val, null); if (vn0 && vn0 !== "네이버스토어") { it.vendor = vn0; ERP.DATA.price_items.set(it.id, it); queueSave(it); } } AUTO.fill(it.id, val); }
   if (col.k === "x.storeLink" && val) AUTO.store(it.id, val, true);
   if (span.tagName !== "SELECT") { span.textContent = inVal(col, val); span.classList.remove("ph"); }
-  refreshRow(tr, it);
+  refreshRow(tr, it); tr.classList.toggle("so", isSold(it));
 }
 async function addRows(n, tier) {
   var made = [], base = Date.now();
