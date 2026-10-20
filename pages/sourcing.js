@@ -191,7 +191,7 @@ function commitCell(span) {
   setv(it, col.k, val);
   if (col.k === "buyLink") { /* 링크 바뀌면 AI 확인값 초기화 */ it.extra = Object.assign({}, it.extra || {}, { linkPrice: null, linkCheckedAt: null }); }
   ERP.DATA.price_items.set(it.id, it); queueSave(it);
-  if (col.k === "buyLink" && val) AUTO.fill(it.id, val);
+  if (col.k === "buyLink" && val) { if (!it.vendor) { var vn0 = vendorOf(val, null); if (vn0 && vn0 !== "네이버스토어") { it.vendor = vn0; ERP.DATA.price_items.set(it.id, it); queueSave(it); } } AUTO.fill(it.id, val); }
   if (col.k === "x.storeLink" && val) AUTO.store(it.id, val, true);
   if (span.tagName !== "SELECT") { span.textContent = inVal(col, val); span.classList.remove("ph"); }
   refreshRow(tr, it);
@@ -313,6 +313,14 @@ ERP.acts.scimport = function () {
   });
 };
 
+/* 매입처명: 링크 주소로 사이트 이름, 네이버 스토어는 스토어 이름 */
+var SITES = [[/smartstore\.naver|brand\.naver|shopping\.naver/, ""], [/lotteon\.com/, "롯데온"], [/lotteimall\.com/, "롯데홈쇼핑"], [/hmall\.com/, "현대홈쇼핑"], [/thehyundai\.com/, "더현대닷컴"], [/lfmall\.co\.kr/, "LF몰"], [/ssg\.com/, "SSG"], [/shinsegaemall/, "신세계몰"], [/ssfshop\.com/, "SSF샵"], [/29cm\.co\.kr/, "29CM"], [/musinsa\.com/, "무신사"], [/wconcept\.co\.kr/, "W컨셉"], [/gsshop\.com/, "GS샵"], [/cjonstyle|cjmall/, "CJ온스타일"], [/11st\.co\.kr/, "11번가"], [/gmarket\.co\.kr/, "G마켓"], [/auction\.co\.kr/, "옥션"], [/coupang\.com/, "쿠팡"], [/kream\.co\.kr/, "크림"], [/mustit\.co\.kr/, "머스트잇"], [/trenbe\.com/, "트렌비"], [/balaan\.co\.kr/, "발란"], [/rexmonde|okmall/, "렉스몬드"], [/galleria/, "갤러리아"], [/akmall\.com/, "AK몰"], [/hfashionmall\.com/, "H패션몰"], [/sivillage\.com/, "S.I.VILLAGE"], [/lotteshopping|ellotte/, "롯데백화점몰"], [/4910\.kr/, "4910"], [/kakao\.com/, "카카오쇼핑"]];
+function vendorOf(url, d) {
+  var h = ""; try { h = new URL(url).host.toLowerCase(); } catch (e) { return ""; }
+  for (var i = 0; i < SITES.length; i++) if (SITES[i][0].test(h)) return SITES[i][1] || (d && d.channelName ? String(d.channelName).slice(0, 30) : "네이버스토어");
+  if (d && d.channelName) return String(d.channelName).slice(0, 30);
+  var p = h.replace(/^www\.|^m\./, "").split("."); return p[0] || "";
+}
 /* ---------- 자동입력·가격/재고 확인 (크롬 확장 '로우나 소싱 도우미'가 페이지를 5~7초에 1개씩 열어 읽음) ---------- */
 var AUTO = (function () {
   var wait = {}, later = [], warned = false, KEY = "rowna-sc-lastcheck", EVERY = 3 * 3600e3;
@@ -346,7 +354,7 @@ var AUTO = (function () {
     [brand, o["x.brandKr"], sku].concat(COLORS.map(function (x) { return x[0]; })).forEach(function (w2) { if (w2) line = line.split(w2).join(" ").split(String(w2).toLowerCase()).join(" "); });
     line = line.replace(/여성|남성|공용|우먼|정품|국내배송|당일발송|무료배송|새상품|백화점|명품/g, " ").replace(/\s+/g, " ").trim(); if (line) o["x.line"] = line.slice(0, 40);
     if (t) o["x.nameOverride"] = t.replace(/\s*:\s*[^:]{1,30}$/, "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 100);
-    if (d.channelName) o.vendor = String(d.channelName).slice(0, 30);
+    var vn = vendorOf(d.url || "", d); if (vn) o.vendor = vn;
     if (d.price && !d.soldOut) o.buyPrice = d.price;
     return o;
   }
