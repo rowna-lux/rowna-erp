@@ -391,7 +391,7 @@ var AUTO = (function () {
     if (mode === "store") { id = id.slice(2); var s0 = ERP.DATA.price_items.get(id); if (!s0) return; var si = Object.assign({}, pending[id] || s0), sx = Object.assign({}, si.extra || {}), sd = e.data.data;
       sx.storeCheckedAt = new Date().toISOString(); if (sd && sd.price) sx.storeLivePrice = sd.price; sx.storePriceSrc = sd && sd.priceSrc || ""; sx.storeDebug = sd && sd.debug || null; sx.storeStatus = sd ? (sd.soldOut ? "품절" : "정상") : (e.data.error || "열기실패"); si.extra = sx; ERP.DATA.price_items.set(id, si); queueSave(si);
       var cc = calc(si), gap = cc.mGap, lim = num(cfg().store_alert_gap) || 0.03;
-      if (sd && sd.price && gap != null && Math.abs(gap) >= lim - 1e-9) alertUser((cc.finalName || si.sku || "상품").slice(0, 20) + ": 실제 마진 " + (Math.round(cc.mActual * 1000) / 10) + "% (기준 " + (Math.round(cc.margin * 1000) / 10) + "%, " + (gap > 0 ? "+" : "") + (Math.round(gap * 1000) / 10) + "%p) — 내 스토어가 " + sd.price.toLocaleString() + "원, 매입가 " + Number(si.buyPrice || 0).toLocaleString() + "원");
+      if (sd && sd.price && gap != null && Math.abs(gap) >= lim - 1e-9) alertUser((cc.finalName || si.sku || "상품").slice(0, 20) + ": 실제 마진 " + (Math.round(cc.mActual * 1000) / 10) + "% (기준 " + (Math.round(cc.margin * 1000) / 10) + "%, " + (gap > 0 ? "+" : "") + (Math.round(gap * 1000) / 10) + "%p) — 내 스토어가 " + sd.price.toLocaleString() + "원, 매입가 " + Number(si.buyPrice || 0).toLocaleString() + "원", id);
       scheduleR(); return; }
     var it0 = ERP.DATA.price_items.get(id); if (!it0) return;
     var it = Object.assign({}, pending[id] || it0), x = Object.assign({}, it.extra || {}), now = new Date().toISOString(), d = e.data.data;
@@ -411,11 +411,13 @@ var AUTO = (function () {
     }
     ERP.DATA.price_items.set(id, it); queueSave(it);
     var nm = (calc(it).finalName || it.sku || "상품").slice(0, 20);
-    if (mode === "fill") { ERP.toast("‘" + nm + "’ " + filled + "칸 자동입력"); if (d.soldOut) alertUser(nm + ": 매입처 품절"); }
-    else { var msg = []; if (d.soldOut && oldSt !== "품절") msg.push("매입처 품절"); if (!d.soldOut && oldSt === "품절") msg.push("재입고"); if (d.price && oldBuy && d.price !== num(oldBuy)) msg.push("매입가 " + Number(oldBuy).toLocaleString() + " → " + d.price.toLocaleString() + " (자동 반영)"); if (msg.length) alertUser(nm + ": " + msg.join(", ")); }
+    if (mode === "fill") { ERP.toast("‘" + nm + "’ " + filled + "칸 자동입력"); if (d.soldOut) alertUser(nm + ": 매입처 품절", id); }
+    else { var msg = []; if (d.soldOut && oldSt !== "품절") msg.push("매입처 품절"); if (!d.soldOut && oldSt === "품절") msg.push("재입고"); if (d.price && oldBuy && d.price !== num(oldBuy)) msg.push("매입가 " + Number(oldBuy).toLocaleString() + " → " + d.price.toLocaleString() + " (자동 반영)"); if (msg.length) alertUser(nm + ": " + msg.join(", "), id); }
     scheduleR();
   });
-  function alertUser(m) { ERP.toast("⚠ " + m); try { if (window.Notification && Notification.permission === "granted") new Notification("로우나 소싱 변동", { body: m }); } catch (e) {} }
+  function alertUser(m, id) { ERP.toast("⚠ " + m); try { if (window.Notification && Notification.permission === "granted") new Notification("로우나 소싱 변동", { body: m }); } catch (e) {}
+    /* 휴대폰 알림용: 줄에 기록 → 1시간마다 예약 작업이 모아서 휴대폰으로 보냄 */
+    if (id) { var c0 = pending[id] || ERP.DATA.price_items.get(id); if (c0) { var c1 = Object.assign({}, c0), x1 = Object.assign({}, c1.extra || {}); x1.alerts = (x1.alerts || []).concat([{ at: new Date().toISOString(), msg: m, sent: false }]).slice(-20); c1.extra = x1; ERP.DATA.price_items.set(id, c1); queueSave(c1); } } }
   function checkAll(manual) {
     if (!on()) { if (manual) ERP.toast("자동입력 도우미(크롬 확장)를 먼저 설치해 주세요."); return; }
     var L = all().filter(function (it) { return it.buyLink && /^https?:/i.test(it.buyLink) && it.status !== "판매종료"; }), nS = all().filter(function (it) { return (it.extra || {}).storeLink; }).length;
