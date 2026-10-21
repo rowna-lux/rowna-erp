@@ -129,6 +129,7 @@ function counts() { var n = { all: 0, change: 0, warn: 0, link: 0, nocost: 0 }; 
 function render() {
   cardOpts();
   if (v.scTab === "설정") return head() + settingsHtml() + tabsHtml();
+  if (v.scTab === "후보") return head() + CAND.html() + tabsHtml();
   var w = ERP.canWrite("price_items"), list = rows(), n = counts();
   var groups = "", g = null, span = 0, gl = [];
   var V = vis(), curG = null; COLS.forEach(function (col, i) { if (col.g) curG = col.g; if (V.indexOf(i) === -1) return; if (curG !== g) { if (g !== null) gl.push([g, span]); g = curG; span = 1; } else span++; }); if (g !== null) gl.push([g, span]);
@@ -150,7 +151,7 @@ function head(n) {
   if (n) h += '<div class="tools filters">' + ERP.chips("data-view", "scF=" + v.scF, [["scF=all", "전체 " + n.all], ["scF=change", "가격 변경 필요 " + n.change], ["scF=warn", "손해·저마진 " + n.warn], ["scF=link", "매입가 변동 " + n.link], ["scF=nocost", "원가 없음 " + n.nocost]]) + '<input class="ctl search" data-search="scQ" type="search" aria-label="검색" placeholder="품번·브랜드·상품명·매입처·코드" value="' + esc(v.scQ) + '">' + (v.scSort ? '<button class="btn sm" data-act="scunsort">정렬 해제</button>' : "") + "</div>";
   return h;
 }
-function tabsHtml() { return '<div class="sheet-tabs" role="tablist">' + ["하이엔드", "컨템포러리", "전체", "설정"].map(function (t) { return '<button role="tab" aria-selected="' + (v.scTab === t) + '" class="' + (v.scTab === t ? "on" : "") + '" data-view="scTab=' + t + '">' + (t === "설정" ? "⚙ 설정" : t) + "</button>"; }).join("") + "</div>"; }
+function tabsHtml() { return '<div class="sheet-tabs" role="tablist">' + ["하이엔드", "컨템포러리", "전체", "후보", "설정"].map(function (t) { return '<button role="tab" aria-selected="' + (v.scTab === t) + '" class="' + (v.scTab === t ? "on" : "") + '" data-view="scTab=' + t + '">' + (t === "설정" ? "⚙ 설정" : t === "후보" ? "🔎 소싱 후보" : t) + "</button>"; }).join("") + "</div>"; }
 
 function settingsHtml() {
   var c = cfg(), dis = ERP.canWrite("price_items") ? "" : " disabled";
@@ -249,6 +250,7 @@ async function onPaste(e, span) {
 }
 var selected = null;
 function bind(root) {
+  if (v.scTab === "후보") CAND.bind(root);
   var sheet = root.querySelector("#sheet");
   root.querySelectorAll("[data-sort]").forEach(function (th) { th.onclick = function () { var i = +th.dataset.sort; v.scSort = v.scSort && v.scSort.i === i ? (v.scSort.d > 0 ? { i: i, d: -1 } : null) : { i: i, d: 1 }; ERP.render(); }; });
   if (sheet) {
@@ -283,7 +285,7 @@ function bind(root) {
   root.querySelectorAll("[data-brand]").forEach(function (el) { el.onchange = function () { var o = Object.assign({}, cfg()), b = Object.assign({}, o.brands || {}), r = Object.assign({}, b[el.dataset.brand] || {}); if (el.dataset.bk === "kr") r.kr = el.value.trim(); else if (el.dataset.bk === "tier") r.tier = el.value; else r.adj = num(el.value) / 100; b[el.dataset.brand] = r; o.brands = b; saveCfg(o); }; });
 }
 function live() { /* 다른 사람·AI가 바꾼 내용 반영: 입력 중이면 그 줄만 건드리지 않음 */
-  var sheet = document.getElementById("sheet"); if (!sheet || v.scTab === "설정") { ERP.render(); return; }
+  var sheet = document.getElementById("sheet"); if (!sheet || v.scTab === "설정" || v.scTab === "후보") { var ae = document.activeElement; if (ae && ae.matches && ae.matches("input,select")) return; ERP.render(); return; }
   var act = document.activeElement, editingId = act && act.closest && act.closest("tr[data-id]") ? act.closest("tr[data-id]").dataset.id : null;
   var ids = rows().map(function (x) { return x.id; }), trs = sheet.querySelectorAll("tr[data-id]");
   if (ids.length !== trs.length) { if (!editingId) ERP.render(); return; }
@@ -388,6 +390,7 @@ var AUTO = (function () {
   window.addEventListener("message", function (e) {
     if (e.source !== window || !e.data || e.data.rowna !== "result") return;
     var id = e.data.id, mode = wait[id]; delete wait[id];
+    if (mode === "scan") { CAND.onResult(id, e.data); scheduleR(); return; }
     if (mode === "store") { id = id.slice(2); var s0 = ERP.DATA.price_items.get(id); if (!s0) return; var si = Object.assign({}, pending[id] || s0), sx = Object.assign({}, si.extra || {}), sd = e.data.data;
       sx.storeCheckedAt = new Date().toISOString(); if (sd && sd.price) sx.storeLivePrice = sd.price; sx.storePriceSrc = sd && sd.priceSrc || ""; sx.storeDebug = sd && sd.debug || null; sx.storeStatus = sd ? (sd.soldOut ? "품절" : "정상") : (e.data.error || "열기실패"); si.extra = sx; ERP.DATA.price_items.set(id, si); queueSave(si);
       var cc = calc(si), gap = cc.mGap, lim = num(cfg().store_alert_gap) || 0.03;
@@ -431,6 +434,106 @@ var AUTO = (function () {
   setInterval(function () { var t0 = 0; try { t0 = +localStorage.getItem(KEY) || 0; } catch (e) {} if (on() && S.user && Date.now() - t0 > EVERY) checkAll(false); }, 10 * 60e3);
   return { store: store, fill: fill, later: later, badge: badge, checkAll: checkAll, send: send, parse: parse };
 })();
+
+/* ---------- 소싱 후보: 등록한 네이버 스토어의 인기순 목록에서 사방넷·ERP와 겹치지 않는 상품 찾기 ---------- */
+var CAND = (function () {
+  var SEED_STORES = ["까르피", "더소뇨", "디몬트", "밀라노브릿지", "루네드", "럭스보이", "아르떼모아", "메종파르코", "토리즈명품관", "파노", "tutto bene", "바이스트", "타임메카", "프리미엄스니커즈", "라벨루쏘", "루티크"];
+  var SEED_URL = { "더소뇨": "https://smartstore.naver.com/sogno0114", "루티크": "https://smartstore.naver.com/loutique" };
+  function stores() { var s = S.SET.sourcing_stores; if (Array.isArray(s) && s.length) return s; return SEED_STORES.map(function (n) { return { name: n, url: SEED_URL[n] || "" }; }); }
+  function data() { return S.SET.sourcing_candidates || { items: {} }; }
+  function norm(x) { return String(x || "").toUpperCase().replace(/[^A-Z0-9]/g, ""); }
+  var skuSet = null, skuList = null, skuAt = null;
+  function sabang() { var s = S.SET.sabang_skus; if (!s || !s.skus) return { set: {}, list: [], n: 0 }; if (skuAt !== s.at) { skuAt = s.at; skuSet = {}; skuList = []; s.skus.forEach(function (k) { var n = norm(k); if (n.length >= 5 && !skuSet[n]) { skuSet[n] = 1; skuList.push(n); } }); } return { set: skuSet, list: skuList, n: skuList.length, at: s.at }; }
+  function erpSet() { var o = {}; all().forEach(function (it) { var n = norm(it.sku); if (n.length >= 5) o[n] = 1; var l = String(it.buyLink || "").match(/products\/(\d+)/); if (l) o["P" + l[1]] = 1; }); return o; }
+  function dupOf(c, sb, er) {
+    var n = norm(c.sku), nm = norm(c.name);
+    if (er["P" + c.pid] || (n && er[n])) return "ERP에 있음";
+    if (n && sb.set[n]) return "사방넷 등록됨";
+    for (var i = 0; i < sb.list.length; i++) if (sb.list[i].length >= 6 && nm.indexOf(sb.list[i]) !== -1) return "사방넷 등록됨";
+    return "";
+  }
+  function storeBase(u) { var m = String(u || "").match(/^(https?:\/\/(?:smartstore|brand)\.naver\.com\/[^\/?#]+)/i); return m ? m[1] : ""; }
+  function scanUrl(u) { var b = storeBase(u); return b ? b + "/category/ALL?st=POPULAR&dt=LIST&page=1&size=80" : ""; }
+  var running = 0;
+  function scan() {
+    var L = stores().map(function (s, i) { return [i, scanUrl(s.url)]; }).filter(function (x) { return x[1]; });
+    if (!L.length) { ERP.toast("스토어 주소를 먼저 넣어 주세요(아래 ‘소싱 스토어’ 표)."); return; }
+    var n = 0; L.forEach(function (x) { if (AUTO.send("scan:" + x[0], x[1], "scan")) n++; });
+    if (n) { running += n; ERP.toast(n + "개 스토어 인기순 목록을 6초에 1곳씩 읽어요. 약 " + Math.ceil(n * 7 / 60) + "분 걸려요."); ERP.render(); }
+  }
+  function onResult(key, msg) {
+    running = Math.max(0, running - 1);
+    var st = stores()[+key.split(":")[1]]; if (!st) return;
+    var d = msg.data, list = d && d.list || [];
+    var D = JSON.parse(JSON.stringify(data())); D.items = D.items || {}; D.scans = D.scans || {};
+    D.scans[st.name] = { at: new Date().toISOString(), n: list.length, err: msg.error || (d && d.blocked ? "차단" : (list.length ? "" : "목록을 못 읽음")) };
+    var base = storeBase(st.url), now = new Date().toISOString(), added = 0;
+    list.forEach(function (p, i) {
+      if (!p.id) return; var url = base + "/products/" + p.id, key2 = "P" + p.id, old = D.items[key2];
+      var o = AUTO.parse({ name: p.name, brandName: p.brand || "", modelName: p.model || "", price: p.price, url: url, channelName: st.name });
+      D.items[key2] = { pid: String(p.id), url: url, store: st.name, name: (o["x.nameOverride"] || p.name || "").slice(0, 120), brand: o.brand || "", sku: o.sku || "", price: p.price || null, reviews: p.reviews || 0, rank: i + 1, img: p.img || "", firstAt: old ? old.firstAt : now, at: now, hidden: old ? !!old.hidden : false };
+      if (!old) added++;
+    });
+    D.at = now; S.SET.sourcing_candidates = D;
+    if (!running) { ERP.saveSetting("sourcing_candidates", D); ERP.toast("소싱 후보를 갱신했어요" + (added ? " (새 상품 " + added + "개)" : "") + "."); }
+    ERP.render();
+  }
+  function score(c) { var B = cfg().brands || {}; return Math.round((Math.log10(1 + num(c.reviews)) * 30 + Math.max(0, 40 - num(c.rank) / 2) + (B[c.brand] ? 15 : 0)) * 10) / 10; }
+  function rowsC() {
+    var sb = sabang(), er = erpSet(), D = data(), out = [];
+    Object.keys(D.items || {}).forEach(function (k) { var c = Object.assign({}, D.items[k]); c.dup = dupOf(c, sb, er); c.score = score(c); out.push(c); });
+    if (!v.candDup) out = out.filter(function (c) { return !c.dup; });
+    if (v.candBrand) { var B = cfg().brands || {}; out = out.filter(function (c) { return B[c.brand]; }); }
+    out = out.filter(function (c) { return !c.hidden; });
+    if (v.candStore) out = out.filter(function (c) { return c.store === v.candStore; });
+    return out.sort(function (a, b) { return b.score - a.score; });
+  }
+  function html() {
+    var w = ERP.canWrite("price_items"), sb = sabang(), D = data(), R = rowsC(), ST = stores(), c0 = cfg();
+    var h = '<div class="panel"><h2>소싱 후보<span class="sub">등록한 네이버 스토어의 인기순 목록에서 사방넷·ERP에 없는 상품만 보여요 · 점수 = 리뷰 수 + 인기 순위 + 등록 브랜드</span></h2>' +
+      '<div class="tools">' + (w ? '<button class="btn pri" data-act="candscan">후보 찾기 (스토어 ' + ST.filter(function (s) { return scanUrl(s.url); }).length + '곳)</button>' : "") +
+      (w ? '<button class="btn" data-act="candsabang">사방넷 상품파일 올리기</button>' : "") +
+      '<span class="muted">사방넷 품번 ' + sb.n.toLocaleString() + "개" + (sb.at ? " (" + String(sb.at).slice(0, 10) + ")" : " — 파일을 올려 주세요") + " · 마지막 검색 " + (D.at ? String(D.at).replace("T", " ").slice(0, 16) : "없음") + (running ? " · 읽는 중 " + running + "곳" : "") + "</span></div>" +
+      '<div class="tools" style="margin-top:6px"><label class="ck"><input type="checkbox" data-cand="candDup"' + (v.candDup ? " checked" : "") + '> 중복 상품도 보기</label><label class="ck"><input type="checkbox" data-cand="candBrand"' + (v.candBrand ? " checked" : "") + '> 등록 브랜드만</label><select class="ctl sm" data-candstore><option value="">전체 스토어</option>' + ST.map(function (s) { return "<option" + (v.candStore === s.name ? " selected" : "") + ">" + esc(s.name) + "</option>"; }).join("") + "</select><b>" + R.length + "개</b></div>";
+    h += '<div class="table-wrap" style="max-height:calc(100vh - 380px);overflow:auto"><table><thead><tr><th class="r">점수</th><th>스토어</th><th>브랜드</th><th>상품명</th><th>SKU</th><th class="r">매입가</th><th class="r">예상 판매가</th><th class="r">리뷰</th><th class="r">순위</th><th>확인</th><th></th></tr></thead><tbody>' +
+      R.slice(0, 300).map(function (c) { var est = c.price ? calc({ id: "x", buyPrice: c.price, brand: c.brand, tier: "컨템포러리", extra: {} }).final : null;
+        return "<tr><td class=\"r\"><b>" + c.score + "</b></td><td>" + esc(c.store) + "</td><td>" + esc(c.brand) + '</td><td><a href="' + esc(c.url) + '" target="_blank" rel="noopener">' + esc(c.name) + "</a></td><td>" + esc(c.sku) + '</td><td class="r">' + (c.price ? Number(c.price).toLocaleString() : "") + '</td><td class="r">' + (est ? Math.round(est).toLocaleString() : "") + '</td><td class="r">' + num(c.reviews).toLocaleString() + '</td><td class="r">' + c.rank + "</td><td>" + (c.dup ? '<span class="pill bad">' + esc(c.dup) + "</span>" : '<span class="pill ok">신규</span>') + "</td><td>" + (w && !c.dup ? '<button class="btn sm pri" data-act="candadd" data-pid="' + esc(c.pid) + '">시트에 추가</button> ' : "") + (w ? '<button class="btn sm" data-act="candhide" data-pid="' + esc(c.pid) + '">숨기기</button>' : "") + "</td></tr>"; }).join("") +
+      (R.length ? "" : '<tr><td colspan="11" class="muted">' + (D.at ? "조건에 맞는 후보가 없어요." : "‘후보 찾기’를 누르면 스토어 인기순 목록을 읽어 와요.") + "</td></tr>") + "</tbody></table></div></div>";
+    h += '<div class="panel"><h2>소싱 스토어<span class="sub">스토어 첫 화면 주소를 넣어 주세요 (예: https://smartstore.naver.com/loutique) · 인기순 목록 1페이지(최대 80개)만 6초 간격으로 읽어요</span></h2><div class="table-wrap"><table><thead><tr><th>스토어 이름</th><th>주소</th><th class="r">마지막 결과</th><th></th></tr></thead><tbody>' +
+      ST.map(function (s, i) { var sc = (D.scans || {})[s.name]; return "<tr><td>" + esc(s.name) + '</td><td><input class="cell-in" style="width:360px;text-align:left" data-storeurl="' + i + '" value="' + esc(s.url || "") + '" placeholder="https://smartstore.naver.com/…"' + (w ? "" : " disabled") + '></td><td class="r">' + (sc ? (sc.err ? '<span class="pill bad">' + esc(sc.err) + "</span>" : sc.n + "개") + " · " + String(sc.at).slice(5, 16).replace("T", " ") : "") + "</td><td>" + (w ? '<button class="btn sm" data-act="canddelstore" data-i="' + i + '">빼기</button>' : "") + "</td></tr>"; }).join("") +
+      "</tbody></table></div>" + (w ? '<div class="tools" style="margin-top:8px"><input class="ctl" id="ns-name" placeholder="스토어 이름"><input class="ctl" id="ns-url" style="width:320px" placeholder="https://smartstore.naver.com/…"><button class="btn sm" data-act="candaddstore">스토어 추가</button></div>' : "") + "</div>";
+    return h;
+  }
+  function saveStores(L) { S.SET.sourcing_stores = L; ERP.saveSetting("sourcing_stores", L); }
+  function bindC(root) {
+    root.querySelectorAll("[data-cand]").forEach(function (el) { el.onchange = function () { v[el.dataset.cand] = el.checked; ERP.render(); }; });
+    root.querySelectorAll("[data-candstore]").forEach(function (el) { el.onchange = function () { v.candStore = el.value; ERP.render(); }; });
+    root.querySelectorAll("[data-storeurl]").forEach(function (el) { el.onchange = function () { var L = JSON.parse(JSON.stringify(stores())), i = +el.dataset.storeurl, u = el.value.trim(); if (u && !storeBase(u)) { ERP.toast("네이버 스토어 주소(smartstore.naver.com/… 또는 brand.naver.com/…)를 넣어 주세요."); return; } L[i].url = storeBase(u) || ""; saveStores(L); }; });
+  }
+  ERP.acts.candscan = function () { scan(); };
+  ERP.acts.candaddstore = function () { var n = (document.getElementById("ns-name").value || "").trim(), u = (document.getElementById("ns-url").value || "").trim(); if (!n) { ERP.toast("스토어 이름을 넣어 주세요."); return; } var L = JSON.parse(JSON.stringify(stores())); L.push({ name: n, url: storeBase(u) || "" }); saveStores(L); };
+  ERP.acts.canddelstore = function (btn) { var L = JSON.parse(JSON.stringify(stores())); L.splice(+btn.dataset.i, 1); saveStores(L); };
+  ERP.acts.candhide = function (btn) { var D = JSON.parse(JSON.stringify(data())), k = "P" + btn.dataset.pid; if (D.items && D.items[k]) { D.items[k].hidden = true; S.SET.sourcing_candidates = D; ERP.saveSetting("sourcing_candidates", D); ERP.render(); } };
+  ERP.acts.candadd = async function (btn) {
+    var c = (data().items || {})["P" + btn.dataset.pid]; if (!c) return; var B = cfg().brands || {};
+    var made = await addRows(1, (B[c.brand] && B[c.brand].tier) || TIER_SEED[c.brand] || "컨템포러리"); if (!made.length) return;
+    var it = Object.assign({}, made[0], { buyLink: c.url, vendor: c.store, sku: c.sku || "", brand: c.brand || "", buyPrice: c.price || null }); it.extra = Object.assign({}, it.extra || {}, { nameOverride: c.name, fromCandidate: true });
+    ERP.DATA.price_items.set(it.id, it); queueSave(it); AUTO.fill(it.id, c.url);
+    ERP.toast("소싱 시트에 추가했어요. 나머지 칸은 링크로 자동으로 채워져요."); ERP.render();
+  };
+  ERP.acts.candsabang = function () {
+    ERP.pickFile(".xlsx,.xls,.csv", async function (file) {
+      try {
+        var wb = XLSX.read(await file.arrayBuffer(), { type: "array" }), out = {}, cols = 0;
+        wb.SheetNames.forEach(function (sn) { var A = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: "" }); for (var r = 0; r < Math.min(A.length, 10); r++) { var idx = []; A[r].forEach(function (hd, j) { if (/모델명|모델코드|품번|자체상품코드|상품코드|SKU/i.test(String(hd))) idx.push(j); }); if (idx.length) { cols += idx.length; for (var k = r + 1; k < A.length; k++) idx.forEach(function (j) { String(A[k][j] || "").split(/[,\/]/).forEach(function (x) { var t = x.trim(); if (norm(t).length >= 5) out[t] = 1; }); }); break; } } });
+        var L = Object.keys(out); if (!L.length) { ERP.toast("품번(모델명·자체상품코드) 열을 찾지 못했어요."); return; }
+        var o = { at: new Date().toISOString(), file: file.name, skus: L }; S.SET.sabang_skus = o; await ERP.saveSetting("sabang_skus", o); ERP.toast("사방넷 품번 " + L.length.toLocaleString() + "개를 불러왔어요."); ERP.render();
+      } catch (e) { ERP.toast("파일을 읽지 못했어요: " + (e.message || e)); }
+    });
+  };
+  return { html: html, bind: bindC, onResult: onResult };
+})();
+
 ERP.acts.scautofill = function () { var L = all().filter(function (it) { return it.buyLink && /^https?:/i.test(it.buyLink) && (!it.brand || !it.sku || it.buyPrice == null); }).slice(0, 30); if (!L.length) { ERP.toast("채울 줄이 없어요(링크 있고 빈칸 있는 줄)."); return; } L.forEach(function (it) { AUTO.send(it.id, it.buyLink, "fill"); }); ERP.toast(L.length + "줄을 6초에 1개씩 채워요."); ERP.render(); };
 ERP.acts.sccheck = function () { AUTO.checkAll(true); };
 
