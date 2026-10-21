@@ -129,7 +129,6 @@ function counts() { var n = { all: 0, change: 0, warn: 0, link: 0, nocost: 0 }; 
 function render() {
   cardOpts();
   if (v.scTab === "설정") return head() + settingsHtml() + tabsHtml();
-  if (v.scTab === "후보") return head() + CAND.html() + tabsHtml();
   var w = ERP.canWrite("price_items"), list = rows(), n = counts();
   var groups = "", g = null, span = 0, gl = [];
   var V = vis(), curG = null; COLS.forEach(function (col, i) { if (col.g) curG = col.g; if (V.indexOf(i) === -1) return; if (curG !== g) { if (g !== null) gl.push([g, span]); g = curG; span = 1; } else span++; }); if (g !== null) gl.push([g, span]);
@@ -151,7 +150,7 @@ function head(n) {
   if (n) h += '<div class="tools filters">' + ERP.chips("data-view", "scF=" + v.scF, [["scF=all", "전체 " + n.all], ["scF=change", "가격 변경 필요 " + n.change], ["scF=warn", "손해·저마진 " + n.warn], ["scF=link", "매입가 변동 " + n.link], ["scF=nocost", "원가 없음 " + n.nocost]]) + '<input class="ctl search" data-search="scQ" type="search" aria-label="검색" placeholder="품번·브랜드·상품명·매입처·코드" value="' + esc(v.scQ) + '">' + (v.scSort ? '<button class="btn sm" data-act="scunsort">정렬 해제</button>' : "") + "</div>";
   return h;
 }
-function tabsHtml() { return '<div class="sheet-tabs" role="tablist">' + ["하이엔드", "컨템포러리", "전체", "후보", "설정"].map(function (t) { return '<button role="tab" aria-selected="' + (v.scTab === t) + '" class="' + (v.scTab === t ? "on" : "") + '" data-view="scTab=' + t + '">' + (t === "설정" ? "⚙ 설정" : t === "후보" ? "🔎 소싱 후보" : t) + "</button>"; }).join("") + "</div>"; }
+function tabsHtml() { return '<div class="sheet-tabs" role="tablist">' + ["하이엔드", "컨템포러리", "전체", "설정"].map(function (t) { return '<button role="tab" aria-selected="' + (v.scTab === t) + '" class="' + (v.scTab === t ? "on" : "") + '" data-view="scTab=' + t + '">' + (t === "설정" ? "⚙ 설정" : t === "후보" ? "🔎 소싱 후보" : t) + "</button>"; }).join("") + "</div>"; }
 
 function settingsHtml() {
   var c = cfg(), dis = ERP.canWrite("price_items") ? "" : " disabled";
@@ -250,7 +249,6 @@ async function onPaste(e, span) {
 }
 var selected = null;
 function bind(root) {
-  if (v.scTab === "후보") CAND.bind(root);
   var sheet = root.querySelector("#sheet");
   root.querySelectorAll("[data-sort]").forEach(function (th) { th.onclick = function () { var i = +th.dataset.sort; v.scSort = v.scSort && v.scSort.i === i ? (v.scSort.d > 0 ? { i: i, d: -1 } : null) : { i: i, d: 1 }; ERP.render(); }; });
   if (sheet) {
@@ -285,7 +283,7 @@ function bind(root) {
   root.querySelectorAll("[data-brand]").forEach(function (el) { el.onchange = function () { var o = Object.assign({}, cfg()), b = Object.assign({}, o.brands || {}), r = Object.assign({}, b[el.dataset.brand] || {}); if (el.dataset.bk === "kr") r.kr = el.value.trim(); else if (el.dataset.bk === "tier") r.tier = el.value; else r.adj = num(el.value) / 100; b[el.dataset.brand] = r; o.brands = b; saveCfg(o); }; });
 }
 function live() { /* 다른 사람·AI가 바꾼 내용 반영: 입력 중이면 그 줄만 건드리지 않음 */
-  var sheet = document.getElementById("sheet"); if (!sheet || v.scTab === "설정" || v.scTab === "후보") { var ae = document.activeElement; if (ae && ae.matches && ae.matches("input,select")) return; ERP.render(); return; }
+  var sheet = document.getElementById("sheet"); if (!sheet || v.scTab === "설정") { var ae = document.activeElement; if (ae && ae.matches && ae.matches("input,select")) return; ERP.render(); return; }
   var act = document.activeElement, editingId = act && act.closest && act.closest("tr[data-id]") ? act.closest("tr[data-id]").dataset.id : null;
   var ids = rows().map(function (x) { return x.id; }), trs = sheet.querySelectorAll("tr[data-id]");
   if (ids.length !== trs.length) { if (!editingId) ERP.render(); return; }
@@ -491,7 +489,7 @@ var CAND = (function () {
   function html() {
     var w = ERP.canWrite("price_items"), sb = sabang(), D = data(), R = rowsC(), ST = stores(), c0 = cfg();
     var h = '<div class="panel"><h2>소싱 후보<span class="sub">등록한 네이버 스토어의 인기순 목록에서 사방넷·ERP에 없는 상품만 보여요 · 점수 = 리뷰 수 + 인기 순위 + 등록 브랜드</span></h2>' +
-      '<div class="tools">' + (w ? '<button class="btn pri" data-act="candscan">후보 찾기 (스토어 ' + ST.filter(function (s) { return scanUrl(s.url); }).length + '곳)</button>' : "") +
+      '<div class="tools">' + AUTO.badge() + (w ? '<button class="btn pri" data-act="candscan">후보 찾기 (스토어 ' + ST.filter(function (s) { return scanUrl(s.url); }).length + '곳)</button>' : "") +
       (w ? '<button class="btn" data-act="candsabang">사방넷 상품파일 올리기</button>' : "") +
       '<span class="muted">사방넷 품번 ' + sb.n.toLocaleString() + "개" + (sb.at ? " (" + String(sb.at).slice(0, 10) + ")" : " — 파일을 올려 주세요") + " · 마지막 검색 " + (D.at ? String(D.at).replace("T", " ").slice(0, 16) : "없음") + (running ? " · 읽는 중 " + running + "곳" : "") + "</span></div>" +
       '<div class="tools" style="margin-top:6px"><label class="ck"><input type="checkbox" data-cand="candDup"' + (v.candDup ? " checked" : "") + '> 중복 상품도 보기</label><label class="ck"><input type="checkbox" data-cand="candBrand"' + (v.candBrand ? " checked" : "") + '> 등록 브랜드만</label><select class="ctl sm" data-candstore><option value="">전체 스토어</option>' + ST.map(function (s) { return "<option" + (v.candStore === s.name ? " selected" : "") + ">" + esc(s.name) + "</option>"; }).join("") + "</select><b>" + R.length + "개</b></div>";
@@ -538,4 +536,5 @@ ERP.acts.scautofill = function () { var L = all().filter(function (it) { return 
 ERP.acts.sccheck = function () { AUTO.checkAll(true); };
 
 ERP.page({ id: "sourcing", title: "스마트스토어 소싱", wide: true, render: render, bind: bind, live: live, badge: function () { var n = 0; all().forEach(function (it) { if (calc(it).linkDiff) n++; }); return n || ""; } });
+ERP.page({ id: "naver-auto", title: "네이버 자동소싱", wide: true, render: function () { return CAND.html(); }, bind: function (root) { CAND.bind(root); }, live: function () { var ae = document.activeElement; if (ae && ae.matches && ae.matches("input,select")) return; ERP.render(); } });
 })();
