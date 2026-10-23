@@ -445,11 +445,12 @@ var CAFE = (function () {
     "다음은 네이버 카페 판매글입니다. 판매 상품 정보를 JSON으로 뽑으세요. 글에 없는 값은 빈칸으로 두고 추측하지 마세요.",
     "- 같은 모델이 색상만 다르게 여러 개면 items를 색상별로 나누세요.",
     "- price: 지금 판매 가격(원, 숫자). '900만대 >>> 890만원'처럼 조정됐으면 마지막(조정 후) 가격. '890만원'=8900000.",
+    "- 정확한 가격 없이 범위로만 쓴 경우(예: '2000후반대', '900만대', '1000초반', '1500중반')는 그 범위의 가장 높은 값으로: 후반/대 → 끝자리를 9로 채움(2000후반대=2999만원=29990000, 900만대=999만원), 중반 → 1500중반=1699만원, 초반 → 1000초반=1399만원. 이때 priceEstimated를 true로, priceText에 원문 표현을 넣으세요.",
     "- brandEn: 영문 대문자 브랜드(예: HERMES, CHANEL). brandKr: 한글 브랜드(예: 에르메스).",
     "- model: 모델/라인 이름(예: 가든파티 미니 네오 23). category: 가방/지갑/신발/의류/잡화/주얼리/시계 중 하나.",
     "- material: 소재(예: 토고, 캔버스). size: 사이즈 표기가 있으면. 구성품·구매시기·각인·상태·배송은 memo에 짧게.",
     "- 맨 위 카페 공지(✔ ❌ ■ 로 시작하는 안내, 결제·보증 안내)는 무시하세요.",
-    "출력: {\"items\":[{\"brandEn\":\"\",\"brandKr\":\"\",\"model\":\"\",\"category\":\"\",\"color\":\"\",\"material\":\"\",\"size\":\"\",\"price\":0,\"memo\":\"\"}]}"
+    "출력: {\"items\":[{\"brandEn\":\"\",\"brandKr\":\"\",\"model\":\"\",\"category\":\"\",\"color\":\"\",\"material\":\"\",\"size\":\"\",\"price\":0,\"priceEstimated\":false,\"priceText\":\"\",\"memo\":\"\"}]}"
   ].join("\n");
   async function read(url, parse) {
     var p = await ERP.helperAsk("page", { url: url, waitFor: "원|삭제|존재하지", minLen: 300, tries: 15 }), t = p.text || "", sel = p.sel || {};
@@ -475,7 +476,8 @@ var CAFE = (function () {
     if (!x.nameOverride) x.nameOverride = [x.brandKr || x0.brandKr || "", x0.model || clean(d.title), x0.color || "", x0.size || ""].join(" ").replace(/\s+/g, " ").trim().slice(0, 100);
     if (x0.price) { if (o.buyPrice == null || o.buyPrice === "") o.buyPrice = x0.price; x.linkPrice = x0.price; }
     if (x0.category && !o.category) o.category = x0.category;
-    var memo = [x0.memo, "카페글 " + (d.date || "")].filter(Boolean).join(" · ");
+    if (x0.priceEstimated) x.priceEstimated = true;
+    var memo = [x0.priceEstimated ? "가격 미기재(" + (x0.priceText || "범위") + " → 최고가 " + Math.round((x0.price || 0) / 10000) + "만원으로 잡음, 판매자 확인 필요)" : "", x0.memo, "카페글 " + (d.date || "")].filter(Boolean).join(" · ");
     if (memo && (o.memo || "").indexOf(memo) < 0) o.memo = (o.memo ? o.memo + " · " : "") + memo;
     x.linkStatus = d.deleted || d.soldMark ? "품절" : "정상"; x.linkCheckedAt = new Date().toISOString(); x.cafeTitle = d.title; x.cafeAuthor = d.author;
     return o;
