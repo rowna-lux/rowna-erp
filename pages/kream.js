@@ -59,7 +59,7 @@ function render() {
   var budget = num(S.SET.kream_budget) || 10000000, pick = { qty: 0, whole: 0, real: 0, lines: [] };
   cand.sort(function (a, b) { return b.c.rate - a.c.rate; }).forEach(function (x) { var price = num(x.it.wholesalePrice), n = Math.min(x.rq, Math.floor((budget - pick.whole) / price)); if (n > 0) { pick.qty += n; pick.whole += n * price; pick.real += n * x.c.real; pick.lines.push((x.it.brand || "") + " " + (x.it.name || x.it.sku || "").slice(0, 18) + " ×" + n); } });
   var sups = suppliers();
-  var h = '<div class="head"><div><h1>크림 도매</h1><p>도매 리스트 사진을 올리면 크림 시세·거래량·이익을 자동으로 채워요 · ' + (helperOn() ? '<span class="pill p-good">크림 도우미 켜짐</span>' : '<span class="pill p-crit" title="크롬 확장 ‘로우나 크림 도우미’를 설치해야 사진 읽기·크림 조회가 돼요">크림 도우미 꺼짐</span>') + '</p></div><div class="tools">' +
+  var h = '<div class="head"><div><h1>크림 도매</h1><p>도매 리스트 사진을 올리면 크림 시세·거래량·이익을 자동으로 채워요 · ' + (helperOn() ? '<span class="pill p-good">도우미 켜짐</span>' : '<span class="pill p-crit" title="크롬 확장 ‘로우나 도우미’를 설치해야 사진 읽기·크림 조회가 돼요">도우미 꺼짐</span>') + '</p></div><div class="tools">' +
     '<select class="ctl" id="k-sup" aria-label="도매처">' + sups.map(function (x) { return "<option" + (x === SUP() ? " selected" : "") + ">" + esc(x) + "</option>"; }).join("") + '<option value="__new">+ 도매처 추가</option></select>' +
     (dates.length ? '<select class="ctl" id="k-list" aria-label="리스트 날짜">' + dates.map(function (d) { return "<option" + (d === v.kList ? " selected" : "") + ' value="' + d + '">' + d.replace(/-/g, ".") + " 리스트</option>"; }).join("") + "</select>" : "") +
     (w ? '<button class="btn pri" data-act="kreamphoto">📷 리스트 사진 올리기</button>' + (list.length ? '<button class="btn" data-act="kreamfetch">크림 시세 다시 가져오기</button>' : "") + '<button class="btn" data-act="kreamadd">+ 직접 추가</button>' : "") + (list.length ? '<button class="btn" data-act="kreamexport">엑셀 내보내기</button>' : "") + "</div></div>";
@@ -127,10 +127,55 @@ var waits = {};
 window.addEventListener("message", function (e) { if (e.source !== window || !e.data || e.data.rownaK !== "res") return; var f = waits[e.data.id]; if (f) { delete waits[e.data.id]; f(e.data); } });
 function ask(type, payload) {
   return new Promise(function (res, rej) {
-    if (!helperOn()) { rej(new Error("크롬 확장 ‘로우나 크림 도우미’가 꺼져 있어요. 설치 후 ERP를 새로고침(F5)해 주세요.")); return; }
+    if (!helperOn()) { rej(new Error("크롬 확장 ‘로우나 도우미’가 꺼져 있어요. 설치 후 ERP를 새로고침(F5)해 주세요.")); return; }
     var id = U.uid(); waits[id] = function (d) { d.ok ? res(d.data) : rej(new Error(d.error || "실패")); };
     window.postMessage(Object.assign({ rownaK: "req", id: id, type: type }, payload), location.origin);
   });
+}
+/* ---------- 읽는 규칙 (ERP 안에 있어서 고치면 모든 PC에 바로 반영) ---------- */
+var OCR_PROMPT = [
+  "이 이미지는 한국 명품 도매업체가 보낸 도매 리스트(표)입니다. 표의 상품 줄만 JSON으로 옮기세요.",
+  "규칙:",
+  "1) 품번(SKU)은 이미지에 보이는 글자를 한 글자씩 그대로 옮기세요. 하이픈·띄어쓰기도 그대로. 0(숫자)과 O(영문), 1과 I, 8과 B가 헷갈리면 skuUnsure를 true로.",
+  "2) 도매가는 1개당 금액(원, 숫자만). 합계 금액이 아니라 단가입니다. VAT 포함 여부는 vatIncluded에.",
+  "3) 수량은 숫자. 사이즈는 표기 그대로(F, TU, 85, 270 등). 없으면 \"F\".",
+  "4) 크림 링크(kream.co.kr/products/숫자)가 보이면 kreamUrl에 https://kream.co.kr/products/숫자 형태로. 숫자가 흐리면 kreamUrlUnsure를 true로.",
+  "5) 합계·안내사항 줄은 넣지 마세요. 추측해서 없는 값을 만들지 마세요.",
+  "출력 형식: {\"supplier\":\"\",\"listDate\":\"\",\"vatIncluded\":true,\"items\":[{\"brand\":\"\",\"sku\":\"\",\"skuUnsure\":false,\"name\":\"\",\"size\":\"F\",\"qty\":1,\"wholesalePrice\":0,\"kreamUrl\":\"\",\"kreamUrlUnsure\":false}]}"
+].join("\n");
+async function ocrList(dataUrl) {
+  var r = await ask("ai", { body: { response_format: { type: "json_object" }, messages: [{ role: "user", content: [{ type: "text", text: OCR_PROMPT }, { type: "image_url", image_url: { url: dataUrl, detail: "high" } }] }] } });
+  return JSON.parse(r.content || "{}");
+}
+function knorm(s) { return String(s || "").toUpperCase().replace(/[\s\-_.\/]/g, ""); }
+function kloose(s) { return knorm(s).replace(/O/g, "0").replace(/[IL]/g, "1").replace(/B/g, "8").replace(/S/g, "5").replace(/Z/g, "2"); }
+function ksame(a, b) { if (!a || !b) return 0; if (knorm(a) === knorm(b)) return 2; if (kloose(a) === kloose(b)) return 1; return 0; }
+function parseProduct(p) {
+  var t = p.text || "", m = p.meta || {}, model = ((t.match(/모델번호\s*\n*\s*([^\n]+)/) || [])[1] || "").trim();
+  var trades = [], i = t.indexOf("거래일"), j = t.indexOf("거래 내역 더보기");
+  if (i >= 0) { var seg = t.slice(i + 3, j > i ? j : i + 1500), re = /([^\n]+)\n([\d,]+)원\n([^\n]+)/g, mm; while ((mm = re.exec(seg)) && trades.length < 10) trades.push({ size: mm[1].trim(), price: Number(mm[2].replace(/,/g, "")), date: mm[3].trim() }); }
+  var tc = t.match(/\n거래\s+([\d,.]+)(만)?\s*\n/) || [];
+  return { url: String(p.url || "").split("?")[0], productId: (String(p.url || "").match(/products\/(\d+)/) || [])[1] || "", name: String(p.title || "").replace(/\s*정품 안심 거래\s*\|\s*KREAM\s*$/, "").trim(), nameEn: m["og:title"] || "", brand: m["product:brand"] || "",
+    model: model, price: Number(m["product:price:amount"]) || null, availability: m["product:availability"] || "", tradeCount: tc[1] ? Math.round(Number(tc[1].replace(/,/g, "")) * (tc[2] ? 10000 : 1)) : 0, trades: trades, loggedIn: /로그아웃/.test(t.slice(0, 400)) };
+}
+function parseSearch(p) {
+  if (/검색 결과가 없습니다/.test(p.text || "")) return [];
+  var seen = {}, out = []; (p.links || []).forEach(function (a) { var id = (String(a.href).match(/kream\.co\.kr\/products\/(\d+)/) || [])[1]; if (id && !seen[id]) { seen[id] = 1; out.push({ id: id, text: a.text }); } });
+  return out.slice(0, 6);
+}
+async function kreamLookup(sku, url) {
+  sku = String(sku || "").trim(); var tried = [], best = null, hit = null;
+  async function check(pid, via) {
+    if (!pid || tried.indexOf(pid) >= 0) return null; tried.push(pid);
+    var d = parseProduct(await ask("page", { url: "https://kream.co.kr/products/" + pid, waitFor: "모델번호|발매가", minLen: 300 }));
+    d.via = via; d.match = ksame(d.model, sku); if (!best || d.match > best.match) best = d; return d.match ? d : null;
+  }
+  async function search(q, via) { var c = parseSearch(await ask("page", { url: "https://kream.co.kr/search?keyword=" + encodeURIComponent(q), waitFor: "관심|검색 결과가 없습니다", minLen: 200 })).slice(0, 3); for (var k = 0; k < c.length && !hit; k++) hit = await check(c[k].id, via); }
+  var id = (String(url || "").match(/products\/(\d+)/) || [])[1];
+  if (id) hit = await check(id, "리스트 링크");
+  if (!hit && sku) await search(sku, "품번 검색");
+  if (!hit && sku.split(/[\s\-]/).length > 1) await search(sku.split(/[\s\-]/).slice(0, 2).join("-"), "품번 앞부분 검색");
+  var r = hit || best || {}; r.verified = !!hit; r.exact = !!(hit && hit.match === 2); r.tried = tried; r.checkedAt = new Date().toISOString(); return r;
 }
 ERP.helperAsk = ask; ERP.helperOn = helperOn;   /* 소싱 메뉴(메투 카페)에서도 같이 씀 */
 function shrink(file) {   /* 사진을 긴 변 2000px JPEG로 줄여서 보냄 (글자는 충분히 읽힘) */
@@ -148,7 +193,7 @@ async function fetchKream(rows) {
   for (var i = 0; i < keys.length; i++) {
     var g = bySku[keys[i]], f = g[0]; g.forEach(function (it) { busy[it.id] = 1; }); ERP.render();
     ERP.toast("크림 확인 중 " + (i + 1) + "/" + keys.length + " · " + (f.brand || "") + " " + (f.sku || ""));
-    var k; try { k = await ask("kream", { sku: f.sku, url: f.kreamUrl }); } catch (e) { k = { error: e.message }; if (/멈췄|멈춤|꺼져/.test(e.message)) { g.forEach(function (it) { delete busy[it.id]; }); ERP.toast("⚠ " + e.message); break; } }
+    var k; try { k = await kreamLookup(f.sku, f.kreamUrl); } catch (e) { k = { error: e.message }; if (/멈췄|멈춤|꺼져/.test(e.message)) { g.forEach(function (it) { delete busy[it.id]; }); ERP.toast("⚠ " + e.message); break; } }
     var out = [], logs = [];
     g.forEach(function (it) {
       delete busy[it.id];
@@ -168,7 +213,7 @@ async function fetchKream(rows) {
 }
 ERP.acts.kreamfetch = function () { var list = items().filter(function (x) { return x.listDate === v.kList; }); if (!list.length) return; fetchKream(list); };
 ERP.acts.kreamphoto = function () {
-  if (!helperOn()) { ERP.toast("크롬 확장 ‘로우나 크림 도우미’가 꺼져 있어요. 설치 후 새로고침(F5)해 주세요."); return; }
+  if (!helperOn()) { ERP.toast("크롬 확장 ‘로우나 도우미’가 꺼져 있어요. 설치 후 새로고침(F5)해 주세요."); return; }
   var inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*"; inp.multiple = true;
   inp.onchange = async function () {
     var files = Array.prototype.slice.call(inp.files || []); if (!files.length) return;
@@ -176,7 +221,7 @@ ERP.acts.kreamphoto = function () {
     for (var i = 0; i < files.length; i++) {
       ERP.toast("사진 읽는 중 " + (i + 1) + "/" + files.length + " (20~60초)");
       try {
-        var r = await ask("ocr", { image: await shrink(files[i]) }), vat = r.vatIncluded !== false;
+        var r = await ocrList(await shrink(files[i])), vat = r.vatIncluded !== false;
         (r.items || []).forEach(function (x) {
           var price = num(x.wholesalePrice); if (!price || !(x.sku || x.name)) return;
           made.push({ id: U.uid(), supplier: sup, listDate: day, brand: String(x.brand || "").trim(), sku: String(x.sku || "").trim(), name: String(x.name || "").trim(), kreamUrl: x.kreamUrlUnsure ? "" : String(x.kreamUrl || "").trim(), size: String(x.size || "F").trim() || "F", qty: num(x.qty) || 1, wholesalePrice: vat ? price : Math.round(price * 1.1), kreamPrice: null, kreamRecent: "", decision: "검토", memo: (vat ? "" : "사진 도매가 VAT 별도 → ×1.1 반영 · ") + "사진: " + files[i].name, extra: { ocr: { skuUnsure: !!x.skuUnsure, urlUnsure: !!x.kreamUrlUnsure, rawUrl: x.kreamUrl || "", file: files[i].name } } });

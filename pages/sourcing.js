@@ -441,6 +441,27 @@ var AUTO = (function () {
 var CAFE = (function () {
   var SELLER = "여주메니아", VENDOR = "메투(여주메니아)";
   function is(u) { return /cafe\.naver\.com/i.test(String(u || "")); }
+  var PROMPT = [
+    "다음은 네이버 카페 판매글입니다. 판매 상품 정보를 JSON으로 뽑으세요. 글에 없는 값은 빈칸으로 두고 추측하지 마세요.",
+    "- 같은 모델이 색상만 다르게 여러 개면 items를 색상별로 나누세요.",
+    "- price: 지금 판매 가격(원, 숫자). '900만대 >>> 890만원'처럼 조정됐으면 마지막(조정 후) 가격. '890만원'=8900000.",
+    "- brandEn: 영문 대문자 브랜드(예: HERMES, CHANEL). brandKr: 한글 브랜드(예: 에르메스).",
+    "- model: 모델/라인 이름(예: 가든파티 미니 네오 23). category: 가방/지갑/신발/의류/잡화/주얼리/시계 중 하나.",
+    "- material: 소재(예: 토고, 캔버스). size: 사이즈 표기가 있으면. 구성품·구매시기·각인·상태·배송은 memo에 짧게.",
+    "- 맨 위 카페 공지(✔ ❌ ■ 로 시작하는 안내, 결제·보증 안내)는 무시하세요.",
+    "출력: {\"items\":[{\"brandEn\":\"\",\"brandKr\":\"\",\"model\":\"\",\"category\":\"\",\"color\":\"\",\"material\":\"\",\"size\":\"\",\"price\":0,\"memo\":\"\"}]}"
+  ].join("\n");
+  async function read(url, parse) {
+    var p = await ERP.helperAsk("page", { url: url, waitFor: "원|삭제|존재하지", minLen: 300, tries: 15 }), t = p.text || "", sel = p.sel || {};
+    var title = sel[".title_text"] || String(p.title || "").replace(/\s*:\s*네이버\s*카페.*$/, "").trim(), body = sel[".se-main-container"] || sel[".article_viewer"] || t;
+    var d = { url: url.split("&referrer")[0], articleId: (url.match(/articles\/(\d+)/) || url.match(/articleid=(\d+)/i) || [])[1] || "", title: title, author: sel[".nickname"] || sel[".nick_box"] || ((t.match(/여주메니아/) || [""])[0]), date: sel[".date"] || "",
+      deleted: /삭제되었거나|존재하지 않는 게시글|게시글이 삭제/.test(t), soldMark: /판매\s*완료|예약\s*중|거래\s*완료|SOLD/i.test(title), needLogin: /로그인/.test(t) && t.length < 3000 && !body, images: p.images || [], items: [] };
+    if (!parse || d.deleted || d.needLogin || !body) return d;
+    try { var r = await ERP.helperAsk("ai", { body: { response_format: { type: "json_object" }, messages: [{ role: "user", content: PROMPT + "\n\n[제목]\n" + title + "\n\n[본문]\n" + String(body).slice(0, 8000) }] } }); d.items = JSON.parse(r.content || "{}").items || []; }
+    catch (e) { d.parseError = e.message; }
+    return d;
+  }
+
   function ok() { return ERP.helperOn && ERP.helperOn(); }
   function clean(t) { return String(t || "").replace(/\[[^\]]*\]/g, " ").replace(/바로\s*배송되?[^\s]*|배송되셔요!?|국내배송|정품|급처|네고/g, " ").replace(/[!~]+/g, " ").replace(/\s+/g, " ").trim(); }
   function apply(it, d, x0, n) {
@@ -460,9 +481,9 @@ var CAFE = (function () {
     return o;
   }
   async function fill(id, url) {
-    if (!ok()) { ERP.toast("메투 카페 글은 크롬 확장 ‘로우나 크림 도우미’(1.1 이상)가 있어야 읽어요. 설치 후 새로고침(F5)해 주세요."); return; }
+    if (!ok()) { ERP.toast("메투 카페 글은 크롬 확장 ‘로우나 도우미’(2.0)가 있어야 읽어요. 설치 후 새로고침(F5)해 주세요."); return; }
     ERP.toast("카페 글을 읽는 중… 20~40초 걸려요.");
-    var d; try { d = await ERP.helperAsk("cafe", { url: url, parse: true }); } catch (e) { ERP.toast("⚠ 카페 글 읽기 실패: " + e.message); return; }
+    var d; try { d = await read(url, true); } catch (e) { ERP.toast("⚠ 카페 글 읽기 실패: " + e.message); return; }
     if (d.needLogin) { ERP.toast("⚠ 크롬에서 네이버에 로그인한 뒤 다시 해 주세요."); return; }
     if (d.deleted) { ERP.toast("⚠ 삭제된 글이에요."); }
     var who = (d.author || "") + " " + (d.title || "");
@@ -482,7 +503,7 @@ var CAFE = (function () {
     for (var i = 0; i < L.length; i++) {
       var u = L[i].buyLink; if (seen[u]) continue; seen[u] = 1;
       try {
-        var d = await ERP.helperAsk("cafe", { url: u, parse: false }), sold = d.deleted || d.soldMark;
+        var d = await read(u, false), sold = d.deleted || d.soldMark;
         all().filter(function (it) { return it.buyLink === u; }).forEach(function (it0) { var it = Object.assign({}, pending[it0.id] || it0), x = Object.assign({}, it.extra || {}), was = x.linkStatus; x.linkStatus = sold ? "품절" : "정상"; x.linkCheckedAt = new Date().toISOString(); it.extra = x; ERP.DATA.price_items.set(it.id, it); queueSave(it); if (sold && was !== "품절") ERP.toast("⚠ 메투 글 " + (d.deleted ? "삭제됨" : "판매완료 표시") + ": " + (x.nameOverride || it.sku || "")); });
       } catch (e) { if (/멈춤|멈췄/.test(e.message)) break; }
     }
