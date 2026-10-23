@@ -94,13 +94,14 @@
     return o;
   }
 
-  /* 크림 되팔기 이익: 판매가·도매가 모두 부가세 포함, 수수료는 부가세 별도 요율(최대 cap)
+  /* 크림 되팔기 이익: 판매가·도매가 모두 부가세 포함. 크림 수수료 = 기본수수료 + 판매가×등급수수료(둘 다 VAT 별도), VAT 포함 최대 cap
+     (크림 FAQ '판매자 등급 및 수수료 기준(2026.3.2 적용)': Level1 기본 2,500원 + 6.0%, 프리미엄 20,000원 + 3%, VAT 포함 최대 30만원)
      실이익 = 판매가/1.1 − 수수료 − 도매가/1.1  (매입·매출 부가세를 정리한 뒤 남는 돈) */
-  function kream(sell, whole, rate, cap) {
-    sell = num(sell); whole = num(whole); rate = rate == null ? 0.06 : Number(rate); cap = cap == null ? 300000 : num(cap);
+  function kream(sell, whole, rate, cap, base) {
+    sell = num(sell); whole = num(whole); rate = rate == null ? 0.06 : Number(rate); cap = cap == null ? 300000 : num(cap); base = num(base);
     if (!sell) return null;
-    var fee = Math.min(sell * rate, cap || Infinity), settle = sell - fee * 1.1, real = sell / 1.1 - fee - whole / 1.1;
-    var be = rate * (whole / 1.1) / (1 / 1.1 - rate) <= cap ? (whole / 1.1) / (1 / 1.1 - rate) : (whole / 1.1 + cap) * 1.1;
+    var capEx = cap ? cap / 1.1 : Infinity, fee = Math.min(base + sell * rate, capEx), settle = sell - fee * 1.1, real = sell / 1.1 - fee - whole / 1.1;
+    var be = (whole / 1.1 + base) / (1 / 1.1 - rate); if (base + be * rate > capEx) be = (whole / 1.1 + capEx) * 1.1;
     var r = real / (sell / 1.1);
     return { fee: fee, settle: settle, cash: settle - whole, real: real, rate: r, breakeven: be, verdict: r >= 0.08 ? "추천" : r >= 0.03 ? "검토" : "비추천" };
   }
