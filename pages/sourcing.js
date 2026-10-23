@@ -146,7 +146,7 @@ function render() {
 function head(n) {
   var w = ERP.canWrite("price_items");
   var h = '<div class="head sc-head"><div><h1>스마트스토어 소싱</h1><p>칸을 눌러 바로 입력 · Enter/Tab/방향키 이동 · 여러 칸 Ctrl+V · 칸을 벗어나면 자동 저장 · 흰 칸=입력, 회색=자동계산, 분홍=핵심 결과</p></div><div class="tools"><button class="btn" data-act="scrail">' + (document.body.classList.contains("rail-hide") ? "메뉴 보이기" : "메뉴 숨기고 넓게") + '</button>' +
-    (w ? '<button class="btn pri" data-act="scsave" title="지금 바로 저장 (Ctrl+S) · 입력하면 자동으로도 저장돼요">💾 저장</button>' : "") + ('<button class="btn' + (v.scCols ? " pri" : "") + '" data-act="sccols">열 숨기기·보이기' + (LAY.h.length ? " (" + LAY.h.length + "개 숨김)" : "") + "</button>") + (w ? '<button class="btn" data-act="scautofill" title="링크는 있는데 빈칸이 있는 줄을 자동으로 채워요">링크로 빈칸 채우기</button><button class="btn" data-act="sccheck" title="모든 링크의 가격·재고를 지금 확인해요(ERP 창이 켜져 있으면 3시간마다 자동)">가격·재고 지금 확인</button>' + AUTO.badge() : "") + (w ? '<button class="btn" data-act="scimport">소싱폼 엑셀 올리기</button>' : "") + '<button class="btn" data-act="scexport">엑셀로 받기</button>' + (w ? '<button class="btn" data-act="scsold" id="scso" disabled title="왼쪽 줄 번호를 누른 뒤 사용">줄 번호 눌러 품절 표시</button>' : "") + (ERP.canWrite("price_items") ? '<button class="btn danger" data-act="scdel" id="scdel" disabled>선택 줄 삭제</button>' : "") + "</div></div>";
+    (w ? '<button class="btn pri" data-act="scsave" title="지금 바로 저장 (Ctrl+S) · 입력하면 자동으로도 저장돼요">💾 저장</button>' : "") + ('<button class="btn' + (v.scCols ? " pri" : "") + '" data-act="sccols">열 숨기기·보이기' + (LAY.h.length ? " (" + LAY.h.length + "개 숨김)" : "") + "</button>") + (w ? '<button class="btn" data-act="sccafe" title="메투 카페 여주메니아 판매글 주소를 넣으면 상품 정보를 채워요">메투 글 추가</button><button class="btn" data-act="scautofill" title="링크는 있는데 빈칸이 있는 줄을 자동으로 채워요">링크로 빈칸 채우기</button><button class="btn" data-act="sccheck" title="모든 링크의 가격·재고를 지금 확인해요(ERP 창이 켜져 있으면 3시간마다 자동)">가격·재고 지금 확인</button>' + AUTO.badge() : "") + (w ? '<button class="btn" data-act="scimport">소싱폼 엑셀 올리기</button>' : "") + '<button class="btn" data-act="scexport">엑셀로 받기</button>' + (w ? '<button class="btn" data-act="scsold" id="scso" disabled title="왼쪽 줄 번호를 누른 뒤 사용">줄 번호 눌러 품절 표시</button>' : "") + (ERP.canWrite("price_items") ? '<button class="btn danger" data-act="scdel" id="scdel" disabled>선택 줄 삭제</button>' : "") + "</div></div>";
   if (n) h += '<div class="tools filters">' + ERP.chips("data-view", "scF=" + v.scF, [["scF=all", "전체 " + n.all], ["scF=change", "가격 변경 필요 " + n.change], ["scF=warn", "손해·저마진 " + n.warn], ["scF=link", "매입가 변동 " + n.link], ["scF=nocost", "원가 없음 " + n.nocost]]) + '<input class="ctl search" data-search="scQ" type="search" aria-label="검색" placeholder="품번·브랜드·상품명·매입처·코드" value="' + esc(v.scQ) + '">' + (v.scSort ? '<button class="btn sm" data-act="scunsort">정렬 해제</button>' : "") + "</div>";
   return h;
 }
@@ -358,7 +358,7 @@ var AUTO = (function () {
     if (wait[id]) return true; wait[id] = mode; window.postMessage({ rowna: "fetch", id: id, url: url }, location.origin); return true;
   }
   function store(id, url, manual) { if (send("s:" + id, url, "store")) { if (manual) ERP.toast("내 스토어 가격을 읽는 중… 5~10초 뒤 표시돼요."); scheduleR(); } }
-  function fill(id, url) { if (send(id, url, "fill")) { ERP.toast("링크를 읽는 중… 5~10초 뒤 채워져요."); scheduleR(); } }
+  function fill(id, url) { if (CAFE.is(url)) { CAFE.fill(id, url); return; } if (send(id, url, "fill")) { ERP.toast("링크를 읽는 중… 5~10초 뒤 채워져요."); scheduleR(); } }
   var rt; function scheduleR() { clearTimeout(rt); rt = setTimeout(function () { if (!document.querySelector("table.sheet")) return; var a = document.activeElement; if (a && a.classList && a.classList.contains("ce")) { scheduleR(); return; } ERP.render(); }, 400); }
   var COLORS = [["오프화이트","오프화이트"],["블랙","블랙"],["BLACK","블랙"],["NOIR","블랙"],["화이트","화이트"],["WHITE","화이트"],["아이보리","아이보리"],["IVORY","아이보리"],["크림","크림"],["베이지","베이지"],["BEIGE","베이지"],["브라운","브라운"],["BROWN","브라운"],["카멜","카멜"],["CAMEL","카멜"],["TAN","탄"],["네이비","네이비"],["NAVY","네이비"],["블루","블루"],["BLUE","블루"],["그레이","그레이"],["GREY","그레이"],["GRAY","그레이"],["차콜","차콜"],["그린","그린"],["GREEN","그린"],["카키","카키"],["KHAKI","카키"],["레드","레드"],["RED","레드"],["버건디","버건디"],["핑크","핑크"],["PINK","핑크"],["퍼플","퍼플"],["옐로우","옐로우"],["오렌지","오렌지"],["실버","실버"],["SILVER","실버"],["골드","골드"],["GOLD","골드"],["멀티","멀티"]];
   var CATS = [["카드지갑","지갑/카드지갑"],["카드케이스","지갑/카드지갑"],["카드홀더","지갑/카드지갑"],["동전지갑","지갑/동전지갑"],["코인","지갑/동전지갑"],["장지갑","지갑/장지갑"],["반지갑","지갑/반지갑"],["지갑","지갑/반지갑"],["토트","가방/토트백"],["숄더","가방/숄더백"],["호보","가방/숄더백"],["버킷","가방/숄더백"],["크로스","가방/크로스백"],["메신저","가방/크로스백"],["클러치","가방/클러치"],["파우치","가방/클러치"],["백팩","가방/백팩"],["미니백","가방/미니백"],["스니커즈","신발/스니커즈"],["운동화","신발/스니커즈"],["로퍼","신발/로퍼"],["샌들","신발/샌들"],["슬리퍼","신발/샌들"],["뮬","신발/샌들"],["부츠","신발/부츠"],["플랫","신발/플랫"],["발레리나","신발/플랫"],["맨투맨","의류/맨투맨/후드"],["후드","의류/맨투맨/후드"],["티셔츠","의류/티셔츠"],["반팔","의류/티셔츠"],["니트","의류/니트"],["가디건","의류/니트"],["스웨터","의류/니트"],["셔츠","의류/셔츠"],["자켓","의류/아우터"],["재킷","의류/아우터"],["코트","의류/아우터"],["패딩","의류/아우터"],["점퍼","의류/아우터"],["벨트","액세서리/벨트"],["스카프","액세서리/스카프"],["머플러","액세서리/스카프"],["모자","액세서리/모자"],["볼캡","액세서리/모자"],["비니","액세서리/모자"],["키링","액세서리/키링/참"],["키홀더","액세서리/키링/참"],["선글라스","액세서리/선글라스"],["목걸이","주얼리/시계/목걸이"],["팔찌","주얼리/시계/팔찌"],["귀걸이","주얼리/시계/귀걸이"],["이어링","주얼리/시계/귀걸이"],["반지","주얼리/시계/반지"],["시계","주얼리/시계/시계"]];
@@ -421,9 +421,10 @@ var AUTO = (function () {
     if (id) { var c0 = pending[id] || ERP.DATA.price_items.get(id); if (c0) { var c1 = Object.assign({}, c0), x1 = Object.assign({}, c1.extra || {}); x1.alerts = (x1.alerts || []).concat([{ at: new Date().toISOString(), msg: m, sent: false }]).slice(-20); c1.extra = x1; ERP.DATA.price_items.set(id, c1); queueSave(c1); } } }
   function checkAll(manual) {
     if (!on()) { if (manual) ERP.toast("자동입력 도우미(크롬 확장)를 먼저 설치해 주세요."); return; }
-    var L = all().filter(function (it) { return it.buyLink && /^https?:/i.test(it.buyLink) && it.status !== "판매종료"; }), nS = all().filter(function (it) { return (it.extra || {}).storeLink; }).length;
+    var L = all().filter(function (it) { return it.buyLink && /^https?:/i.test(it.buyLink) && it.status !== "판매종료" && !CAFE.is(it.buyLink); }), nS = all().filter(function (it) { return (it.extra || {}).storeLink; }).length;
     try { localStorage.setItem(KEY, String(Date.now())); } catch (e) {}
     L.forEach(function (it) { send(it.id, it.buyLink, "check"); });
+    CAFE.checkAll();
     all().forEach(function (it) { var sl = (it.extra || {}).storeLink; if (sl && /^https?:/i.test(sl) && it.status !== "판매종료") send("s:" + it.id, sl, "store"); });
     if (manual) ERP.toast((L.length + nS) + "개 링크(매입처 " + L.length + " · 내 스토어 " + nS + ")를 6초에 1개씩 확인해요. 약 " + Math.ceil(L.length * 6 / 60) + "분 걸려요.");
     try { if (window.Notification && Notification.permission === "default") Notification.requestPermission(); } catch (e) {}
@@ -432,6 +433,72 @@ var AUTO = (function () {
   setInterval(function () { var t0 = 0; try { t0 = +localStorage.getItem(KEY) || 0; } catch (e) {} if (on() && S.user && Date.now() - t0 > EVERY) checkAll(false); }, 10 * 60e3);
   return { store: store, fill: fill, later: later, badge: badge, checkAll: checkAll, send: send, parse: parse };
 })();
+
+
+/* ---------- 메투 카페(판매자 여주메니아) 글 → 소싱 줄 ----------
+   크롬 확장 '로우나 크림 도우미' 1.1+가 대표님 크롬(네이버 로그인)에서 글을 뒤에서 열어 읽고 ChatGPT로 상품 정보를 뽑아요.
+   SKU = MT + 글번호 (색상이 여러 개면 -1, -2) · 매입처 = 메투(여주메니아) · 글 삭제/판매완료 표시면 품절로 바꿔요. */
+var CAFE = (function () {
+  var SELLER = "여주메니아", VENDOR = "메투(여주메니아)";
+  function is(u) { return /cafe\.naver\.com/i.test(String(u || "")); }
+  function ok() { return ERP.helperOn && ERP.helperOn(); }
+  function clean(t) { return String(t || "").replace(/\[[^\]]*\]/g, " ").replace(/바로\s*배송되?[^\s]*|배송되셔요!?|국내배송|정품|급처|네고/g, " ").replace(/[!~]+/g, " ").replace(/\s+/g, " ").trim(); }
+  function apply(it, d, x0, n) {
+    var o = Object.assign({}, it, { extra: Object.assign({}, it.extra || {}) }), x = o.extra, c = cfg();
+    if (!o.vendor) o.vendor = VENDOR; if (!o.tier || o.tier === "컨템포러리") o.tier = "하이엔드";
+    if (!o.sku && d.articleId) o.sku = "MT" + d.articleId + (n > 1 ? "-" + (x0.idx + 1) : "");
+    var en = String(x0.brandEn || "").toUpperCase().trim();
+    if (!o.brand && en) { o.brand = en; if (c.brands[en] && c.brands[en].kr) x.brandKr = c.brands[en].kr; else if (x0.brandKr) x.brandKr = x0.brandKr; }
+    if (!x.color && x0.color) x.color = x0.color; if (!x.material && x0.material) x.material = x0.material;
+    if (!x.line && x0.model) x.line = String(x0.model).slice(0, 40);
+    if (!x.nameOverride) x.nameOverride = [x.brandKr || x0.brandKr || "", x0.model || clean(d.title), x0.color || "", x0.size || ""].join(" ").replace(/\s+/g, " ").trim().slice(0, 100);
+    if (x0.price) { if (o.buyPrice == null || o.buyPrice === "") o.buyPrice = x0.price; x.linkPrice = x0.price; }
+    if (x0.category && !o.category) o.category = x0.category;
+    var memo = [x0.memo, "카페글 " + (d.date || "")].filter(Boolean).join(" · ");
+    if (memo && (o.memo || "").indexOf(memo) < 0) o.memo = (o.memo ? o.memo + " · " : "") + memo;
+    x.linkStatus = d.deleted || d.soldMark ? "품절" : "정상"; x.linkCheckedAt = new Date().toISOString(); x.cafeTitle = d.title; x.cafeAuthor = d.author;
+    return o;
+  }
+  async function fill(id, url) {
+    if (!ok()) { ERP.toast("메투 카페 글은 크롬 확장 ‘로우나 크림 도우미’(1.1 이상)가 있어야 읽어요. 설치 후 새로고침(F5)해 주세요."); return; }
+    ERP.toast("카페 글을 읽는 중… 20~40초 걸려요.");
+    var d; try { d = await ERP.helperAsk("cafe", { url: url, parse: true }); } catch (e) { ERP.toast("⚠ 카페 글 읽기 실패: " + e.message); return; }
+    if (d.needLogin) { ERP.toast("⚠ 크롬에서 네이버에 로그인한 뒤 다시 해 주세요."); return; }
+    if (d.deleted) { ERP.toast("⚠ 삭제된 글이에요."); }
+    var who = (d.author || "") + " " + (d.title || "");
+    if (who.indexOf(SELLER) < 0) ERP.toast("⚠ 작성자가 ‘" + SELLER + "’가 아닐 수 있어요 (" + (d.author || "확인불가") + "). 내용을 확인해 주세요.");
+    var items = (d.items || []).map(function (x, i) { return Object.assign({ idx: i }, x); });
+    if (!items.length) items = [{ idx: 0 }];
+    var base = pending[id] || ERP.DATA.price_items.get(id); if (!base) return;
+    var rows = [apply(base, d, items[0], items.length)];
+    if (items.length > 1) { var more = await addRows(items.length - 1, "하이엔드"); more.forEach(function (m, k) { m.buyLink = d.url; rows.push(apply(m, d, items[k + 1], items.length)); }); }
+    rows.forEach(function (r) { ERP.DATA.price_items.set(r.id, r); queueSave(r); });
+    ERP.render(); ERP.toast("카페 글로 " + rows.length + "줄을 채웠어요" + (d.parseError ? " (" + d.parseError + ")" : "") + ". 가격·색상이 맞는지 확인해 주세요.");
+  }
+  var running = false;
+  async function checkAll() {
+    if (!ok() || running) return; running = true;
+    var L = all().filter(function (it) { return is(it.buyLink) && it.status !== "판매종료"; }), seen = {};
+    for (var i = 0; i < L.length; i++) {
+      var u = L[i].buyLink; if (seen[u]) continue; seen[u] = 1;
+      try {
+        var d = await ERP.helperAsk("cafe", { url: u, parse: false }), sold = d.deleted || d.soldMark;
+        all().filter(function (it) { return it.buyLink === u; }).forEach(function (it0) { var it = Object.assign({}, pending[it0.id] || it0), x = Object.assign({}, it.extra || {}), was = x.linkStatus; x.linkStatus = sold ? "품절" : "정상"; x.linkCheckedAt = new Date().toISOString(); it.extra = x; ERP.DATA.price_items.set(it.id, it); queueSave(it); if (sold && was !== "품절") ERP.toast("⚠ 메투 글 " + (d.deleted ? "삭제됨" : "판매완료 표시") + ": " + (x.nameOverride || it.sku || "")); });
+      } catch (e) { if (/멈춤|멈췄/.test(e.message)) break; }
+    }
+    running = false; ERP.render();
+  }
+  return { is: is, fill: fill, checkAll: checkAll };
+})();
+ERP.acts.sccafe = async function () {
+  var t = prompt("메투 카페 글 주소를 붙여 넣으세요 (여러 개면 줄바꿈이나 띄어쓰기로 구분)"); if (!t) return;
+  var urls = (t.match(/https?:\/\/[^\s]+/g) || []).filter(CAFE.is); if (!urls.length) { ERP.toast("카페 글 주소를 찾지 못했어요."); return; }
+  var have = {}; all().forEach(function (it) { if (it.buyLink) have[it.buyLink.split("&referrer")[0]] = 1; });
+  urls = urls.filter(function (u) { return !have[u.split("&referrer")[0]]; }); if (!urls.length) { ERP.toast("이미 넣은 글이에요."); return; }
+  var made = await addRows(urls.length, "하이엔드"); if (!made.length) return;
+  v.scTab = "하이엔드"; ERP.render();
+  for (var i = 0; i < made.length; i++) { var it = Object.assign({}, made[i], { buyLink: urls[i].split("&referrer")[0], vendor: "메투(여주메니아)" }); ERP.DATA.price_items.set(it.id, it); queueSave(it); await CAFE.fill(it.id, it.buyLink); }
+};
 
 /* ---------- 소싱 후보: 등록한 네이버 스토어의 인기순 목록에서 사방넷·ERP와 겹치지 않는 상품 찾기 ---------- */
 var CAND = (function () {

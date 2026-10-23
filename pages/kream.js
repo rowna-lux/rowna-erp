@@ -132,6 +132,7 @@ function ask(type, payload) {
     window.postMessage(Object.assign({ rownaK: "req", id: id, type: type }, payload), location.origin);
   });
 }
+ERP.helperAsk = ask; ERP.helperOn = helperOn;   /* 소싱 메뉴(메투 카페)에서도 같이 씀 */
 function shrink(file) {   /* 사진을 긴 변 2000px JPEG로 줄여서 보냄 (글자는 충분히 읽힘) */
   return new Promise(function (res, rej) {
     var img = new Image(), url = URL.createObjectURL(file);
