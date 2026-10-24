@@ -73,7 +73,7 @@ async function readPage(origin) {
 async function writePage(origin, attrs, pick) {
   var ops = [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "wait", ms: 1500 },
     /* 2~7: 상세설명 스마트에디터 ONE 변환 → 뜬 창에서 [등록] (이미 변환된 상품은 버튼이 없어 자동으로 건너뜀) */
-    { op: "click", text: "으로 변환하기 (1회성)" }, { op: "switchNew", ms: 12000, need: 2 },
+    { op: "click", text: "으로 변환하기 (1회성)" }, { op: "switchNew", ms: 12000, urlHas: "editor", need: 2 },
     { op: "waitText", text: "등록", ms: 25000, frames: true, need: 3 }, { op: "click", text: "등록", frames: true, need: 4, gap: 2500 },
     { op: "closed", ms: 15000, need: 5 }, { op: "switchBack" }, { op: "wait", ms: 2000 }];
   Object.keys(pick).forEach(function (k) { var a = attrs.filter(function (x) { return x.name === k; })[0];
