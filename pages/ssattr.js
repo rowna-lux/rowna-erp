@@ -25,18 +25,30 @@ function parseAttrs(html) {
 }
 var PROMPT = [
   "네이버 스마트스토어 상품의 '상품속성'을 고릅니다. 각 속성의 선택지 목록에 있는 값만 고르세요(글자 그대로).",
-  "규칙: 상품명·카테고리·브랜드로 확실히 알 수 있는 것만 고르고, 애매하면 그 속성은 빼세요(빈 배열). 틀린 속성은 노출에 불리합니다.",
-  "- 다중선택(multi)은 꼭 맞는 1~2개만. 단일선택(single)은 1개.",
-  "- 색상은 상품명에 색이 적혀 있을 때만. 소재는 상품명/카테고리로 분명할 때만(예: 니트→니트, 레더/가죽→가죽).",
+  "근거 우선순위: ① 렉스몬드 상품정보(제품 소재·핏·성별·계절·MD's NOTE·카테고리) ② 상품명·카테고리·브랜드. 근거가 없으면 그 속성은 빼세요(빈 배열). 틀린 속성은 노출에 불리합니다.",
+  "- 소재: 여러 소재가 섞여 있으면 대표 소재 1개만(겉감 기준 비율이 가장 큰 것). 안감·부자재는 무시.",
+  "- 다중선택(multi)은 꼭 맞는 1~2개만(소재는 1개). 단일선택(single)은 1개.",
+  "- 색상은 렉스몬드나 상품명에 색이 분명히 적혀 있을 때만. 핏·계절·성별은 렉스몬드에 적힌 그대로 맞는 값.",
   "- '해당없음'·'장식없음'·'무지' 같은 값은 확실할 때만.",
-  "출력은 json으로: {\"pick\":{\"속성이름\":[\"값\"]},\"why\":\"한 줄\"}"
+  "출력은 json으로: {\"pick\":{\"속성이름\":[\"값\"]},\"why\":\"한 줄(근거)\"}"
 ].join("\n");
-async function choose(t, attrs) {
+/* 렉스몬드: 자체상품코드로 검색 → 1건이면 상품페이지로 바로 감. 상품정보고시·추가정보·MD노트만 잘라서 AI에 줌 */
+function cut(t, a, b, n) { var i = t.indexOf(a); if (i < 0) return ""; var j = b ? t.indexOf(b, i + a.length) : -1; return t.slice(i, j > i ? Math.min(j, i + n) : i + n).trim(); }
+async function rexInfo(code) {
+  if (!code) return { found: false, why: "자체상품코드 없음" };
+  var d = await ERP.helperAsk("page", { url: "https://www.rexmonde.com/products/list?search_keyword=" + encodeURIComponent(code), waitFor: "상품정보고시|검색결과|검색 결과|상품이 없", minLen: 300, tries: 15 });
+  if (!/products\/view/.test(d.url || "")) return { found: false, why: "렉스몬드 검색결과 1건 아님" };
+  var t = d.text || "", title = (d.title || "").replace(/\s*\|\s*렉스몬드\s*$/, "");
+  if (code && t.indexOf(code) < 0 && title.indexOf(code) < 0) return { found: false, why: "렉스몬드 품번 불일치" };
+  var info = ["상품: " + title, cut(t, "홈\n", "할인가", 300), cut(t, "추가정보", "상품 옵션", 300), cut(t, "MD’s NOTE", "상품 안내", 600) || cut(t, "MD's NOTE", "상품 안내", 600), cut(t, "제품 소재", "세탁 방법", 500)].filter(Boolean).join("\n");
+  return { found: true, url: (d.url || "").split("&")[0], info: info.slice(0, 2500) };
+}
+async function choose(t, attrs, rex) {
   var todo = attrs.filter(function (a) { return !a.selected.length; }).map(function (a) { return { name: a.name, type: a.type, options: a.type === "single" ? a.options.map(function (o) { return o.text; }) : a.options }; });
   if (!todo.length) return { pick: {}, why: "이미 모두 입력됨" };
-  var r = await ERP.helperAsk("ai", { body: { response_format: { type: "json_object" }, messages: [{ role: "user", content: PROMPT + "\n\n상품명: " + t.name + "\n카테고리: " + t.cat + "\n브랜드: " + t.brand + "\n\n속성 목록:\n" + JSON.stringify(todo) }] } });
+  var r = await ERP.helperAsk("ai", { body: { response_format: { type: "json_object" }, messages: [{ role: "user", content: PROMPT + "\n\n상품명: " + t.name + "\n카테고리: " + t.cat + "\n브랜드: " + t.brand + "\n\n[렉스몬드 상품정보]\n" + (rex && rex.found ? rex.info : "(없음 — 상품명만으로 확실한 것만)") + "\n\n속성 목록:\n" + JSON.stringify(todo) }] } });
   var j = JSON.parse(r.content || "{}"), pick = {};
-  Object.keys(j.pick || {}).forEach(function (k) { var a = attrs.filter(function (x) { return x.name === k; })[0]; if (!a || a.selected.length) return; var vals = (j.pick[k] || []).filter(function (v) { return a.type === "single" ? a.options.some(function (o) { return o.text === v; }) : a.options.indexOf(v) >= 0; }); if (a.type === "single") vals = vals.slice(0, 1); else vals = vals.slice(0, 2); if (vals.length) pick[k] = vals; });
+  Object.keys(j.pick || {}).forEach(function (k) { var a = attrs.filter(function (x) { return x.name === k; })[0]; if (!a || a.selected.length) return; var vals = (j.pick[k] || []).filter(function (v) { return a.type === "single" ? a.options.some(function (o) { return o.text === v; }) : a.options.indexOf(v) >= 0; }); if (a.type === "single" || /소재/.test(k)) vals = vals.slice(0, 1); else vals = vals.slice(0, 2); if (vals.length) pick[k] = vals; });
   return { pick: pick, why: j.why || "" };
 }
 /* 원상품번호를 몰라도: 상품 조회/수정 목록에서 채널상품번호로 검색 → [수정] 클릭 → 수정 화면으로 이동 (주소에서 원상품번호를 알아냄) */
@@ -58,7 +70,11 @@ async function readPage(origin) {
   return { attrs: html ? parseAttrs(html) : [], text: text };
 }
 async function writePage(origin, attrs, pick) {
-  var ops = [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "wait", ms: 1500 }];
+  var ops = [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "wait", ms: 1500 },
+    /* 2~7: 상세설명 스마트에디터 ONE 변환 → 뜬 창에서 [등록] (이미 변환된 상품은 버튼이 없어 자동으로 건너뜀) */
+    { op: "click", text: "으로 변환하기 (1회성)" }, { op: "switchNew", ms: 12000, need: 2 },
+    { op: "waitText", text: "등록", ms: 25000, frames: true, need: 3 }, { op: "click", text: "등록", frames: true, need: 4, gap: 2500 },
+    { op: "closed", ms: 15000, need: 5 }, { op: "switchBack" }, { op: "wait", ms: 2000 }];
   Object.keys(pick).forEach(function (k) { var a = attrs.filter(function (x) { return x.name === k; })[0];
     pick[k].forEach(function (v) {
       if (a.type === "multi") ops.push({ op: "check", near: k, value: v });
@@ -70,11 +86,12 @@ async function writePage(origin, attrs, pick) {
   var res = r.results, before = res.length - 4, after = parseAttrs((res[before] || {}).html || "");
   var applied = Object.keys(pick).every(function (k) { var a = after.filter(function (x) { return x.name === k; })[0]; return a && pick[k].every(function (v) { return a.selected.indexOf(v) >= 0; }); });
   var t1 = "", t2 = (res[res.length - 1] || {}).text || "";
-  return { applied: applied, opsFailed: res.filter(function (x) { return x && !x.ok; }).map(function (x) { return x.error; }), saveMsg: ((t1 + "\n" + t2).match(/[^\n]*(수정되었|저장되었|완료되었|오류|실패|입력해 주세요|확인해 주세요)[^\n]*/g) || []).slice(0, 4) };
+  var conv = !res[2].ok ? "변환 버튼 없음(이미 변환)" : res[6] && res[6].ok ? "변환 완료" : "변환 실패(" + [3, 4, 5, 6].map(function (i) { return res[i] && !res[i].ok && !res[i].skipped ? i + ":" + (res[i].error || "실패") : ""; }).filter(Boolean).join(",") + ")";
+  return { conv: conv, applied: applied, opsFailed: res.filter(function (x, i) { return x && !x.ok && !x.skipped && (i < 2 || i > 8); }).map(function (x) { return x.error; }), saveMsg: ((t1 + "\n" + t2).match(/[^\n]*(수정되었|저장되었|완료되었|오류|실패|입력해 주세요|확인해 주세요)[^\n]*/g) || []).slice(0, 4) };
 }
 function log(s, row) { s.log = (s.log || []).concat([row]).slice(-3000); save(s); }
-function dl(s, tag) { var rows = (s.log || []).map(function (x) { return [x.at, x.ch, x.origin || "", x.status, x.name, JSON.stringify(x.pick || {}), x.why || "", (x.err || "") + (x.saveMsg ? " " + x.saveMsg.join(" / ") : "")].map(function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(","); });
-  ERP.downloadBlob("스마트스토어_속성입력기록_" + tag + ".csv", new Blob(["﻿시각,채널상품번호,원상품번호,결과,상품명,넣은속성,AI메모,오류/저장메시지\n" + rows.join("\n")], { type: "text/csv" })); }
+function dl(s, tag) { var rows = (s.log || []).map(function (x) { return [x.at, x.ch, x.origin || "", x.status, x.name, JSON.stringify(x.pick || {}), x.why || "", x.rex || "", x.conv || "", (x.err || "") + (x.saveMsg ? " " + x.saveMsg.join(" / ") : "")].map(function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(","); });
+  ERP.downloadBlob("스마트스토어_속성입력기록_" + tag + ".csv", new Blob(["﻿시각,채널상품번호,원상품번호,결과,상품명,넣은속성,AI메모,렉스몬드,에디터변환,오류/저장메시지\n" + rows.join("\n")], { type: "text/csv" })); }
 
 async function one(t, s, opts) {
   var origin = (s.map || {})[t.ch] || t.origin; var row = { at: new Date().toISOString(), ch: t.ch, origin: origin, name: t.name };
@@ -82,25 +99,28 @@ async function one(t, s, opts) {
     var p;
     if (origin) p = await readPage(origin);
     else { p = await readViaSearch(t.ch); origin = row.origin = p.origin; s.map = s.map || {}; s.map[t.ch] = origin; save(s); }
-    if (!p.attrs.length) { row.status = "속성칸 없음"; return row; }
-    var c = await choose(t, p.attrs); row.pick = c.pick; row.why = c.why;
-    if (!Object.keys(c.pick).length) { row.status = "고를 값 없음"; return row; }
+    var needConv = /으로 변환하기/.test(p.text || ""), c = { pick: {}, why: "속성칸 없음" };
+    if (p.attrs.length && p.attrs.some(function (a) { return !a.selected.length; })) {
+      var rex = await rexInfo(t.code); row.rex = rex.found ? rex.url : "못 찾음(" + rex.why + ")";
+      c = await choose(t, p.attrs, rex);
+    }
+    row.pick = c.pick; row.why = c.why; row.v = 2;
+    if (!Object.keys(c.pick).length && !needConv) { row.status = "할 일 없음(이미 입력·변환됨)"; return row; }
     if (opts.dry) { row.status = "미리보기(저장 안 함)"; return row; }
-    var w = await writePage(origin, p.attrs, c.pick); row.saveMsg = w.saveMsg;
-    row.status = w.applied && !w.opsFailed.length ? "저장 시도 완료" : "일부 실패"; if (w.opsFailed.length) row.err = w.opsFailed.join(" / ");
+    var w = await writePage(origin, p.attrs, c.pick); row.saveMsg = w.saveMsg; row.conv = w.conv;
+    var convBad = needConv && w.conv !== "변환 완료";
+    row.status = w.applied && !w.opsFailed.length && !convBad ? "저장 완료" : "일부 실패"; if (w.opsFailed.length) row.err = w.opsFailed.join(" / ");
   } catch (e) { row.status = "실패"; row.err = e.message; if (/멈춤|멈췄/.test(e.message)) stopReq = true; }
   return row;
 }
 /* 첫 실행: 시험 상품 1개(발렌티노 크로스백 원상품번호 12652259462) + 상품목록 화면 구조 진단 */
 ERP.acts.ssattrtest = async function () {
   if (!(ERP.helperOn && ERP.helperOn())) { ERP.toast("크롬 확장 ‘로우나 도우미’가 꺼져 있어요."); return; }
-  var s = st(); s.map = s.map || {}; s.map["12709352927"] = "12652259462"; save(s);
-  ERP.toast("시험 2개를 진행해요(약 2~4분): ① 발렌티노 저장까지 ② 비비안 니트는 목록 검색으로 찾아 미리보기만. 끝나면 기록 파일이 자동으로 받아져요.");
-  var t = { ch: "12709352927", name: "[국내배송] 발렌티노 크로스백 V로고 여성 버킷백 4W2P0Z87 VNL 098", cat: "패션잡화>여성가방>크로스백", brand: "발렌티노" };
-  var row = await one(t, s, {}); log(s, row);
-  var t2 = { ch: "11576295315", name: "비비안웨스트우드 베아 반팔 니트 로즈 1803002Q Y001A H409", cat: "패션의류>여성의류>니트>풀오버", brand: "비비안웨스트우드" };
-  var row2 = await one(t2, s, { dry: true }); log(s, row2);
-  dl(s, "시험"); ERP.toast("시험 결과: ①" + row.status + (row.err ? " — " + row.err : "") + " / ②" + row2.status + (row2.err ? " — " + row2.err : "")); ERP.render();
+  var s = st(), all = await targets();
+  ERP.toast("시험 2개(메종키츠네 니트·호카 트레킹화): 렉스몬드 확인 → 스마트에디터 ONE 변환 → 속성 저장. 약 3~5분, 끝나면 기록 파일이 자동으로 받아져요.");
+  var out = [];
+  for (var ch of ["12346633813", "12709468656"]) { var t = all.filter(function (x) { return x.ch === ch; })[0]; if (!t) { out.push(ch + ": 대상 목록에 없음"); continue; } var row = await one(t, s, {}); log(s, row); out.push(row.status + (row.conv ? "/" + row.conv : "") + (row.err ? " — " + row.err : "")); ERP.render(); }
+  dl(s, "시험2"); ERP.toast("시험 결과: " + out.join(" | ")); ERP.render();
 };
 
 /* 전체 실행: 팔린 상품부터 차례로. 이미 처리한 상품은 건너뜀. 50개마다 기록 파일 자동 저장. */
@@ -108,7 +128,7 @@ ERP.acts.ssattrrun = async function (btn) {
   if (running) { ERP.toast("이미 진행 중이에요."); return; }
   if (!(ERP.helperOn && ERP.helperOn())) { ERP.toast("크롬 확장 ‘로우나 도우미’가 꺼져 있어요."); return; }
   var lim = Number((btn && btn.dataset && btn.dataset.limit) || 0) || Infinity;
-  running = true; stopReq = false; var s = st(), done = {}; (s.log || []).forEach(function (x) { if (/저장 시도 완료|고를 값 없음|속성칸 없음/.test(x.status)) done[x.ch] = 1; });
+  running = true; stopReq = false; var s = st(), done = {}; (s.log || []).forEach(function (x) { if (x.v === 2 && /저장 완료|할 일 없음/.test(x.status)) done[x.ch] = 1; });
   var list = (await targets()).filter(function (t) { return !done[t.ch]; }), n = 0, fails = 0;
   ERP.toast("상품속성 자동입력 시작: 남은 " + list.length + "개 중 " + (lim === Infinity ? "전부" : lim + "개"));
   for (var i = 0; i < list.length && n < lim && !stopReq; i++) {
@@ -124,7 +144,7 @@ function render() {
   var s = st(), L = s.log || [], cnt = {}; L.forEach(function (x) { cnt[x.status] = (cnt[x.status] || 0) + 1; });
   return '<div class="head"><div><h1>스마트스토어 상품속성</h1><p>사방넷 대량등록 상품(하이엔드 제외) 6,826개의 상품속성을 자동으로 채워요 · 팔린 상품 먼저</p></div><div class="tools"><button class="btn" data-act="ssattrtest">시험 실행</button><button class="btn pri" data-act="ssattrrun" data-limit="181">팔린 상품 181개 실행</button><button class="btn" data-act="ssattrrun">전체 실행</button><button class="btn" data-act="ssattrstop">멈추기</button></div></div>' +
     '<div class="tiles">' + Object.keys(cnt).map(function (k) { return ERP.tile(esc(k), cnt[k] + "개", ""); }).join("") + "</div>" +
-    '<div class="table-wrap"><table><thead><tr><th>시각</th><th>채널번호</th><th>결과</th><th>상품명</th><th>넣은 속성</th><th>메모</th></tr></thead><tbody>' + L.slice(-50).reverse().map(function (x) { return "<tr><td class=num>" + esc((x.at || "").slice(5, 16).replace("T", " ")) + "</td><td class=num>" + esc(x.ch) + "</td><td>" + esc(x.status) + "</td><td class=name>" + esc(x.name) + "</td><td>" + esc(Object.keys(x.pick || {}).map(function (k) { return k + ": " + x.pick[k].join(","); }).join(" · ")) + "</td><td><small>" + esc((x.err || "") + " " + (x.saveMsg || []).join(" / ")) + "</small></td></tr>"; }).join("") + "</tbody></table></div>";
+    '<div class="table-wrap"><table><thead><tr><th>시각</th><th>채널번호</th><th>결과</th><th>상품명</th><th>넣은 속성</th><th>메모</th></tr></thead><tbody>' + L.slice(-50).reverse().map(function (x) { return "<tr><td class=num>" + esc((x.at || "").slice(5, 16).replace("T", " ")) + "</td><td class=num>" + esc(x.ch) + "</td><td>" + esc(x.status) + "</td><td class=name>" + esc(x.name) + "</td><td>" + esc(Object.keys(x.pick || {}).map(function (k) { return k + ": " + x.pick[k].join(","); }).join(" · ")) + "</td><td><small>" + esc((x.conv ? "[" + x.conv + "] " : "") + (x.rex ? "[렉스몬드 " + (/^http/.test(x.rex) ? "확인" : x.rex) + "] " : "") + (x.err || "") + " " + (x.saveMsg || []).slice(0, 1).join(" / ")) + "</small></td></tr>"; }).join("") + "</tbody></table></div>";
 }
 ERP.page({ id: "ss-attr", title: "스마트스토어 속성", roles: ["owner", "staff", "ai"], render: render, bind: function () {} });
 })();
