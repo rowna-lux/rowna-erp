@@ -19,7 +19,7 @@ function parseAttrs(html) {
     var boxes = td.querySelectorAll("label input[type=checkbox]");
     if (boxes.length) { out.push({ name: name, type: "multi", options: Array.prototype.map.call(boxes, function (b) { return b.parentElement.textContent.trim(); }), selected: Array.prototype.filter.call(boxes, function (b) { return /ng-not-empty/.test(b.className) || b.hasAttribute("checked"); }).map(function (b) { return b.parentElement.textContent.trim(); }) }); return; }
     var opts = td.querySelectorAll(".selectize-dropdown-content .option[data-value]");
-    if (opts.length) { var cur = td.querySelector(".selectize-input .item"); out.push({ name: name, type: "single", options: Array.prototype.filter.call(opts, function (o) { return o.getAttribute("data-value"); }).map(function (o) { return { id: o.getAttribute("data-value"), text: o.textContent.trim() }; }), selected: cur && cur.textContent.trim() !== "선택" ? [cur.textContent.trim()] : [] }); }
+    if (opts.length) { var cur = td.querySelector(".selectize-dropdown-content .option.selected") || td.querySelector(".selectize-input .item, .selectize-input .option"), ct = cur ? cur.textContent.trim() : ""; out.push({ name: name, type: "single", options: Array.prototype.filter.call(opts, function (o) { return o.getAttribute("data-value"); }).map(function (o) { return { id: o.getAttribute("data-value"), text: o.textContent.trim() }; }), selected: ct && ct !== "선택" ? [ct] : [] }); }
   });
   return out;
 }
