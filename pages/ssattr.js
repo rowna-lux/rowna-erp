@@ -30,6 +30,8 @@ var PROMPT = [
   "- 다중선택(multi)은 꼭 맞는 1~2개만(소재는 1개). 단일선택(single)은 1개.",
   "- 색상은 렉스몬드나 상품명에 색이 분명히 적혀 있을 때만. 핏·계절·성별은 렉스몬드에 적힌 그대로 맞는 값.",
   "- '해당없음'·'장식없음'·'무지' 같은 값은 확실할 때만.",
+  "- 굽높이·기장·총길이 등 치수 속성: 렉스몬드 실측 정보(예: 굽 높이 3cm)의 숫자로 선택지 구간을 고르세요. 숫자가 없으면 빼세요.",
+  "- 렉스몬드 정보가 없으면 핏·소재·색상·치수는 상품명에 그 단어가 그대로 있을 때만. 추측 금지.",
   "- 계절: 렉스몬드에 '사계절'이면 선택지에 '사계절'이 있을 때만 그것을, 없으면 계절 속성은 빼세요. 일부 계절만 골라 넣지 마세요.",
   "출력은 json으로: {\"pick\":{\"속성이름\":[\"값\"]},\"why\":\"한 줄(근거)\"}"
 ].join("\n");
@@ -41,8 +43,8 @@ async function rexInfo(code) {
   if (!/products\/view/.test(d.url || "")) return { found: false, why: "렉스몬드 검색결과 1건 아님" };
   var t = d.text || "", title = (d.title || "").replace(/\s*\|\s*렉스몬드\s*$/, "");
   if (code && t.indexOf(code) < 0 && title.indexOf(code) < 0) return { found: false, why: "렉스몬드 품번 불일치" };
-  var info = ["상품: " + title, cut(t, "홈\n", "할인가", 300), cut(t, "추가정보", "상품 옵션", 300), cut(t, "MD’s NOTE", "상품 안내", 600) || cut(t, "MD's NOTE", "상품 안내", 600), cut(t, "제품 소재", "세탁 방법", 500)].filter(Boolean).join("\n");
-  return { found: true, url: (d.url || "").split("&")[0], info: info.slice(0, 2500) };
+  var info = ["상품: " + title, cut(t, "홈\n", "할인가", 300), cut(t, "추가정보", "상품 옵션", 300), cut(t, "MD’s NOTE", "상품 안내", 600) || cut(t, "MD's NOTE", "상품 안내", 600), cut(t, "상품정보고시", "품질보증기준", 700), cut(t, "렉스몬드 실측", "사이즈 선택 TIP", 400)].filter(Boolean).join("\n");
+  return { found: true, url: (d.url || "").split("&")[0], info: info.slice(0, 3500) };
 }
 async function choose(t, attrs, rex) {
   var todo = attrs.filter(function (a) { return !a.selected.length; }).map(function (a) { return { name: a.name, type: a.type, options: a.type === "single" ? a.options.map(function (o) { return o.text; }) : a.options }; });
@@ -105,7 +107,7 @@ async function one(t, s, opts) {
       var rex = await rexInfo(t.code); row.rex = rex.found ? rex.url : "못 찾음(" + rex.why + ")";
       c = await choose(t, p.attrs, rex);
     }
-    row.pick = c.pick; row.why = c.why; row.v = 2;
+    row.pick = c.pick; row.why = c.why; row.v = 3;
     if (!Object.keys(c.pick).length && !needConv) { row.status = "할 일 없음(이미 입력·변환됨)"; return row; }
     if (opts.dry) { row.status = "미리보기(저장 안 함)"; return row; }
     var w = await writePage(origin, p.attrs, c.pick); row.saveMsg = w.saveMsg; row.conv = w.conv; if (w.dialogs.length) row.saveMsg = w.dialogs.concat(row.saveMsg || []);
@@ -129,8 +131,10 @@ ERP.acts.ssattrrun = async function (btn) {
   if (running) { ERP.toast("이미 진행 중이에요."); return; }
   if (!(ERP.helperOn && ERP.helperOn())) { ERP.toast("크롬 확장 ‘로우나 도우미’가 꺼져 있어요."); return; }
   var lim = Number((btn && btn.dataset && btn.dataset.limit) || 0) || Infinity;
-  running = true; stopReq = false; var s = st(), done = {}; (s.log || []).forEach(function (x) { if (x.v === 2 && /저장 완료|할 일 없음/.test(x.status)) done[x.ch] = 1; });
-  var list = (await targets()).filter(function (t) { return !done[t.ch]; }), n = 0, fails = 0;
+  running = true; stopReq = false; var s = st(), done = {}; (s.log || []).forEach(function (x) { if (x.v >= 2 && /저장 완료|할 일 없음/.test(x.status)) done[x.ch] = Math.max(done[x.ch] || 0, x.v); });
+  var SHOE = /신발|화$|화>|샌들|슬리퍼|부츠|힐|로퍼|스니커즈|뮬|플랫/;   /* 신발은 굽높이 규칙(v3) 전에 한 것을 한 번 더 봄 */
+  var list = (await targets()).filter(function (t) { var d = done[t.ch] || 0; return !(d >= 3 || (d === 2 && !SHOE.test(t.cat || ""))); }), n = 0, fails = 0;
+  if (btn && btn.dataset && btn.dataset.sold) { list = list.filter(function (t) { return t.sold > 0; }); lim = Infinity; }
   ERP.toast("상품속성 자동입력 시작: 남은 " + list.length + "개 중 " + (lim === Infinity ? "전부" : lim + "개"));
   for (var i = 0; i < list.length && n < lim && !stopReq; i++) {
     var row = await one(list[i], s, {}); log(s, row); n++; ERP.render();
@@ -143,7 +147,7 @@ ERP.acts.ssattrrun = async function (btn) {
 ERP.acts.ssattrstop = function () { stopReq = true; ERP.toast("지금 상품까지만 하고 멈춰요."); };
 function render() {
   var s = st(), L = s.log || [], cnt = {}; L.forEach(function (x) { cnt[x.status] = (cnt[x.status] || 0) + 1; });
-  return '<div class="head"><div><h1>스마트스토어 상품속성</h1><p>사방넷 대량등록 상품(하이엔드 제외) 6,826개의 상품속성을 자동으로 채워요 · 팔린 상품 먼저</p></div><div class="tools"><button class="btn" data-act="ssattrtest">시험 실행</button><button class="btn pri" data-act="ssattrrun" data-limit="181">팔린 상품 181개 실행</button><button class="btn" data-act="ssattrrun">전체 실행</button><button class="btn" data-act="ssattrstop">멈추기</button></div></div>' +
+  return '<div class="head"><div><h1>스마트스토어 상품속성</h1><p>사방넷 대량등록 상품(하이엔드 제외) 6,826개의 상품속성을 자동으로 채워요 · 팔린 상품 먼저</p></div><div class="tools"><button class="btn" data-act="ssattrtest">시험 실행</button><button class="btn pri" data-act="ssattrrun" data-sold="1">팔린 상품 181개 실행</button><button class="btn" data-act="ssattrrun">전체 실행</button><button class="btn" data-act="ssattrstop">멈추기</button></div></div>' +
     '<div class="tiles">' + Object.keys(cnt).map(function (k) { return ERP.tile(esc(k), cnt[k] + "개", ""); }).join("") + "</div>" +
     '<div class="table-wrap"><table><thead><tr><th>시각</th><th>채널번호</th><th>결과</th><th>상품명</th><th>넣은 속성</th><th>메모</th></tr></thead><tbody>' + L.slice(-50).reverse().map(function (x) { return "<tr><td class=num>" + esc((x.at || "").slice(5, 16).replace("T", " ")) + "</td><td class=num>" + esc(x.ch) + "</td><td>" + esc(x.status) + "</td><td class=name>" + esc(x.name) + "</td><td>" + esc(Object.keys(x.pick || {}).map(function (k) { return k + ": " + x.pick[k].join(","); }).join(" · ")) + "</td><td><small>" + esc((x.conv ? "[" + x.conv + "] " : "") + (x.rex ? "[렉스몬드 " + (/^http/.test(x.rex) ? "확인" : x.rex) + "] " : "") + (x.err || "") + " " + (x.saveMsg || []).slice(0, 1).join(" / ")) + "</small></td></tr>"; }).join("") + "</tbody></table></div>";
 }
