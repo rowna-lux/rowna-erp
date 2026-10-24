@@ -42,10 +42,10 @@ async function choose(t, attrs) {
 /* 원상품번호를 몰라도: 상품 조회/수정 목록에서 채널상품번호로 검색 → [수정] 클릭 → 수정 화면으로 이동 (주소에서 원상품번호를 알아냄) */
 function viaSearchOps(ch) { return [{ op: "waitText", text: "상품목록", ms: 30000, gap: 0 }, { op: "wait", ms: 1500 },
   { op: "fill", sel: 'textarea[ng-model="vm.searchFormData.searchKeyword"]', value: String(ch) }, { op: "click", text: "검색", sel: null }, { op: "wait", ms: 3500 },
-  { op: "click", sel: '.ag-pinned-left-cols-container [col-id="edit"] button, .ag-pinned-left-cols-container [col-id="edit"] a', retry: 6 },
+  { op: "click", sel: 'button[data-nclicks-code="itg.edit"]', retry: 8 },
   { op: "waitText", text: "상품속성", ms: 30000 }, { op: "wait", ms: 1500 }, { op: "html", sel: "#attribute-table", max: 200000 }, { op: "text" }]; }
 async function readViaSearch(ch) {
-  var r = await ERP.helperAsk("act", { url: "https://sell.smartstore.naver.com/#/products/origin-list", ops: viaSearchOps(ch) });
+  var r = await ERP.helperAsk("act", { url: "https://sell.smartstore.naver.com/#/products/origin-list", visible: true, ops: viaSearchOps(ch) });
   var res = r.results, last = res[res.length - 1] || {}, url = last.url || "", origin = (url.match(/products\/edit\/(\d+)/) || [])[1];
   if (!origin) throw new Error("목록에서 수정 화면으로 못 들어감 (" + res.map(function (x, i) { return x && !x.ok ? i + ":" + (x.error || "실패") : ""; }).filter(Boolean).join(", ") + ")");
   return { origin: origin, attrs: parseAttrs((res[res.length - 2] || {}).html || ""), text: last.text || "" };
