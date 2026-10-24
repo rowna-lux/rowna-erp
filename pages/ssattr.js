@@ -29,7 +29,7 @@ var PROMPT = [
   "- 다중선택(multi)은 꼭 맞는 1~2개만. 단일선택(single)은 1개.",
   "- 색상은 상품명에 색이 적혀 있을 때만. 소재는 상품명/카테고리로 분명할 때만(예: 니트→니트, 레더/가죽→가죽).",
   "- '해당없음'·'장식없음'·'무지' 같은 값은 확실할 때만.",
-  "출력: {\"pick\":{\"속성이름\":[\"값\"]},\"why\":\"한 줄\"}"
+  "출력은 json으로: {\"pick\":{\"속성이름\":[\"값\"]},\"why\":\"한 줄\"}"
 ].join("\n");
 async function choose(t, attrs) {
   var todo = attrs.filter(function (a) { return !a.selected.length; }).map(function (a) { return { name: a.name, type: a.type, options: a.type === "single" ? a.options.map(function (o) { return o.text; }) : a.options }; });
@@ -38,6 +38,17 @@ async function choose(t, attrs) {
   var j = JSON.parse(r.content || "{}"), pick = {};
   Object.keys(j.pick || {}).forEach(function (k) { var a = attrs.filter(function (x) { return x.name === k; })[0]; if (!a || a.selected.length) return; var vals = (j.pick[k] || []).filter(function (v) { return a.type === "single" ? a.options.some(function (o) { return o.text === v; }) : a.options.indexOf(v) >= 0; }); if (a.type === "single") vals = vals.slice(0, 1); else vals = vals.slice(0, 2); if (vals.length) pick[k] = vals; });
   return { pick: pick, why: j.why || "" };
+}
+/* 원상품번호를 몰라도: 상품 조회/수정 목록에서 채널상품번호로 검색 → [수정] 클릭 → 수정 화면으로 이동 (주소에서 원상품번호를 알아냄) */
+function viaSearchOps(ch) { return [{ op: "waitText", text: "상품목록", ms: 30000, gap: 0 }, { op: "wait", ms: 1500 },
+  { op: "fill", sel: 'textarea[ng-model="vm.searchFormData.searchKeyword"]', value: String(ch) }, { op: "click", text: "검색", sel: null }, { op: "wait", ms: 3500 },
+  { op: "click", sel: '.ag-pinned-left-cols-container [col-id="edit"] button, .ag-pinned-left-cols-container [col-id="edit"] a', retry: 6 },
+  { op: "waitText", text: "상품속성", ms: 30000 }, { op: "wait", ms: 1500 }, { op: "html", sel: "#attribute-table", max: 200000 }, { op: "text" }]; }
+async function readViaSearch(ch) {
+  var r = await ERP.helperAsk("act", { url: "https://sell.smartstore.naver.com/#/products/origin-list", ops: viaSearchOps(ch) });
+  var res = r.results, last = res[res.length - 1] || {}, url = last.url || "", origin = (url.match(/products\/edit\/(\d+)/) || [])[1];
+  if (!origin) throw new Error("목록에서 수정 화면으로 못 들어감 (" + res.map(function (x, i) { return x && !x.ok ? i + ":" + (x.error || "실패") : ""; }).filter(Boolean).join(", ") + ")");
+  return { origin: origin, attrs: parseAttrs((res[res.length - 2] || {}).html || ""), text: last.text || "" };
 }
 function editUrl(origin) { return "https://sell.smartstore.naver.com/#/products/edit/" + origin; }
 async function readPage(origin) {
@@ -68,8 +79,9 @@ function dl(s, tag) { var rows = (s.log || []).map(function (x) { return [x.at, 
 async function one(t, s, opts) {
   var origin = (s.map || {})[t.ch] || t.origin; var row = { at: new Date().toISOString(), ch: t.ch, origin: origin, name: t.name };
   try {
-    if (!origin) throw new Error("원상품번호 모름");
-    var p = await readPage(origin);
+    var p;
+    if (origin) p = await readPage(origin);
+    else { p = await readViaSearch(t.ch); origin = row.origin = p.origin; s.map = s.map || {}; s.map[t.ch] = origin; save(s); }
     if (!p.attrs.length) { row.status = "속성칸 없음"; return row; }
     var c = await choose(t, p.attrs); row.pick = c.pick; row.why = c.why;
     if (!Object.keys(c.pick).length) { row.status = "고를 값 없음"; return row; }
@@ -83,17 +95,34 @@ async function one(t, s, opts) {
 ERP.acts.ssattrtest = async function () {
   if (!(ERP.helperOn && ERP.helperOn())) { ERP.toast("크롬 확장 ‘로우나 도우미’가 꺼져 있어요."); return; }
   var s = st(); s.map = s.map || {}; s.map["12709352927"] = "12652259462"; save(s);
-  ERP.toast("시험 1개를 진행해요(약 1~2분). 끝나면 기록 파일이 자동으로 받아져요.");
+  ERP.toast("시험 2개를 진행해요(약 2~4분): ① 발렌티노 저장까지 ② 비비안 니트는 목록 검색으로 찾아 미리보기만. 끝나면 기록 파일이 자동으로 받아져요.");
   var t = { ch: "12709352927", name: "[국내배송] 발렌티노 크로스백 V로고 여성 버킷백 4W2P0Z87 VNL 098", cat: "패션잡화>여성가방>크로스백", brand: "발렌티노" };
   var row = await one(t, s, {}); log(s, row);
-  try { var L = await ERP.helperAsk("act", { url: "https://sell.smartstore.naver.com/#/products/origin-list", ops: [{ op: "waitText", text: "상품번호", ms: 30000, gap: 0 }, { op: "wait", ms: 2000 }, { op: "html", sel: "body", max: 400000 }, { op: "text" }] });
-    ERP.downloadBlob("스마트스토어_목록진단.json", new Blob([JSON.stringify(L)], { type: "application/json" })); } catch (e) { ERP.toast("목록 진단 실패: " + e.message); }
-  dl(s, "시험"); ERP.toast("시험 결과: " + row.status + (row.err ? " — " + row.err : "")); ERP.render();
+  var t2 = { ch: "11576295315", name: "비비안웨스트우드 베아 반팔 니트 로즈 1803002Q Y001A H409", cat: "패션의류>여성의류>니트>풀오버", brand: "비비안웨스트우드" };
+  var row2 = await one(t2, s, { dry: true }); log(s, row2);
+  dl(s, "시험"); ERP.toast("시험 결과: ①" + row.status + (row.err ? " — " + row.err : "") + " / ②" + row2.status + (row2.err ? " — " + row2.err : "")); ERP.render();
+};
+
+/* 전체 실행: 팔린 상품부터 차례로. 이미 처리한 상품은 건너뜀. 50개마다 기록 파일 자동 저장. */
+ERP.acts.ssattrrun = async function (btn) {
+  if (running) { ERP.toast("이미 진행 중이에요."); return; }
+  if (!(ERP.helperOn && ERP.helperOn())) { ERP.toast("크롬 확장 ‘로우나 도우미’가 꺼져 있어요."); return; }
+  var lim = Number((btn && btn.dataset && btn.dataset.limit) || 0) || Infinity;
+  running = true; stopReq = false; var s = st(), done = {}; (s.log || []).forEach(function (x) { if (/저장 시도 완료|고를 값 없음|속성칸 없음/.test(x.status)) done[x.ch] = 1; });
+  var list = (await targets()).filter(function (t) { return !done[t.ch]; }), n = 0, fails = 0;
+  ERP.toast("상품속성 자동입력 시작: 남은 " + list.length + "개 중 " + (lim === Infinity ? "전부" : lim + "개"));
+  for (var i = 0; i < list.length && n < lim && !stopReq; i++) {
+    var row = await one(list[i], s, {}); log(s, row); n++; ERP.render();
+    fails = row.status === "실패" ? fails + 1 : 0;
+    if (fails >= 5) { ERP.toast("⚠ 5개 연속 실패라 멈췄어요. 기록을 확인해 주세요."); break; }
+    if (n % 50 === 0) dl(s, new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-"));
+  }
+  running = false; dl(s, "끝_" + new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")); ERP.toast("상품속성 자동입력: " + n + "개 처리했어요."); ERP.render();
 };
 ERP.acts.ssattrstop = function () { stopReq = true; ERP.toast("지금 상품까지만 하고 멈춰요."); };
 function render() {
   var s = st(), L = s.log || [], cnt = {}; L.forEach(function (x) { cnt[x.status] = (cnt[x.status] || 0) + 1; });
-  return '<div class="head"><div><h1>스마트스토어 상품속성</h1><p>사방넷 대량등록 상품(하이엔드 제외) 6,826개의 상품속성을 자동으로 채워요 · 팔린 상품 먼저</p></div><div class="tools"><button class="btn pri" data-act="ssattrtest">시험 1개 실행</button><button class="btn" data-act="ssattrstop">멈추기</button></div></div>' +
+  return '<div class="head"><div><h1>스마트스토어 상품속성</h1><p>사방넷 대량등록 상품(하이엔드 제외) 6,826개의 상품속성을 자동으로 채워요 · 팔린 상품 먼저</p></div><div class="tools"><button class="btn" data-act="ssattrtest">시험 실행</button><button class="btn pri" data-act="ssattrrun" data-limit="181">팔린 상품 181개 실행</button><button class="btn" data-act="ssattrrun">전체 실행</button><button class="btn" data-act="ssattrstop">멈추기</button></div></div>' +
     '<div class="tiles">' + Object.keys(cnt).map(function (k) { return ERP.tile(esc(k), cnt[k] + "개", ""); }).join("") + "</div>" +
     '<div class="table-wrap"><table><thead><tr><th>시각</th><th>채널번호</th><th>결과</th><th>상품명</th><th>넣은 속성</th><th>메모</th></tr></thead><tbody>' + L.slice(-50).reverse().map(function (x) { return "<tr><td class=num>" + esc((x.at || "").slice(5, 16).replace("T", " ")) + "</td><td class=num>" + esc(x.ch) + "</td><td>" + esc(x.status) + "</td><td class=name>" + esc(x.name) + "</td><td>" + esc(Object.keys(x.pick || {}).map(function (k) { return k + ": " + x.pick[k].join(","); }).join(" · ")) + "</td><td><small>" + esc((x.err || "") + " " + (x.saveMsg || []).join(" / ")) + "</small></td></tr>"; }).join("") + "</tbody></table></div>";
 }
