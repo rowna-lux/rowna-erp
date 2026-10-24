@@ -11,15 +11,16 @@ function save(s) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (
 var T = null, running = false, stopReq = false;
 async function targets() { if (T) return T; var r = await fetch("data/ss_targets.json?v=" + Date.now()); var j = await r.json(); T = j.rows.map(function (a) { return { ch: a[0], code: a[1], name: a[2], cat: a[3], brand: a[4], sold: a[5] }; }); return T; }
 
+function clean(x) { return String(x || "").replace(/\s+/g, " ").replace(/\s*추천$/, "").trim(); }   /* 네이버가 붙이는 '추천' 표시는 떼고 봄 */
 function parseAttrs(html) {
   var doc = new DOMParser().parseFromString(html, "text/html"), out = [];
   doc.querySelectorAll("#attribute-table tr").forEach(function (tr) {
     var th = tr.querySelector("th[scope=row]"), td = tr.querySelector("td"); if (!th || !td) return;
-    var name = th.textContent.replace(/\s+/g, " ").trim();
+    var name = clean(th.textContent);
     var boxes = td.querySelectorAll("label input[type=checkbox]");
-    if (boxes.length) { out.push({ name: name, type: "multi", options: Array.prototype.map.call(boxes, function (b) { return b.parentElement.textContent.trim(); }), selected: Array.prototype.filter.call(boxes, function (b) { return /ng-not-empty/.test(b.className) || b.hasAttribute("checked"); }).map(function (b) { return b.parentElement.textContent.trim(); }) }); return; }
+    if (boxes.length) { out.push({ name: name, type: "multi", options: Array.prototype.map.call(boxes, function (b) { return clean(b.parentElement.textContent); }), selected: Array.prototype.filter.call(boxes, function (b) { return /ng-not-empty/.test(b.className) || b.hasAttribute("checked"); }).map(function (b) { return clean(b.parentElement.textContent); }) }); return; }
     var opts = td.querySelectorAll(".selectize-dropdown-content .option[data-value]");
-    if (opts.length) { var cur = td.querySelector(".selectize-dropdown-content .option.selected") || td.querySelector(".selectize-input .item, .selectize-input .option"), ct = cur ? cur.textContent.trim() : ""; out.push({ name: name, type: "single", options: Array.prototype.filter.call(opts, function (o) { return o.getAttribute("data-value"); }).map(function (o) { return { id: o.getAttribute("data-value"), text: o.textContent.trim() }; }), selected: ct && ct !== "선택" ? [ct] : [] }); }
+    if (opts.length) { var cur = td.querySelector(".selectize-dropdown-content .option.selected") || td.querySelector(".selectize-input .item, .selectize-input .option"), ct = cur ? clean(cur.textContent) : ""; out.push({ name: name, type: "single", options: Array.prototype.filter.call(opts, function (o) { return o.getAttribute("data-value"); }).map(function (o) { return { id: o.getAttribute("data-value"), text: clean(o.textContent) }; }), selected: ct && ct !== "선택" ? [ct] : [] }); }
   });
   return out;
 }
@@ -73,6 +74,7 @@ async function readPage(origin) {
   return { attrs: html ? parseAttrs(html) : [], text: text };
 }
 async function writePage(origin, attrs, pick) {
+  var opt = [];   /* '추천' 표시 유무에 따라 하나만 맞으면 되는 체크들 */
   var ops = [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "wait", ms: 1500 },
     /* 2~7: 상세설명 스마트에디터 ONE 변환 → 뜬 창에서 [등록] (이미 변환된 상품은 버튼이 없어 자동으로 건너뜀) */
     { op: "click", text: "으로 변환하기 (1회성)" }, { op: "switchNew", ms: 12000, urlHas: "editor", need: 2 },
@@ -80,7 +82,7 @@ async function writePage(origin, attrs, pick) {
     { op: "closed", ms: 20000, need: 5 }, { op: "switchBack" }, { op: "wait", ms: 3000 }];
   Object.keys(pick).forEach(function (k) { var a = attrs.filter(function (x) { return x.name === k; })[0];
     pick[k].forEach(function (v) {
-      if (a.type === "multi") ops.push({ op: "check", near: k, value: v });
+      if (a.type === "multi") { [v, v + " 추천", v + "추천"].forEach(function (vv) { opt.push(ops.length); ops.push({ op: "check", near: k, value: vv }); }); }
       else { var o = a.options.filter(function (x) { return x.text === v; })[0]; ops.push({ op: "click", within: k, sel: ".selectize-input" }); ops.push({ op: "click", within: k, sel: '.selectize-dropdown-content .option[data-value="' + o.id + '"]' }); }
     }); });
   ops.push({ op: "html", sel: "#attribute-table", max: 200000 });
@@ -90,7 +92,7 @@ async function writePage(origin, attrs, pick) {
   var applied = Object.keys(pick).every(function (k) { var a = after.filter(function (x) { return x.name === k; })[0]; return a && pick[k].every(function (v) { return a.selected.indexOf(v) >= 0; }); });
   var t1 = "", t2 = (res[res.length - 1] || {}).text || "";
   var conv = !res[2].ok ? "변환 버튼 없음(이미 변환)" : res[6] && res[6].ok ? "변환 완료" : "변환 실패(" + [3, 4, 5, 6].map(function (i) { return res[i] && !res[i].ok && !res[i].skipped ? i + ":" + (res[i].error || "실패") : ""; }).filter(Boolean).join(",") + ")";
-  return { dialogs: r.dialogs || [], conv: conv, applied: applied, opsFailed: res.filter(function (x, i) { return x && !x.ok && !x.skipped && (i < 2 || i > 8); }).map(function (x) { return x.error; }), saveMsg: ((t1 + "\n" + t2).match(/[^\n]*(수정되었|저장되었|완료되었|오류|실패|입력해 주세요|확인해 주세요)[^\n]*/g) || []).slice(0, 4) };
+  return { dialogs: r.dialogs || [], conv: conv, applied: applied, opsFailed: res.filter(function (x, i) { return x && !x.ok && !x.skipped && (i < 2 || i > 8) && opt.indexOf(i) < 0; }).map(function (x) { return x.error; }), saveMsg: ((t1 + "\n" + t2).match(/[^\n]*(수정되었|저장되었|완료되었|오류|실패|입력해 주세요|확인해 주세요)[^\n]*/g) || []).slice(0, 4) };
 }
 function log(s, row) { s.log = (s.log || []).concat([row]).slice(-3000); save(s); }
 function dl(s, tag) { var rows = (s.log || []).map(function (x) { return [x.at, x.ch, x.origin || "", x.status, x.name, JSON.stringify(x.pick || {}), x.why || "", x.rex || "", x.conv || "", (x.err || "") + (x.saveMsg ? " " + x.saveMsg.join(" / ") : "")].map(function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(","); });
