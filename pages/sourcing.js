@@ -146,7 +146,7 @@ function render() {
 function head(n) {
   var w = ERP.canWrite("price_items");
   var h = '<div class="head sc-head"><div><h1>스마트스토어 소싱</h1><p>칸을 눌러 바로 입력 · Enter/Tab/방향키 이동 · 여러 칸 Ctrl+V · 칸을 벗어나면 자동 저장 · 흰 칸=입력, 회색=자동계산, 분홍=핵심 결과</p></div><div class="tools"><button class="btn" data-act="scrail">' + (document.body.classList.contains("rail-hide") ? "메뉴 보이기" : "메뉴 숨기고 넓게") + '</button>' +
-    (w ? '<button class="btn pri" data-act="scsave" title="지금 바로 저장 (Ctrl+S) · 입력하면 자동으로도 저장돼요">💾 저장</button>' : "") + ('<button class="btn' + (v.scCols ? " pri" : "") + '" data-act="sccols">열 숨기기·보이기' + (LAY.h.length ? " (" + LAY.h.length + "개 숨김)" : "") + "</button>") + (w ? '<button class="btn" data-act="sccafe" title="메투 카페 여주메니아 판매글 주소를 넣으면 상품 정보를 채워요">메투 글 추가</button><button class="btn" data-act="scautofill" title="링크는 있는데 빈칸이 있는 줄을 자동으로 채워요">링크로 빈칸 채우기</button><button class="btn" data-act="sccheck" title="모든 링크의 가격·재고를 지금 확인해요(ERP 창이 켜져 있으면 3시간마다 자동)">가격·재고 지금 확인</button>' + AUTO.badge() : "") + (w ? '<button class="btn" data-act="scimport">소싱폼 엑셀 올리기</button>' : "") + '<button class="btn" data-act="scexport">엑셀로 받기</button>' + (w ? '<button class="btn" data-act="scsold" id="scso" disabled title="왼쪽 줄 번호를 누른 뒤 사용">줄 번호 눌러 품절 표시</button>' : "") + (ERP.canWrite("price_items") ? '<button class="btn danger" data-act="scdel" id="scdel" disabled>선택 줄 삭제</button>' : "") + "</div></div>";
+    (w ? '<button class="btn pri" data-act="scsave" title="지금 바로 저장 (Ctrl+S) · 입력하면 자동으로도 저장돼요">💾 저장</button>' : "") + ('<button class="btn' + (v.scCols ? " pri" : "") + '" data-act="sccols">열 숨기기·보이기' + (LAY.h.length ? " (" + LAY.h.length + "개 숨김)" : "") + "</button>") + (w ? '<button class="btn" data-act="scattrdiag" title="스마트스토어 상품속성 자동입력 준비: 수정 화면 구조 진단">속성 진단</button><button class="btn" data-act="sccafe" title="메투 카페 여주메니아 판매글 주소를 넣으면 상품 정보를 채워요">메투 글 추가</button><button class="btn" data-act="scautofill" title="링크는 있는데 빈칸이 있는 줄을 자동으로 채워요">링크로 빈칸 채우기</button><button class="btn" data-act="sccheck" title="모든 링크의 가격·재고를 지금 확인해요(ERP 창이 켜져 있으면 3시간마다 자동)">가격·재고 지금 확인</button>' + AUTO.badge() : "") + (w ? '<button class="btn" data-act="scimport">소싱폼 엑셀 올리기</button>' : "") + '<button class="btn" data-act="scexport">엑셀로 받기</button>' + (w ? '<button class="btn" data-act="scsold" id="scso" disabled title="왼쪽 줄 번호를 누른 뒤 사용">줄 번호 눌러 품절 표시</button>' : "") + (ERP.canWrite("price_items") ? '<button class="btn danger" data-act="scdel" id="scdel" disabled>선택 줄 삭제</button>' : "") + "</div></div>";
   if (n) h += '<div class="tools filters">' + ERP.chips("data-view", "scF=" + v.scF, [["scF=all", "전체 " + n.all], ["scF=change", "가격 변경 필요 " + n.change], ["scF=warn", "손해·저마진 " + n.warn], ["scF=link", "매입가 변동 " + n.link], ["scF=nocost", "원가 없음 " + n.nocost]]) + '<input class="ctl search" data-search="scQ" type="search" aria-label="검색" placeholder="품번·브랜드·상품명·매입처·코드" value="' + esc(v.scQ) + '">' + (v.scSort ? '<button class="btn sm" data-act="scunsort">정렬 해제</button>' : "") + "</div>";
   return h;
 }
@@ -521,6 +521,24 @@ ERP.acts.sccafe = async function () {
   var made = await addRows(urls.length, "하이엔드"); if (!made.length) return;
   v.scTab = "하이엔드"; ERP.render();
   for (var i = 0; i < made.length; i++) { var it = Object.assign({}, made[i], { buyLink: urls[i].split("&referrer")[0], vendor: "메투(여주메니아)" }); ERP.DATA.price_items.set(it.id, it); queueSave(it); await CAFE.fill(it.id, it.buyLink); }
+};
+
+
+/* ---------- 스마트스토어 상품속성 자동입력 (1단계: 화면 구조 진단) ----------
+   로우나 도우미 2.1의 act로 상품 수정 화면을 열어 '상품속성' 부분 구조를 파일로 받아요. 이 파일로 자동입력 규칙을 맞춰요. */
+ERP.acts.scattrdiag = async function () {
+  if (!(ERP.helperOn && ERP.helperOn())) { ERP.toast("크롬 확장 ‘로우나 도우미’가 꺼져 있어요."); return; }
+  var no = (prompt("시험할 스마트스토어 상품번호(원상품번호)를 넣어 주세요") || "").replace(/\D/g, ""); if (!no) return;
+  ERP.toast("상품 수정 화면을 여는 중… 30~60초 걸려요. 화면이 잠깐 열렸다 닫혀요.");
+  try {
+    var r = await ERP.helperAsk("act", { url: "https://sell.smartstore.naver.com/#/products/edit/" + no, visible: true, ops: [
+      { op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "wait", ms: 2000 },
+      { op: "html", near: "상품속성", max: 120000 }, { op: "html", near: "카테고리", max: 30000 }, { op: "text" } ] });
+    var blob = new Blob([JSON.stringify(r, null, 1)], { type: "application/json" });
+    ERP.downloadBlob("스마트스토어_속성진단_" + no + ".json", blob);
+    var ok = r.results && r.results[0] && r.results[0].ok;
+    ERP.toast(ok ? "진단 파일을 받았어요. Claude에게 보내 주세요." : "‘상품속성’ 화면을 못 찾았어요. 진단 파일을 Claude에게 보내 주세요.");
+  } catch (e) { ERP.toast("⚠ " + e.message); }
 };
 
 /* ---------- 소싱 후보: 등록한 네이버 스토어의 인기순 목록에서 사방넷·ERP와 겹치지 않는 상품 찾기 ---------- */
