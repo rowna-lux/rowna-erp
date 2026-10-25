@@ -59,6 +59,39 @@ async function choose(t, attrs, rex) {
   Object.keys(j.pick || {}).forEach(function (k) { var a = attrs.filter(function (x) { return x.name === k; })[0]; if (!a || a.selected.length) return; var vals = (j.pick[k] || []).filter(function (v) { return a.type === "single" ? a.options.some(function (o) { return o.text === v; }) : a.options.indexOf(v) >= 0; }); if (a.type === "single" || /소재/.test(k)) vals = vals.slice(0, 1); else vals = vals.slice(0, 2); if (vals.length) pick[k] = vals; });
   return { pick: pick, why: j.why || "" };
 }
+/* ---- 태그: 네이버 태그사전에 '등록됨'인 것만, 빈 자리만 채움(최대 10개) ---- */
+var TAGP = [
+  "네이버 스마트스토어 '태그'(검색어) 후보를 만듭니다. 고객이 네이버쇼핑에서 실제로 검색할 만한 짧은 검색어 형태로.",
+  "예(패딩): 남자패딩, 명품패딩, 남자점퍼, 명품자켓, 명품패딩자켓, 겨울패딩, 남자겨울아우터 / (니트): 남자니트, 명품니트, 남자스웨터.",
+  "규칙: 띄어쓰기 없이, 2~10글자. 브랜드명(한글·영문)·스토어명(로우나)·품번 금지. 상품과 직접 관련된 것만(성별+아이템, 명품+아이템, 스타일·소재·계절·용도+아이템, 선물용 등).",
+  "서로 다른 20개를 중요한 순서로. 출력은 json으로: {\"tags\":[\"...\"]}"
+].join("\n");
+async function makeTags(t, rex, have) {
+  var r = await ERP.helperAsk("ai", { body: { response_format: { type: "json_object" }, messages: [{ role: "user", content: TAGP + "\n\n상품명: " + t.name + "\n카테고리: " + t.cat + "\n브랜드(쓰지 말 것): " + t.brand + (rex && rex.found ? "\n렉스몬드 정보:\n" + rex.info.slice(0, 1200) : "") + (have && have.length ? "\n이미 있는 태그(제외): " + have.join(", ") : "") }] } });
+  var j = JSON.parse(r.content || "{}"), b = String(t.brand || "").replace(/\s+/g, ""), seen = {};
+  return (j.tags || []).map(function (x) { return String(x).replace(/[#\s]/g, ""); }).filter(function (x) { if (!x || x.length > 15 || seen[x] || (b && x.indexOf(b) >= 0) || /로우나/.test(x)) return false; seen[x] = 1; return true; });
+}
+var TAGSEL = "#anchor-tag .input-tag select";
+function parseTagCheck(text) {
+  var m = String(text || "").match(/검색 적용 태그 확인[\s\S]{0,600}?등록됨\s*([\s\S]*?)(태그사전에 등록되어 있지 않습니다|자세한 검색최적화|$)/), out = [];
+  if (m) (m[1].match(/#[^#\s]+/g) || []).forEach(function (x) { out.push(x.slice(1)); });
+  return out;
+}
+async function tagProbe(origin, cands) {   /* 저장하지 않는 시험: 기존 태그를 잠깐 빼고 후보를 넣어 [검색에 적용되는 태그 확인] */
+  var r = await ERP.helperAsk("act", { url: editUrl(origin), ops: [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "wait", ms: 1500 },
+    { op: "click", sel: "#anchor-tag .title-line" }, { op: "wait", ms: 2000 }, { op: "selzGet", sel: TAGSEL }] });
+  var have = (r.results[4] && r.results[4].labels) || [];
+  if (have.length >= 10 || !cands.length) return { have: have, reg: [] };
+  var reg = [], pool = cands.filter(function (x) { return have.indexOf(x) < 0; });
+  for (var round = 0; round < 2 && pool.length && reg.length < 10 - have.length; round++) {
+    var batch = pool.splice(0, 10);
+    var q = await ERP.helperAsk("act", { url: editUrl(origin), ops: [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "wait", ms: 1500 },
+      { op: "click", sel: "#anchor-tag .title-line" }, { op: "wait", ms: 2000 }, { op: "selzRemove", sel: TAGSEL, values: have },
+      { op: "selzAdd", sel: TAGSEL, values: batch, max: 10 }, { op: "click", sel: '[data-nclicks-code="sch.tagcheck"]' }, { op: "wait", ms: 3500 }, { op: "text" }] });
+    parseTagCheck((q.results[8] || {}).text).forEach(function (x) { if (batch.indexOf(x) >= 0 && reg.indexOf(x) < 0) reg.push(x); });
+  }
+  return { have: have, reg: reg.slice(0, 10 - have.length) };
+}
 /* 원상품번호를 몰라도: 상품 조회/수정 목록에서 채널상품번호로 검색 → [수정] 클릭 → 수정 화면으로 이동 (주소에서 원상품번호를 알아냄) */
 function viaSearchOps(ch) { return [{ op: "waitText", text: "상품목록", ms: 30000, gap: 0 }, { op: "wait", ms: 1500 },
   { op: "fill", sel: 'textarea[ng-model="vm.searchFormData.searchKeyword"]', value: String(ch) }, { op: "click", text: "검색", sel: null }, { op: "wait", ms: 3500 },
@@ -77,7 +110,7 @@ async function readPage(origin) {
   if (!ok) throw new Error(/존재하지|없는 상품/.test(text) ? "수정 화면 없음(번호 확인 필요)" : "상품속성 화면을 못 찾음");
   return { attrs: html ? parseAttrs(html) : [], text: text };
 }
-async function writePage(origin, attrs, pick) {
+async function writePage(origin, attrs, pick, tags) {
   var opt = [];   /* '추천' 표시 유무에 따라 하나만 맞으면 되는 체크들 */
   var ops = [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "wait", ms: 1500 },
     /* 2~7: 상세설명 스마트에디터 ONE 변환 → 뜬 창에서 [등록] (이미 변환된 상품은 버튼이 없어 자동으로 건너뜀) */
@@ -89,6 +122,7 @@ async function writePage(origin, attrs, pick) {
       if (a.type === "multi") { [v, v + " 추천", v + "추천"].forEach(function (vv) { opt.push(ops.length); ops.push({ op: "check", near: k, value: vv }); }); }
       else { var o = a.options.filter(function (x) { return x.text === v; })[0]; ops.push({ op: "click", within: k, sel: ".selectize-input" }); ops.push({ op: "click", within: k, sel: '.selectize-dropdown-content .option[data-value="' + o.id + '"]' }); }
     }); });
+  if (tags && tags.length) { opt.push(ops.length); ops.push({ op: "click", sel: "#anchor-tag .title-line" }); opt.push(ops.length); ops.push({ op: "wait", ms: 2000 }); opt.push(ops.length); ops.push({ op: "selzAdd", sel: TAGSEL, values: tags, max: 10 }); opt.push(ops.length); ops.push({ op: "selzGet", sel: TAGSEL }); }
   ops.push({ op: "html", sel: "#attribute-table", max: 200000 });
   ops.push({ op: "click", text: "저장하기" }, { op: "wait", ms: 5000 }, { op: "text" });
   var r = await ERP.helperAsk("act", { url: editUrl(origin), ops: ops });
@@ -96,11 +130,12 @@ async function writePage(origin, attrs, pick) {
   var applied = Object.keys(pick).every(function (k) { var a = after.filter(function (x) { return x.name === k; })[0]; return a && pick[k].every(function (v) { return a.selected.indexOf(v) >= 0; }); });
   var t1 = "", t2 = (res[res.length - 1] || {}).text || "";
   var conv = !res[2].ok ? "변환 버튼 없음(이미 변환)" : res[6] && res[6].ok ? "변환 완료" : "변환 실패(" + [3, 4, 5, 6].map(function (i) { return res[i] && !res[i].ok && !res[i].skipped ? i + ":" + (res[i].error || "실패") : ""; }).filter(Boolean).join(",") + ")";
-  return { dialogs: r.dialogs || [], conv: conv, applied: applied, opsFailed: res.filter(function (x, i) { return x && !x.ok && !x.skipped && (i < 2 || i > 8) && opt.indexOf(i) < 0; }).map(function (x) { return x.error; }), saveMsg: ((t1 + "\n" + t2).match(/[^\n]*(수정되었|저장되었|완료되었|오류|실패|입력해 주세요|확인해 주세요)[^\n]*/g) || []).slice(0, 4) };
+  var tg = res.filter(function (x) { return x && x.labels; }).slice(-1)[0];
+  return { tagsNow: tg ? tg.labels : null, dialogs: r.dialogs || [], conv: conv, applied: applied, opsFailed: res.filter(function (x, i) { return x && !x.ok && !x.skipped && (i < 2 || i > 8) && opt.indexOf(i) < 0; }).map(function (x) { return x.error; }), saveMsg: ((t1 + "\n" + t2).match(/[^\n]*(수정되었|저장되었|완료되었|오류|실패|입력해 주세요|확인해 주세요)[^\n]*/g) || []).slice(0, 4) };
 }
 function log(s, row) { s.log = (s.log || []).concat([row]).slice(-3000); save(s); }
-function dl(s, tag) { var rows = (s.log || []).map(function (x) { return [x.at, x.ch, x.origin || "", x.status, x.name, JSON.stringify(x.pick || {}), x.why || "", x.rex || "", x.conv || "", (x.err || "") + (x.saveMsg ? " " + x.saveMsg.join(" / ") : "")].map(function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(","); });
-  ERP.downloadBlob("스마트스토어_속성입력기록_" + tag + ".csv", new Blob(["﻿시각,채널상품번호,원상품번호,결과,상품명,넣은속성,AI메모,렉스몬드,에디터변환,오류/저장메시지\n" + rows.join("\n")], { type: "text/csv" })); }
+function dl(s, tag) { var rows = (s.log || []).map(function (x) { return [x.at, x.ch, x.origin || "", x.status, x.name, JSON.stringify(x.pick || {}), x.why || "", x.rex || "", x.conv || "", (x.tags || []).join(" "), (x.err || "") + (x.saveMsg ? " " + x.saveMsg.join(" / ") : "")].map(function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(","); });
+  ERP.downloadBlob("스마트스토어_속성입력기록_" + tag + ".csv", new Blob(["﻿시각,채널상품번호,원상품번호,결과,상품명,넣은속성,AI메모,렉스몬드,에디터변환,추가태그,오류/저장메시지\n" + rows.join("\n")], { type: "text/csv" })); }
 
 async function one(t, s, opts) {
   var origin = (s.map || {})[t.ch] || t.origin; var row = { at: new Date().toISOString(), ch: t.ch, origin: origin, name: t.name };
@@ -108,15 +143,18 @@ async function one(t, s, opts) {
     var p;
     if (origin) p = await readPage(origin);
     else { p = await readViaSearch(t.ch); origin = row.origin = p.origin; s.map = s.map || {}; s.map[t.ch] = origin; save(s); }
-    var needConv = /으로 변환하기/.test(p.text || ""), c = { pick: {}, why: "속성칸 없음" };
+    var needConv = /으로 변환하기/.test(p.text || ""), c = { pick: {}, why: "속성칸 없음" }, rex = null;
     if (p.attrs.length && p.attrs.some(function (a) { return !a.selected.length; })) {
-      var rex = await rexInfo(t.code); row.rex = rex.found ? rex.url : "못 찾음(" + rex.why + ")";
+      rex = await rexInfo(t.code); row.rex = rex.found ? rex.url : "못 찾음(" + rex.why + ")";
       c = await choose(t, p.attrs, rex);
     }
-    row.pick = c.pick; row.why = c.why; row.v = 4;
-    if (!Object.keys(c.pick).length && !needConv) { row.status = "할 일 없음(이미 입력·변환됨)"; return row; }
+    row.pick = c.pick; row.why = c.why; row.v = 5;
+    var tp = { have: [], reg: [] };
+    try { var cands = await makeTags(t, typeof rex !== "undefined" ? rex : null, []); tp = await tagProbe(origin, cands); } catch (e) { row.tagErr = e.message; }
+    row.tags = tp.reg; row.tagsHad = tp.have.length;
+    if (!Object.keys(c.pick).length && !needConv && !tp.reg.length) { row.status = "할 일 없음(이미 입력·변환됨)"; return row; }
     if (opts.dry) { row.status = "미리보기(저장 안 함)"; return row; }
-    var w = await writePage(origin, p.attrs, c.pick); row.saveMsg = w.saveMsg; row.conv = w.conv; if (w.dialogs.length) row.saveMsg = w.dialogs.concat(row.saveMsg || []);
+    var w = await writePage(origin, p.attrs, c.pick, tp.reg); row.tagsNow = w.tagsNow; row.saveMsg = w.saveMsg; row.conv = w.conv; if (w.dialogs.length) row.saveMsg = w.dialogs.concat(row.saveMsg || []);
     var convBad = needConv && w.conv !== "변환 완료";
     row.status = w.applied && !w.opsFailed.length && !convBad ? "저장 완료" : "일부 실패"; if (w.opsFailed.length) row.err = w.opsFailed.join(" / ");
   } catch (e) { row.status = "실패"; row.err = e.message; if (/멈춤|멈췄/.test(e.message)) stopReq = true; }
@@ -126,9 +164,9 @@ async function one(t, s, opts) {
 ERP.acts.ssattrtest = async function () {
   if (!(ERP.helperOn && ERP.helperOn())) { ERP.toast("크롬 확장 ‘로우나 도우미’가 꺼져 있어요."); return; }
   var s = st(), all = await targets();
-  ERP.toast("시험 2개(메종키츠네 니트·호카 트레킹화): 렉스몬드 확인 → 스마트에디터 ONE 변환 → 속성 저장. 약 3~5분, 끝나면 기록 파일이 자동으로 받아져요.");
+  ERP.toast("시험 2개(메종키츠네 니트·클락스 슬리퍼): 렉스몬드 확인 → 스마트에디터 ONE 변환 → 속성 저장. 약 3~5분, 끝나면 기록 파일이 자동으로 받아져요.");
   var out = [];
-  for (var ch of ["12346633813", "12709468656"]) { var t = all.filter(function (x) { return x.ch === ch; })[0]; if (!t) { out.push(ch + ": 대상 목록에 없음"); continue; } var row = await one(t, s, {}); log(s, row); out.push(row.status + (row.conv ? "/" + row.conv : "") + (row.err ? " — " + row.err : "")); ERP.render(); }
+  for (var ch of ["12346633813", "11752408632"]) { var t = all.filter(function (x) { return x.ch === ch; })[0]; if (!t) { out.push(ch + ": 대상 목록에 없음"); continue; } var row = await one(t, s, {}); log(s, row); out.push(row.status + (row.conv ? "/" + row.conv : "") + (row.err ? " — " + row.err : "")); ERP.render(); }
   dl(s, "시험2"); ERP.toast("시험 결과: " + out.join(" | ")); ERP.render();
 };
 
@@ -139,8 +177,8 @@ ERP.acts.ssattrrun = async function (btn) {
   var lim = Number((btn && btn.dataset && btn.dataset.limit) || 0) || Infinity;
   running = true; stopReq = false; var s = st(), done = {}; (s.log || []).forEach(function (x) { if (x.v >= 2 && /저장 완료|할 일 없음/.test(x.status)) done[x.ch] = Math.max(done[x.ch] || 0, x.v); });
   var SHOE = /신발|화$|화>|샌들|슬리퍼|부츠|힐|로퍼|스니커즈|뮬|플랫/;   /* 신발은 굽높이 규칙(v3) 전에 한 것을 한 번 더 봄 */
-  var list = (await targets()).filter(function (t) { var d = done[t.ch] || 0; return !(d >= 3 || (d === 2 && !SHOE.test(t.cat || ""))); }), n = 0, fails = 0;
-  if (btn && btn.dataset && btn.dataset.redo) { list = (await targets()).filter(function (t) { return (done[t.ch] || 0) > 0 && done[t.ch] < 4; }); }   /* 예전 기준으로 한 상품의 빈 칸 다시 채우기 */
+  var list = (await targets()).filter(function (t) { var d = done[t.ch] || 0; return !(d >= 5); }), n = 0, fails = 0;
+  if (btn && btn.dataset && btn.dataset.redo) { list = (await targets()).filter(function (t) { return (done[t.ch] || 0) > 0 && done[t.ch] < 5; }); }   /* 예전 기준으로 한 상품의 빈 칸 다시 채우기 */
   if (btn && btn.dataset && btn.dataset.sold) { list = list.filter(function (t) { return t.sold > 0; }); lim = Infinity; }
   ERP.toast("상품속성 자동입력 시작: 남은 " + list.length + "개 중 " + (lim === Infinity ? "전부" : lim + "개"));
   for (var i = 0; i < list.length && n < lim && !stopReq; i++) {
@@ -154,9 +192,9 @@ ERP.acts.ssattrrun = async function (btn) {
 ERP.acts.ssattrstop = function () { stopReq = true; ERP.toast("지금 상품까지만 하고 멈춰요."); };
 function render() {
   var s = st(), L = s.log || [], cnt = {}; L.forEach(function (x) { cnt[x.status] = (cnt[x.status] || 0) + 1; });
-  return '<div class="head"><div><h1>스마트스토어 상품속성</h1><p>사방넷 대량등록 상품(하이엔드 제외) 6,826개의 상품속성을 자동으로 채워요 · 팔린 상품 먼저</p></div><div class="tools"><button class="btn" data-act="ssattrtest">시험 실행</button><button class="btn pri" data-act="ssattrrun" data-sold="1">팔린 상품 181개 실행</button><button class="btn" data-act="ssattrrun">전체 실행</button><button class="btn" data-act="ssattrrun" data-redo="1">이전 상품 빈 칸 채우기</button><button class="btn" data-act="ssattrstop">멈추기</button></div></div>' +
+  return '<div class="head"><div><h1>스마트스토어 상품속성</h1><p>사방넷 대량등록 상품(하이엔드 제외) 6,826개의 상품속성을 자동으로 채워요 · 팔린 상품 먼저</p></div><div class="tools"><button class="btn" data-act="ssattrtest">시험 실행</button><button class="btn pri" data-act="ssattrrun" data-sold="1">팔린 상품 181개 실행</button><button class="btn" data-act="ssattrrun">전체 실행</button><button class="btn" data-act="ssattrrun" data-redo="1">이전 상품 빈 칸·태그 채우기</button><button class="btn" data-act="ssattrstop">멈추기</button></div></div>' +
     '<div class="tiles">' + Object.keys(cnt).map(function (k) { return ERP.tile(esc(k), cnt[k] + "개", ""); }).join("") + "</div>" +
-    '<div class="table-wrap"><table><thead><tr><th>시각</th><th>채널번호</th><th>결과</th><th>상품명</th><th>넣은 속성</th><th>메모</th></tr></thead><tbody>' + L.slice(-50).reverse().map(function (x) { return "<tr><td class=num>" + esc((x.at || "").slice(5, 16).replace("T", " ")) + "</td><td class=num>" + esc(x.ch) + "</td><td>" + esc(x.status) + "</td><td class=name>" + esc(x.name) + "</td><td>" + esc(Object.keys(x.pick || {}).map(function (k) { return k + ": " + x.pick[k].join(","); }).join(" · ")) + "</td><td><small>" + esc((x.conv ? "[" + x.conv + "] " : "") + (x.rex ? "[렉스몬드 " + (/^http/.test(x.rex) ? "확인" : x.rex) + "] " : "") + (x.err || "") + " " + (x.saveMsg || []).slice(0, 1).join(" / ")) + "</small></td></tr>"; }).join("") + "</tbody></table></div>";
+    '<div class="table-wrap"><table><thead><tr><th>시각</th><th>채널번호</th><th>결과</th><th>상품명</th><th>넣은 속성</th><th>메모</th></tr></thead><tbody>' + L.slice(-50).reverse().map(function (x) { return "<tr><td class=num>" + esc((x.at || "").slice(5, 16).replace("T", " ")) + "</td><td class=num>" + esc(x.ch) + "</td><td>" + esc(x.status) + "</td><td class=name>" + esc(x.name) + "</td><td>" + esc(Object.keys(x.pick || {}).map(function (k) { return k + ": " + x.pick[k].join(","); }).join(" · ")) + "</td><td><small>" + esc((x.tags && x.tags.length ? "[태그+" + x.tags.length + ": " + x.tags.join(",") + "] " : "") + (x.conv ? "[" + x.conv + "] " : "") + (x.rex ? "[렉스몬드 " + (/^http/.test(x.rex) ? "확인" : x.rex) + "] " : "") + (x.err || "") + " " + (x.saveMsg || []).slice(0, 1).join(" / ")) + "</small></td></tr>"; }).join("") + "</tbody></table></div>";
 }
 ERP.page({ id: "ss-attr", title: "스마트스토어 속성", roles: ["owner", "staff", "ai"], render: render, bind: function () {} });
 })();
