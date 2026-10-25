@@ -89,7 +89,7 @@ async function tagProbe(origin, cands) {   /* 저장하지 않는 시험: 빈 �
     var batch = pool.splice(0, slots);
     var q = await ERP.helperAsk("act", { url: editUrl(origin), ops: [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "wait", ms: 1500 },
       { op: "click", sel: "#anchor-tag .title-line" }, { op: "wait", ms: 2000 },
-      { op: "selzAdd", sel: TAGSEL, values: batch, max: 10 }, { op: "click", sel: '[data-nclicks-code="sch.tagcheck"]' }, { op: "wait", ms: 3500 }, { op: "text" }] });
+      { op: "selzAdd", sel: TAGSEL, values: batch, max: 10, mode: "create", chips: CHIPS + " .choice-label" }, { op: "click", sel: '[data-nclicks-code="sch.tagcheck"]' }, { op: "wait", ms: 3500 }, { op: "text" }] });
     parseTagCheck((q.results[7] || {}).text).forEach(function (x) { if (batch.indexOf(x) >= 0 && reg.indexOf(x) < 0) reg.push(x); });
   }
   return { have: have, reg: reg.slice(0, slots) };
@@ -124,7 +124,7 @@ async function writePage(origin, attrs, pick, tags) {
       if (a.type === "multi") { [v, v + " 추천", v + "추천"].forEach(function (vv) { opt.push(ops.length); ops.push({ op: "check", near: k, value: vv }); }); }
       else { var o = a.options.filter(function (x) { return x.text === v; })[0]; ops.push({ op: "click", within: k, sel: ".selectize-input" }); ops.push({ op: "click", within: k, sel: '.selectize-dropdown-content .option[data-value="' + o.id + '"]' }); }
     }); });
-  if (tags && tags.length) { opt.push(ops.length); ops.push({ op: "click", sel: "#anchor-tag .title-line" }); opt.push(ops.length); ops.push({ op: "wait", ms: 2000 }); opt.push(ops.length); ops.push({ op: "selzAdd", sel: TAGSEL, values: tags, max: 10 }); opt.push(ops.length); ops.push({ op: "html", sel: CHIPS, max: 20000, tagChips: 1 }); }
+  if (tags && tags.length) { opt.push(ops.length); ops.push({ op: "click", sel: "#anchor-tag .title-line" }); opt.push(ops.length); ops.push({ op: "wait", ms: 2000 }); opt.push(ops.length); ops.push({ op: "selzAdd", sel: TAGSEL, values: tags, max: 10, mode: "create", chips: CHIPS + " .choice-label" }); opt.push(ops.length); ops.push({ op: "html", sel: CHIPS, max: 20000, tagChips: 1 }); }
   ops.push({ op: "html", sel: "#attribute-table", max: 200000 });
   ops.push({ op: "click", text: "저장하기" }, { op: "wait", ms: 5000 }, { op: "text" });
   var r = await ERP.helperAsk("act", { url: editUrl(origin), ops: ops });
