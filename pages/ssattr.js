@@ -44,7 +44,7 @@ var PROMPT = [
 function cut(t, a, b, n) { var i = t.indexOf(a); if (i < 0) return ""; var j = b ? t.indexOf(b, i + a.length) : -1; return t.slice(i, j > i ? Math.min(j, i + n) : i + n).trim(); }
 async function rexInfo(code) {
   if (!code) return { found: false, why: "자체상품코드 없음" };
-  var d = await ERP.helperAsk("page", { url: "https://www.rexmonde.com/products/list?search_keyword=" + encodeURIComponent(code), waitFor: "상품정보고시|검색결과|검색 결과|상품이 없", minLen: 300, tries: 15 });
+  var d = await ERP.helperAsk("page", { rexGap: 15, url: "https://www.rexmonde.com/products/list?search_keyword=" + encodeURIComponent(code), waitFor: "상품정보고시|검색결과|검색 결과|상품이 없", minLen: 300, tries: 15 });
   if (!/products\/view/.test(d.url || "")) return { found: false, why: "렉스몬드 검색결과 1건 아님" };
   var t = d.text || "", title = (d.title || "").replace(/\s*\|\s*렉스몬드\s*$/, "");
   if (code && t.indexOf(code) < 0 && title.indexOf(code) < 0) return { found: false, why: "렉스몬드 품번 불일치" };
