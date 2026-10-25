@@ -26,14 +26,15 @@ function parseAttrs(html) {
 }
 var PROMPT = [
   "네이버 스마트스토어 상품의 '상품속성'을 고릅니다. 각 속성의 선택지 목록에 있는 값만 고르세요(글자 그대로).",
-  "근거 우선순위: ① 렉스몬드 상품정보(제품 소재·핏·성별·계절·MD's NOTE·카테고리) ② 상품명·카테고리·브랜드. 근거가 없으면 그 속성은 빼세요(빈 배열). 틀린 속성은 노출에 불리합니다.",
-  "- 소재: 여러 소재가 섞여 있으면 대표 소재 1개만(겉감 기준 비율이 가장 큰 것). 안감·부자재는 무시.",
-  "- 다중선택(multi)은 꼭 맞는 1~2개만(소재는 1개). 단일선택(single)은 1개.",
-  "- 색상은 렉스몬드나 상품명에 색이 분명히 적혀 있을 때만. 핏·계절·성별은 렉스몬드에 적힌 그대로 맞는 값.",
-  "- '해당없음'·'장식없음'·'무지' 같은 값은 확실할 때만.",
-  "- 굽높이·기장·총길이 등 치수 속성: 렉스몬드 실측 정보(예: 굽 높이 3cm)의 숫자로 선택지 구간을 고르세요. 숫자가 없으면 빼세요.",
-  "- 렉스몬드 정보가 없으면 핏·소재·색상·치수는 상품명에 그 단어가 그대로 있을 때만. 추측 금지.",
-  "- 계절: 렉스몬드에 '사계절'이면 선택지에 '사계절'이 있을 때만 그것을, 없으면 계절 속성은 빼세요. 일부 계절만 골라 넣지 마세요.",
+  "목표: 속성을 최대한 많이 채우기(네이버 노출용). 단, 틀린 값은 넣지 마세요.",
+  "근거: ① 렉스몬드 상품정보(제품 소재·핏·성별·계절·MD's NOTE·카테고리·실측) ② 상품명·카테고리·브랜드 ③ 이 브랜드/모델에 대한 일반적으로 알려진 사실(예: 패딩→충전재 다운, 스니커즈→끈, 후드티→후드넥, 맨투맨→라운드넥·긴팔).",
+  "- 위 근거로 합리적으로 판단되는 속성은 모두 채우세요. 정말 알 수 없는 것만 빼세요(빈 배열).",
+  "- 소재: 여러 소재면 대표 소재 1개(겉감 비율 가장 큰 것). 안감·부자재 무시.",
+  "- 네이버 기준: 무관한 속성이나 과도하게 많은 값은 노출에 불리함(스마트스토어 수정화면 안내). 그래서 속성 칸은 해당되는 것 모두 채우되, 한 칸 안에서는 대표값 1개(꼭 필요할 때만 2개). 단일선택은 1개.",
+  "- 색상: 렉스몬드·상품명·품번의 색 정보(예: BLACK, 999=블랙 등 브랜드 색코드가 확실할 때)로.",
+  "- 치수 속성(굽높이·기장 등): 렉스몬드 실측 숫자로 구간 선택. 숫자 없으면 일반적인 모델 사양이 확실할 때만.",
+  "- 계절: 렉스몬드에 '사계절'이면 '사계절' 선택지가 있을 때만 그것을, 없으면 빼세요. 일부 계절만 골라 넣지 마세요. 렉스몬드에 계절이 없으면 아이템 특성(패딩=겨울, 반팔=여름 등)으로.",
+  "- 패턴: 로고·프린트 등이 상품명/설명에 있으면 그것, 언급이 없고 단색 기본 아이템이면 '무지'.",
   "출력은 json으로: {\"pick\":{\"속성이름\":[\"값\"]},\"why\":\"한 줄(근거)\"}"
 ].join("\n");
 /* 렉스몬드: 자체상품코드로 검색 → 1건이면 상품페이지로 바로 감. 상품정보고시·추가정보·MD노트만 잘라서 AI에 줌 */
@@ -109,7 +110,7 @@ async function one(t, s, opts) {
       var rex = await rexInfo(t.code); row.rex = rex.found ? rex.url : "못 찾음(" + rex.why + ")";
       c = await choose(t, p.attrs, rex);
     }
-    row.pick = c.pick; row.why = c.why; row.v = 3;
+    row.pick = c.pick; row.why = c.why; row.v = 4;
     if (!Object.keys(c.pick).length && !needConv) { row.status = "할 일 없음(이미 입력·변환됨)"; return row; }
     if (opts.dry) { row.status = "미리보기(저장 안 함)"; return row; }
     var w = await writePage(origin, p.attrs, c.pick); row.saveMsg = w.saveMsg; row.conv = w.conv; if (w.dialogs.length) row.saveMsg = w.dialogs.concat(row.saveMsg || []);
@@ -136,6 +137,7 @@ ERP.acts.ssattrrun = async function (btn) {
   running = true; stopReq = false; var s = st(), done = {}; (s.log || []).forEach(function (x) { if (x.v >= 2 && /저장 완료|할 일 없음/.test(x.status)) done[x.ch] = Math.max(done[x.ch] || 0, x.v); });
   var SHOE = /신발|화$|화>|샌들|슬리퍼|부츠|힐|로퍼|스니커즈|뮬|플랫/;   /* 신발은 굽높이 규칙(v3) 전에 한 것을 한 번 더 봄 */
   var list = (await targets()).filter(function (t) { var d = done[t.ch] || 0; return !(d >= 3 || (d === 2 && !SHOE.test(t.cat || ""))); }), n = 0, fails = 0;
+  if (btn && btn.dataset && btn.dataset.redo) { list = (await targets()).filter(function (t) { return (done[t.ch] || 0) > 0 && done[t.ch] < 4; }); }   /* 예전 기준으로 한 상품의 빈 칸 다시 채우기 */
   if (btn && btn.dataset && btn.dataset.sold) { list = list.filter(function (t) { return t.sold > 0; }); lim = Infinity; }
   ERP.toast("상품속성 자동입력 시작: 남은 " + list.length + "개 중 " + (lim === Infinity ? "전부" : lim + "개"));
   for (var i = 0; i < list.length && n < lim && !stopReq; i++) {
@@ -149,7 +151,7 @@ ERP.acts.ssattrrun = async function (btn) {
 ERP.acts.ssattrstop = function () { stopReq = true; ERP.toast("지금 상품까지만 하고 멈춰요."); };
 function render() {
   var s = st(), L = s.log || [], cnt = {}; L.forEach(function (x) { cnt[x.status] = (cnt[x.status] || 0) + 1; });
-  return '<div class="head"><div><h1>스마트스토어 상품속성</h1><p>사방넷 대량등록 상품(하이엔드 제외) 6,826개의 상품속성을 자동으로 채워요 · 팔린 상품 먼저</p></div><div class="tools"><button class="btn" data-act="ssattrtest">시험 실행</button><button class="btn pri" data-act="ssattrrun" data-sold="1">팔린 상품 181개 실행</button><button class="btn" data-act="ssattrrun">전체 실행</button><button class="btn" data-act="ssattrstop">멈추기</button></div></div>' +
+  return '<div class="head"><div><h1>스마트스토어 상품속성</h1><p>사방넷 대량등록 상품(하이엔드 제외) 6,826개의 상품속성을 자동으로 채워요 · 팔린 상품 먼저</p></div><div class="tools"><button class="btn" data-act="ssattrtest">시험 실행</button><button class="btn pri" data-act="ssattrrun" data-sold="1">팔린 상품 181개 실행</button><button class="btn" data-act="ssattrrun">전체 실행</button><button class="btn" data-act="ssattrrun" data-redo="1">이전 상품 빈 칸 채우기</button><button class="btn" data-act="ssattrstop">멈추기</button></div></div>' +
     '<div class="tiles">' + Object.keys(cnt).map(function (k) { return ERP.tile(esc(k), cnt[k] + "개", ""); }).join("") + "</div>" +
     '<div class="table-wrap"><table><thead><tr><th>시각</th><th>채널번호</th><th>결과</th><th>상품명</th><th>넣은 속성</th><th>메모</th></tr></thead><tbody>' + L.slice(-50).reverse().map(function (x) { return "<tr><td class=num>" + esc((x.at || "").slice(5, 16).replace("T", " ")) + "</td><td class=num>" + esc(x.ch) + "</td><td>" + esc(x.status) + "</td><td class=name>" + esc(x.name) + "</td><td>" + esc(Object.keys(x.pick || {}).map(function (k) { return k + ": " + x.pick[k].join(","); }).join(" · ")) + "</td><td><small>" + esc((x.conv ? "[" + x.conv + "] " : "") + (x.rex ? "[렉스몬드 " + (/^http/.test(x.rex) ? "확인" : x.rex) + "] " : "") + (x.err || "") + " " + (x.saveMsg || []).slice(0, 1).join(" / ")) + "</small></td></tr>"; }).join("") + "</tbody></table></div>";
 }
