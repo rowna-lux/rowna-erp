@@ -192,7 +192,7 @@ ERP.acts.ssattrrun = async function (btn) {
   running = false; dl(s, "끝_" + new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")); ERP.toast("상품속성 자동입력: " + n + "개 처리했어요."); ERP.render();
   return { n: n, left: list.length - i, failStop: fails >= 5, stopped: stopReq };
 };
-/* 끝까지 자동: 이전 상품 빈 칸·태그 → 나머지 전체. 연속 실패(로그인 풀림 등)면 10분 쉬고 다시, 최대 30번 */
+/* 끝까지 자동: 이전 상품 빈 칸·태그 → 나머지 전체. 연속 실패(로그인 풀림 등)면 1분 쉬고 다시, 최대 30번 */
 var autoOn = false;
 ERP.acts.ssattrauto = async function () {
   if (autoOn) { ERP.toast("이미 자동 진행 중이에요."); return; }
@@ -202,10 +202,10 @@ ERP.acts.ssattrauto = async function () {
       if (!(ERP.helperOn && ERP.helperOn())) { ERP.toast("로우나 도우미 연결을 기다리는 중…"); await new Promise(function (r) { setTimeout(r, 60000); }); continue; }
       var redo = await ERP.acts.ssattrrun({ dataset: { redo: "1" } });
       if (redo && redo.stopped) break;
-      if (redo && redo.failStop) { if (++tries > 30) break; ERP.toast("연속 실패라 10분 쉬고 다시 해요(스마트스토어 로그인이 풀렸으면 로그인해 주세요)."); await new Promise(function (r) { setTimeout(r, 600000); }); continue; }
+      if (redo && redo.failStop) { if (++tries > 30) break; ERP.toast("연속 실패라 1분 쉬고 다시 해요(스마트스토어 로그인이 풀렸으면 로그인해 주세요)."); await new Promise(function (r) { setTimeout(r, 60000); }); continue; }
       var full = await ERP.acts.ssattrrun({ dataset: {} });
       if (full && full.stopped) break;
-      if (full && full.failStop) { if (++tries > 30) break; ERP.toast("연속 실패라 10분 쉬고 다시 해요(스마트스토어 로그인이 풀렸으면 로그인해 주세요)."); await new Promise(function (r) { setTimeout(r, 600000); }); continue; }
+      if (full && full.failStop) { if (++tries > 30) break; ERP.toast("연속 실패라 1분 쉬고 다시 해요(스마트스토어 로그인이 풀렸으면 로그인해 주세요)."); await new Promise(function (r) { setTimeout(r, 60000); }); continue; }
       if (full && full.left <= 0) break;
     }
   } finally { autoOn = false; }
