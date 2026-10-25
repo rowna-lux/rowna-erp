@@ -72,26 +72,27 @@ async function makeTags(t, rex, have) {
   var j = JSON.parse(r.content || "{}"), b = String(t.brand || "").replace(/\s+/g, ""), seen = {};
   return (j.tags || []).map(function (x) { return String(x).replace(/[#\s]/g, ""); }).filter(function (x) { if (!x || x.length > 15 || seen[x] || (b && x.indexOf(b) >= 0) || /로우나/.test(x)) return false; seen[x] = 1; return true; });
 }
-var TAGSEL = "#anchor-tag .input-tag select";
+var TAGSEL = "#anchor-tag .input-tag select", CHIPS = "#anchor-tag .choice-tag";
+function parseChips(html) { var out = []; String(html || "").replace(/<strong[^>]*>\s*#\s*([^<]+?)\s*<\/strong>/g, function (_, t) { out.push(t.trim()); }); return out; }
 function parseTagCheck(text) {
   var m = String(text || "").match(/검색 적용 태그 확인[\s\S]{0,600}?등록됨\s*([\s\S]*?)(태그사전에 등록되어 있지 않습니다|자세한 검색최적화|$)/), out = [];
   if (m) (m[1].match(/#[^#\s]+/g) || []).forEach(function (x) { out.push(x.slice(1)); });
   return out;
 }
-async function tagProbe(origin, cands) {   /* 저장하지 않는 시험: 기존 태그를 잠깐 빼고 후보를 넣어 [검색에 적용되는 태그 확인] */
+async function tagProbe(origin, cands) {   /* 저장하지 않는 시험: 빈 자리 수만큼 후보를 넣고 [검색에 적용되는 태그 확인] */
   var r = await ERP.helperAsk("act", { url: editUrl(origin), ops: [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "wait", ms: 1500 },
-    { op: "click", sel: "#anchor-tag .title-line" }, { op: "wait", ms: 2000 }, { op: "selzGet", sel: TAGSEL }] });
-  var have = (r.results[4] && r.results[4].labels) || [];
-  if (have.length >= 10 || !cands.length) return { have: have, reg: [] };
+    { op: "click", sel: "#anchor-tag .title-line" }, { op: "wait", ms: 2000 }, { op: "html", sel: CHIPS, max: 20000 }] });
+  var have = parseChips((r.results[4] || {}).html), slots = 10 - have.length;
+  if (slots <= 0 || !cands.length) return { have: have, reg: [] };
   var reg = [], pool = cands.filter(function (x) { return have.indexOf(x) < 0; });
-  for (var round = 0; round < 2 && pool.length && reg.length < 10 - have.length; round++) {
-    var batch = pool.splice(0, 10);
+  for (var round = 0; round < 3 && pool.length && reg.length < slots; round++) {
+    var batch = pool.splice(0, slots);
     var q = await ERP.helperAsk("act", { url: editUrl(origin), ops: [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "wait", ms: 1500 },
-      { op: "click", sel: "#anchor-tag .title-line" }, { op: "wait", ms: 2000 }, { op: "selzRemove", sel: TAGSEL, values: have },
+      { op: "click", sel: "#anchor-tag .title-line" }, { op: "wait", ms: 2000 },
       { op: "selzAdd", sel: TAGSEL, values: batch, max: 10 }, { op: "click", sel: '[data-nclicks-code="sch.tagcheck"]' }, { op: "wait", ms: 3500 }, { op: "text" }] });
-    parseTagCheck((q.results[8] || {}).text).forEach(function (x) { if (batch.indexOf(x) >= 0 && reg.indexOf(x) < 0) reg.push(x); });
+    parseTagCheck((q.results[7] || {}).text).forEach(function (x) { if (batch.indexOf(x) >= 0 && reg.indexOf(x) < 0) reg.push(x); });
   }
-  return { have: have, reg: reg.slice(0, 10 - have.length) };
+  return { have: have, reg: reg.slice(0, slots) };
 }
 /* 원상품번호를 몰라도: 상품 조회/수정 목록에서 채널상품번호로 검색 → [수정] 클릭 → 수정 화면으로 이동 (주소에서 원상품번호를 알아냄) */
 function viaSearchOps(ch) { return [{ op: "waitText", text: "상품목록", ms: 30000, gap: 0 }, { op: "wait", ms: 1500 },
@@ -123,7 +124,7 @@ async function writePage(origin, attrs, pick, tags) {
       if (a.type === "multi") { [v, v + " 추천", v + "추천"].forEach(function (vv) { opt.push(ops.length); ops.push({ op: "check", near: k, value: vv }); }); }
       else { var o = a.options.filter(function (x) { return x.text === v; })[0]; ops.push({ op: "click", within: k, sel: ".selectize-input" }); ops.push({ op: "click", within: k, sel: '.selectize-dropdown-content .option[data-value="' + o.id + '"]' }); }
     }); });
-  if (tags && tags.length) { opt.push(ops.length); ops.push({ op: "click", sel: "#anchor-tag .title-line" }); opt.push(ops.length); ops.push({ op: "wait", ms: 2000 }); opt.push(ops.length); ops.push({ op: "selzAdd", sel: TAGSEL, values: tags, max: 10 }); opt.push(ops.length); ops.push({ op: "selzGet", sel: TAGSEL }); }
+  if (tags && tags.length) { opt.push(ops.length); ops.push({ op: "click", sel: "#anchor-tag .title-line" }); opt.push(ops.length); ops.push({ op: "wait", ms: 2000 }); opt.push(ops.length); ops.push({ op: "selzAdd", sel: TAGSEL, values: tags, max: 10 }); opt.push(ops.length); ops.push({ op: "html", sel: CHIPS, max: 20000, tagChips: 1 }); }
   ops.push({ op: "html", sel: "#attribute-table", max: 200000 });
   ops.push({ op: "click", text: "저장하기" }, { op: "wait", ms: 5000 }, { op: "text" });
   var r = await ERP.helperAsk("act", { url: editUrl(origin), ops: ops });
@@ -131,8 +132,8 @@ async function writePage(origin, attrs, pick, tags) {
   var applied = Object.keys(pick).every(function (k) { var a = after.filter(function (x) { return x.name === k; })[0]; return a && pick[k].every(function (v) { return a.selected.indexOf(v) >= 0; }); });
   var t1 = "", t2 = (res[res.length - 1] || {}).text || "";
   var conv = !res[2].ok ? "변환 버튼 없음(이미 변환)" : res[6] && res[6].ok ? "변환 완료" : "변환 실패(" + [3, 4, 5, 6].map(function (i) { return res[i] && !res[i].ok && !res[i].skipped ? i + ":" + (res[i].error || "실패") : ""; }).filter(Boolean).join(",") + ")";
-  var tg = res.filter(function (x) { return x && x.labels; }).slice(-1)[0];
-  return { tagsNow: tg ? tg.labels : null, dialogs: r.dialogs || [], conv: conv, applied: applied, opsFailed: res.filter(function (x, i) { return x && !x.ok && !x.skipped && (i < 2 || i > 8) && opt.indexOf(i) < 0; }).map(function (x) { return x.error; }), saveMsg: ((t1 + "\n" + t2).match(/[^\n]*(수정되었|저장되었|완료되었|오류|실패|입력해 주세요|확인해 주세요)[^\n]*/g) || []).slice(0, 4) };
+  var ti = -1; ops.forEach(function (o, i) { if (o.tagChips) ti = i; });
+  return { tagsNow: ti >= 0 && res[ti] ? parseChips(res[ti].html) : null, dialogs: r.dialogs || [], conv: conv, applied: applied, opsFailed: res.filter(function (x, i) { return x && !x.ok && !x.skipped && (i < 2 || i > 8) && opt.indexOf(i) < 0; }).map(function (x) { return x.error; }), saveMsg: ((t1 + "\n" + t2).match(/[^\n]*(수정되었|저장되었|완료되었|오류|실패|입력해 주세요|확인해 주세요)[^\n]*/g) || []).slice(0, 4) };
 }
 function log(s, row) { s.log = (s.log || []).concat([row]).slice(-3000); save(s); }
 function dl(s, tag) { var rows = (s.log || []).map(function (x) { return [x.at, x.ch, x.origin || "", x.status, x.name, JSON.stringify(x.pick || {}), x.why || "", x.rex || "", x.conv || "", (x.tags || []).join(" "), (x.err || "") + (x.saveMsg ? " " + x.saveMsg.join(" / ") : "")].map(function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(","); });
