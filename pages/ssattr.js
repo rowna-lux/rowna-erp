@@ -136,8 +136,8 @@ async function writePage(origin, attrs, pick, tags) {
   return { tagsNow: ti >= 0 && res[ti] ? parseChips(res[ti].html) : null, dialogs: r.dialogs || [], conv: conv, applied: applied, opsFailed: res.filter(function (x, i) { return x && !x.ok && !x.skipped && (i < 2 || i > 8) && opt.indexOf(i) < 0; }).map(function (x) { return x.error; }), saveMsg: ((t1 + "\n" + t2).match(/[^\n]*(수정되었|저장되었|완료되었|오류|실패|입력해 주세요|확인해 주세요)[^\n]*/g) || []).slice(0, 4) };
 }
 function log(s, row) { s.log = (s.log || []).concat([row]).slice(-3000); save(s); }
-function dl(s, tag) { var rows = (s.log || []).map(function (x) { return [x.at, x.ch, x.origin || "", x.status, x.name, JSON.stringify(x.pick || {}), x.why || "", x.rex || "", x.conv || "", (x.tags || []).join(" "), (x.err || "") + (x.saveMsg ? " " + x.saveMsg.join(" / ") : "")].map(function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(","); });
-  ERP.downloadBlob("스마트스토어_속성입력기록_" + tag + ".csv", new Blob(["﻿시각,채널상품번호,원상품번호,결과,상품명,넣은속성,AI메모,렉스몬드,에디터변환,추가태그,오류/저장메시지\n" + rows.join("\n")], { type: "text/csv" })); }
+function dl(s, tag) { var rows = (s.log || []).map(function (x) { return [x.at, x.ch, x.origin || "", x.status, x.name, JSON.stringify(x.pick || {}), x.why || "", x.rex || "", x.conv || "", (x.tags || []).join(" "), (x.tagsNow || []).join(" "), (x.err || "") + (x.saveMsg ? " " + x.saveMsg.join(" / ") : "")].map(function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(","); });
+  ERP.downloadBlob("스마트스토어_속성입력기록_" + tag + ".csv", new Blob(["﻿시각,채널상품번호,원상품번호,결과,상품명,넣은속성,AI메모,렉스몬드,에디터변환,추가태그,저장후태그,오류/저장메시지\n" + rows.join("\n")], { type: "text/csv" })); }
 
 async function one(t, s, opts) {
   var origin = (s.map || {})[t.ch] || t.origin; var row = { at: new Date().toISOString(), ch: t.ch, origin: origin, name: t.name };
@@ -187,14 +187,34 @@ ERP.acts.ssattrrun = async function (btn) {
     var row = await one(list[i], s, {}); log(s, row); n++; ERP.render();
     fails = row.status === "실패" ? fails + 1 : 0;
     if (fails >= 5) { ERP.toast("⚠ 5개 연속 실패라 멈췄어요. 기록을 확인해 주세요."); break; }
-    if (n % 50 === 0) dl(s, new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-"));
+    if (n === 3 || n % 25 === 0) dl(s, new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-"));
   }
   running = false; dl(s, "끝_" + new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")); ERP.toast("상품속성 자동입력: " + n + "개 처리했어요."); ERP.render();
+  return { n: n, left: list.length - i, failStop: fails >= 5, stopped: stopReq };
 };
+/* 끝까지 자동: 이전 상품 빈 칸·태그 → 나머지 전체. 연속 실패(로그인 풀림 등)면 10분 쉬고 다시, 최대 30번 */
+var autoOn = false;
+ERP.acts.ssattrauto = async function () {
+  if (autoOn) { ERP.toast("이미 자동 진행 중이에요."); return; }
+  autoOn = true; var tries = 0;
+  try {
+    for (;;) {
+      if (!(ERP.helperOn && ERP.helperOn())) { ERP.toast("로우나 도우미 연결을 기다리는 중…"); await new Promise(function (r) { setTimeout(r, 60000); }); continue; }
+      var redo = await ERP.acts.ssattrrun({ dataset: { redo: "1" } });
+      if (redo && redo.stopped) break;
+      if (redo && redo.failStop) { if (++tries > 30) break; ERP.toast("연속 실패라 10분 쉬고 다시 해요(스마트스토어 로그인이 풀렸으면 로그인해 주세요)."); await new Promise(function (r) { setTimeout(r, 600000); }); continue; }
+      var full = await ERP.acts.ssattrrun({ dataset: {} });
+      if (full && full.stopped) break;
+      if (full && full.failStop) { if (++tries > 30) break; ERP.toast("연속 실패라 10분 쉬고 다시 해요(스마트스토어 로그인이 풀렸으면 로그인해 주세요)."); await new Promise(function (r) { setTimeout(r, 600000); }); continue; }
+      if (full && full.left <= 0) break;
+    }
+  } finally { autoOn = false; }
+};
+setTimeout(function () { if (/[?&]auto=1/.test(location.search) && /ss-attr/.test(location.hash)) { var k = 0, iv = setInterval(function () { if ((ERP.helperOn && ERP.helperOn()) || ++k > 60) { clearInterval(iv); ERP.acts.ssattrauto(); } }, 2000); } }, 3000);
 ERP.acts.ssattrstop = function () { stopReq = true; ERP.toast("지금 상품까지만 하고 멈춰요."); };
 function render() {
   var s = st(), L = s.log || [], cnt = {}; L.forEach(function (x) { cnt[x.status] = (cnt[x.status] || 0) + 1; });
-  return '<div class="head"><div><h1>스마트스토어 상품속성</h1><p>사방넷 대량등록 상품(하이엔드 제외) 6,826개의 상품속성을 자동으로 채워요 · 팔린 상품 먼저</p></div><div class="tools"><button class="btn" data-act="ssattrtest">시험 실행</button><button class="btn pri" data-act="ssattrrun" data-sold="1">팔린 상품 181개 실행</button><button class="btn" data-act="ssattrrun">전체 실행</button><button class="btn" data-act="ssattrrun" data-redo="1">이전 상품 빈 칸·태그 채우기</button><button class="btn" data-act="ssattrstop">멈추기</button></div></div>' +
+  return '<div class="head"><div><h1>스마트스토어 상품속성</h1><p>사방넷 대량등록 상품(하이엔드 제외) 6,826개의 상품속성을 자동으로 채워요 · 팔린 상품 먼저</p></div><div class="tools"><button class="btn" data-act="ssattrtest">시험 실행</button><button class="btn pri" data-act="ssattrrun" data-sold="1">팔린 상품 181개 실행</button><button class="btn" data-act="ssattrrun">전체 실행</button><button class="btn" data-act="ssattrrun" data-redo="1">이전 상품 빈 칸·태그 채우기</button><button class="btn pri" data-act="ssattrauto">끝까지 자동</button><button class="btn" data-act="ssattrstop">멈추기</button></div></div>' +
     '<div class="tiles">' + Object.keys(cnt).map(function (k) { return ERP.tile(esc(k), cnt[k] + "개", ""); }).join("") + "</div>" +
     '<div class="table-wrap"><table><thead><tr><th>시각</th><th>채널번호</th><th>결과</th><th>상품명</th><th>넣은 속성</th><th>메모</th></tr></thead><tbody>' + L.slice(-50).reverse().map(function (x) { return "<tr><td class=num>" + esc((x.at || "").slice(5, 16).replace("T", " ")) + "</td><td class=num>" + esc(x.ch) + "</td><td>" + esc(x.status) + "</td><td class=name>" + esc(x.name) + "</td><td>" + esc(Object.keys(x.pick || {}).map(function (k) { return k + ": " + x.pick[k].join(","); }).join(" · ")) + "</td><td><small>" + esc((x.tags && x.tags.length ? "[태그+" + x.tags.length + ": " + x.tags.join(",") + "] " : "") + (x.conv ? "[" + x.conv + "] " : "") + (x.rex ? "[렉스몬드 " + (/^http/.test(x.rex) ? "확인" : x.rex) + "] " : "") + (x.err || "") + " " + (x.saveMsg || []).slice(0, 1).join(" / ")) + "</small></td></tr>"; }).join("") + "</tbody></table></div>";
 }
