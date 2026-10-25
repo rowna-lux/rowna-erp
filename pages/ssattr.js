@@ -79,17 +79,21 @@ function parseTagCheck(text) {
   if (m) (m[1].match(/#[^#\s]+/g) || []).forEach(function (x) { out.push(x.slice(1)); });
   return out;
 }
-async function tagProbe(origin, cands) {   /* 저장하지 않는 시험: 빈 자리 수만큼 후보를 넣고 [검색에 적용되는 태그 확인] */
-  var r = await ERP.helperAsk("act", { url: editUrl(origin), ops: [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "wait", ms: 1500 },
-    { op: "click", sel: "#anchor-tag .title-line" }, { op: "wait", ms: 2000 }, { op: "html", sel: CHIPS, max: 20000 }] });
-  var have = parseChips((r.results[4] || {}).html), slots = 10 - have.length;
+async function tagProbe(origin, cands, known) {   /* 저장하지 않는 시험: 빈 자리 수만큼 후보를 넣고 [검색에 적용되는 태그 확인] */
+  var have = known;
+  if (!have) {
+    var r = await ERP.helperAsk("act", { url: editUrl(origin), ops: [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "wait", ms: 800 },
+      { op: "click", sel: "#anchor-tag .title-line" }, { op: "wait", ms: 1200 }, { op: "html", sel: CHIPS, max: 20000 }] });
+    have = parseChips((r.results[4] || {}).html);
+  }
+  var slots = 10 - have.length;
   if (slots <= 0 || !cands.length) return { have: have, reg: [] };
   var reg = [], pool = cands.filter(function (x) { return have.indexOf(x) < 0; });
-  for (var round = 0; round < 3 && pool.length && reg.length < slots; round++) {
+  for (var round = 0; round < 2 && pool.length && reg.length < (round === 0 ? slots : Math.min(5, slots)); round++) {   /* 2번째 확인은 5개도 못 건졌을 때만 */
     var batch = pool.splice(0, slots);
-    var q = await ERP.helperAsk("act", { url: editUrl(origin), ops: [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "wait", ms: 1500 },
-      { op: "click", sel: "#anchor-tag .title-line" }, { op: "wait", ms: 2000 },
-      { op: "selzAdd", sel: TAGSEL, values: batch, max: 10, mode: "create", chips: CHIPS + " .choice-label" }, { op: "click", sel: '[data-nclicks-code="sch.tagcheck"]' }, { op: "wait", ms: 3500 }, { op: "text" }] });
+    var q = await ERP.helperAsk("act", { url: editUrl(origin), ops: [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "wait", ms: 800 },
+      { op: "click", sel: "#anchor-tag .title-line" }, { op: "wait", ms: 1200 },
+      { op: "selzAdd", sel: TAGSEL, values: batch, max: 10, mode: "create", chips: CHIPS + " .choice-label" }, { op: "click", sel: '[data-nclicks-code="sch.tagcheck"]' }, { op: "wait", ms: 2500 }, { op: "text" }] });
     parseTagCheck((q.results[7] || {}).text).forEach(function (x) { if (batch.indexOf(x) >= 0 && reg.indexOf(x) < 0) reg.push(x); });
   }
   return { have: have, reg: reg.slice(0, slots) };
@@ -107,14 +111,16 @@ async function readViaSearch(ch) {
 }
 function editUrl(origin) { return "https://sell.smartstore.naver.com/#/products/edit/" + origin; }
 async function readPage(origin) {
-  var r = await ERP.helperAsk("act", { url: editUrl(origin), ops: [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "wait", ms: 1500 }, { op: "html", sel: "#attribute-table", max: 200000 }, { op: "text" }] });
+  var r = await ERP.helperAsk("act", { url: editUrl(origin), ops: [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "wait", ms: 800 }, { op: "html", sel: "#attribute-table", max: 200000 }, { op: "text" },
+    { op: "click", sel: "#anchor-tag .title-line" }, { op: "wait", ms: 1200 }, { op: "html", sel: "#anchor-tag", max: 60000 }] });
   var ok = r.results[0] && r.results[0].ok, html = r.results[2] && r.results[2].html || "", text = (r.results[3] && r.results[3].text) || "";
   if (!ok) throw new Error(/존재하지|없는 상품/.test(text) ? "수정 화면 없음(번호 확인 필요)" : "상품속성 화면을 못 찾음");
-  return { attrs: html ? parseAttrs(html) : [], text: text };
+  var tagHtml = (r.results[6] && r.results[6].ok && r.results[6].html) || null;   /* 태그 칸을 열어 기존 태그도 같이 읽음(페이지 한 번 덜 엶) */
+  return { attrs: html ? parseAttrs(html) : [], text: text, have: tagHtml !== null ? parseChips(tagHtml) : null };
 }
 async function writePage(origin, attrs, pick, tags) {
   var opt = [];   /* '추천' 표시 유무에 따라 하나만 맞으면 되는 체크들 */
-  var ops = [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "wait", ms: 1500 },
+  var ops = [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "wait", ms: 800 },
     /* 2~7: 상세설명 스마트에디터 ONE 변환 → 뜬 창에서 [등록] (이미 변환된 상품은 버튼이 없어 자동으로 건너뜀) */
     { op: "click", text: "으로 변환하기 (1회성)" }, { op: "switchNew", ms: 12000, urlHas: "editor", need: 2 },
     { op: "waitText", text: "등록", ms: 25000, frames: true, need: 3, gap: 6000 }, { op: "click", sel: "button.progress-button", frames: true, need: 4, gap: 2500 },
@@ -124,7 +130,7 @@ async function writePage(origin, attrs, pick, tags) {
       if (a.type === "multi") { [v, v + " 추천", v + "추천"].forEach(function (vv) { opt.push(ops.length); ops.push({ op: "check", near: k, value: vv }); }); }
       else { var o = a.options.filter(function (x) { return x.text === v; })[0]; ops.push({ op: "click", within: k, sel: ".selectize-input" }); ops.push({ op: "click", within: k, sel: '.selectize-dropdown-content .option[data-value="' + o.id + '"]' }); }
     }); });
-  if (tags && tags.length) { opt.push(ops.length); ops.push({ op: "click", sel: "#anchor-tag .title-line" }); opt.push(ops.length); ops.push({ op: "wait", ms: 2000 }); opt.push(ops.length); ops.push({ op: "selzAdd", sel: TAGSEL, values: tags, max: 10, mode: "create", chips: CHIPS + " .choice-label" }); opt.push(ops.length); ops.push({ op: "html", sel: CHIPS, max: 20000, tagChips: 1 }); }
+  if (tags && tags.length) { opt.push(ops.length); ops.push({ op: "click", sel: "#anchor-tag .title-line" }); opt.push(ops.length); ops.push({ op: "wait", ms: 1200 }); opt.push(ops.length); ops.push({ op: "selzAdd", sel: TAGSEL, values: tags, max: 10, mode: "create", chips: CHIPS + " .choice-label" }); opt.push(ops.length); ops.push({ op: "html", sel: CHIPS, max: 20000, tagChips: 1 }); }
   ops.push({ op: "html", sel: "#attribute-table", max: 200000 });
   ops.push({ op: "click", text: "저장하기" }, { op: "wait", ms: 5000 }, { op: "text" });
   var r = await ERP.helperAsk("act", { url: editUrl(origin), ops: ops });
@@ -152,7 +158,7 @@ async function one(t, s, opts) {
     }
     row.pick = c.pick; row.why = c.why; row.v = 5;
     var tp = { have: [], reg: [] };
-    try { var cands = await makeTags(t, typeof rex !== "undefined" ? rex : null, []); tp = await tagProbe(origin, cands); } catch (e) { row.tagErr = e.message; }
+    try { var cands = await makeTags(t, typeof rex !== "undefined" ? rex : null, []); tp = await tagProbe(origin, cands, p.have); } catch (e) { row.tagErr = e.message; }
     row.tags = tp.reg; row.tagsHad = tp.have.length;
     if (!Object.keys(c.pick).length && !needConv && !tp.reg.length) { row.status = "할 일 없음(이미 입력·변환됨)"; return row; }
     if (opts.dry) { row.status = "미리보기(저장 안 함)"; return row; }
