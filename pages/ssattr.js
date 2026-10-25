@@ -199,9 +199,15 @@ ERP.acts.ssattrrun = async function (btn) {
   return { n: n, left: list.length - i, failStop: fails >= 5, stopped: stopReq };
 };
 /* 끝까지 자동: 이전 상품 빈 칸·태그 → 나머지 전체. 연속 실패(로그인 풀림 등)면 1분 쉬고 다시, 최대 30번 */
-var autoOn = false;
+var autoOn = false, MYID = Math.random().toString(36).slice(2);
+function lockOk() {   /* ERP 탭이 여러 개 열려도 한 탭만 돌게 */
+  try { var l = JSON.parse(localStorage.getItem("rowna-ssattr-lock") || "null"); return !l || l.id === MYID || Date.now() - l.ts > 120000; } catch (e) { return true; }
+}
+function lockBeat() { try { localStorage.setItem("rowna-ssattr-lock", JSON.stringify({ id: MYID, ts: Date.now() })); } catch (e) {} }
 ERP.acts.ssattrauto = async function () {
   if (autoOn) { ERP.toast("이미 자동 진행 중이에요."); return; }
+  if (!lockOk()) { ERP.toast("다른 ERP 탭에서 이미 자동 진행 중이라 이 탭은 쉬어요."); return; }
+  lockBeat(); var beat = setInterval(lockBeat, 30000);
   autoOn = true; var tries = 0;
   try {
     for (;;) {
@@ -214,7 +220,7 @@ ERP.acts.ssattrauto = async function () {
       if (full && full.failStop) { if (++tries > 30) break; ERP.toast("연속 실패라 1분 쉬고 다시 해요(스마트스토어 로그인이 풀렸으면 로그인해 주세요)."); await new Promise(function (r) { setTimeout(r, 60000); }); continue; }
       if (full && full.left <= 0) break;
     }
-  } finally { autoOn = false; }
+  } finally { autoOn = false; clearInterval(beat); }
 };
 setTimeout(function () { if (/[?&]auto=1/.test(location.search) && /ss-attr/.test(location.hash)) { var k = 0, iv = setInterval(function () { if ((ERP.helperOn && ERP.helperOn()) || ++k > 60) { clearInterval(iv); ERP.acts.ssattrauto(); } }, 2000); } }, 3000);
 ERP.acts.ssattrstop = function () { stopReq = true; ERP.toast("지금 상품까지만 하고 멈춰요."); };
