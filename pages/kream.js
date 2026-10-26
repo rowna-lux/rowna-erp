@@ -141,6 +141,9 @@ var OCR_PROMPT = [
   "3) 수량은 숫자. 사이즈는 표기 그대로(F, TU, 85, 270 등). 없으면 \"F\".",
   "4) 크림 링크(kream.co.kr/products/숫자)가 보이면 kreamUrl에 https://kream.co.kr/products/숫자 형태로. 숫자가 흐리면 kreamUrlUnsure를 true로.",
   "5) 합계·안내사항 줄은 넣지 마세요. 추측해서 없는 값을 만들지 마세요.",
+  "6) 한 상품 칸 안에 사이즈가 여러 개 적혀 있으면(예: L 2개, XL 3개, 합계 5) 사이즈마다 items 한 줄씩 따로 넣고, 도매가는 같은 단가를 넣으세요. 사이즈 칸의 '합계' 숫자는 넣지 마세요.",
+  "7) 품번이 '11046-AB-SAB/11046-00A02'처럼 / 로 두 개 적혀 있으면 그대로 옮기세요. 크림 링크가 있으면 링크가 우선입니다.",
+  "8) 표 제목이 'OO 도매 리스트'면 supplier에 OO(예: 무우, 열무)를, 날짜(예: 2026.10.27)가 보이면 listDate에 2026-10-27 형식으로.",
   "출력 형식: {\"supplier\":\"\",\"listDate\":\"\",\"vatIncluded\":true,\"items\":[{\"brand\":\"\",\"sku\":\"\",\"skuUnsure\":false,\"name\":\"\",\"size\":\"F\",\"qty\":1,\"wholesalePrice\":0,\"kreamUrl\":\"\",\"kreamUrlUnsure\":false}]}"
 ].join("\n");
 async function ocrList(dataUrl) {
