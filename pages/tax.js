@@ -86,7 +86,7 @@ function htPanel(c, y) {
   return '<div class="panel"><h2>⑤ 홈택스 자료로 부가세 계산<span class="sub">홈택스에서 받은 분기별 금액을 넣으면 납부세액을 계산해요 · 1·2분기 매출은 보내주신 파일 값으로 채워 두었어요</span></h2><div class="table-wrap"><table><thead>' + head + "</thead><tbody>" + body + "</tbody></table></div>" +
     '<div class="tiles" style="margin-top:10px">' + ERP.tile("1기 (1~6월) 납부 추정", won(h1) + "원", "매입세액을 넣어야 정확해요") + ERP.tile("2기 (7~12월) 납부 추정", won(h2) + "원") + "</div>" +
     '<div class="tools" style="margin-top:8px"><button class="btn pri" data-act="taxsave">홈택스 자료 저장</button></div>' +
-    '<p class="note">매출세액 = (판매대행 + 신용카드 + 기타) ÷ 11 + 현금영수증 세액. 판매대행 자료와 현금영수증이 겹치는 거래가 있으면 매출이 두 번 잡혀요 — 세무사 확인 필요. 매입세액은 홈택스 [세금계산서 매입]·[신용카드 매입] 조회 금액을 넣어 주세요.</p></div>';
+    '<p class="note">매출세액 = (판매대행 + 신용카드 + 기타) ÷ 11 + 현금영수증 세액. 판매대행(카드 결제)과 현금영수증은 서로 다른 결제라 더해서 계산해요 (대표님 확인 2026-10-27). 영수증 없이 받은 계좌이체 등은 '기타 매출'에 넣어 주세요. 매입세액은 홈택스 [세금계산서 매입]·[신용카드 매입] 조회 금액을 넣어 주세요.</p></div>';
 }
 function taxRate(base) { for (var i = 0; i < BRACKETS.length; i++) if (base <= BRACKETS[i][0]) return Math.round(BRACKETS[i][1] * 100) + "%"; return "-"; }
 function readCfg() {
