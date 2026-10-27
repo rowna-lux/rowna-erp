@@ -7,7 +7,7 @@
 var ERP = window.ERP, U = ERP.U, S = ERP.S, C = ERP.C, esc = U.esc, won = U.won, num = U.num;
 var v = ERP.view; v.rxQ = v.rxQ || ""; v.rxSt = v.rxSt || ""; v.rxPage = v.rxPage || 0; v.rxPol = !!v.rxPol;
 var STATUS = ["소싱", "등록요청", "등록완료", "품절", "보류"], PAGE = 100;
-var ITEMS = null, loading = false;
+var ITEMS = null, loading = false, SEL = new Set();
 function pol() { return C.policy(S.SET.price_policy); }
 async function load(force) {
   if ((ITEMS && !force) || loading) return; loading = true;
@@ -45,18 +45,18 @@ function render() {
   var cnt = {}; ITEMS.forEach(function (x) { cnt[x.status || ""] = (cnt[x.status || ""] || 0) + 1; });
   var chips = [["", "전체 " + ITEMS.size]].concat(STATUS.map(function (s) { return [s, s + " " + (cnt[s] || 0)]; }));
   var ss = p.malls[0], lo = p.malls.find(function (m) { return m[0] === "shop0372"; }) || p.malls[2];
-  var head = "<tr><th>소싱날짜</th><th>브랜드</th><th>자체상품코드</th><th>상품명</th><th>원산지</th><th class=num>구매단가</th><th class=num>판매가</th><th class=num>마진율</th><th class=num>트렌비 마진</th><th class=num>필웨이 마진</th><th class=num>" + esc(ss[1]) + "</th><th class=num>" + esc(lo[1]) + "</th><th>상태</th><th>카테고리</th><th>메모</th>" + (w ? "<th></th>" : "") + "</tr>";
-  var add = w ? '<tr class="rx-new"><td><input class="ctl" type="date" id="rxn-date" value="' + U.today() + '"></td><td><input class="ctl" id="rxn-brand" placeholder="브랜드"></td><td><input class="ctl" id="rxn-sku" placeholder="자체상품코드"></td><td><input class="ctl" id="rxn-name" placeholder="상품명" style="min-width:260px"><input class="ctl" id="rxn-url" placeholder="URL" style="min-width:260px;margin-top:4px"></td><td><input class="ctl" id="rxn-origin" placeholder="원산지" style="width:80px"></td><td><input class="ctl num" id="rxn-price" placeholder="구매단가" inputmode="numeric" style="width:100px"></td><td class="num" id="rxn-calc" colspan="6"></td><td><select class="ctl" id="rxn-st">' + STATUS.map(function (s) { return "<option>" + s + "</option>"; }).join("") + '</select></td><td><input class="ctl" id="rxn-cat" style="width:90px"></td><td><input class="ctl" id="rxn-memo" style="width:120px"></td><td><button class="btn pri sm" data-rx="add">추가</button></td></tr>' : "";
+  var head = "<tr>" + (w ? '<th><input type="checkbox" id="rx-all" title="이 쪽 전체 선택"></th>' : "") + "<th>소싱날짜</th><th>브랜드</th><th>자체상품코드</th><th>상품명</th><th>원산지</th><th class=num>구매단가</th><th class=num>판매가</th><th class=num>마진율</th><th class=num>트렌비 마진</th><th class=num>필웨이 마진</th><th class=num>" + esc(ss[1]) + "</th><th class=num>" + esc(lo[1]) + "</th><th>상태</th><th>카테고리</th><th>메모</th>" + (w ? "<th></th>" : "") + "</tr>";
+  var add = w ? '<tr class="rx-new"><td></td><td><input class="ctl" type="date" id="rxn-date" value="' + U.today() + '"></td><td><input class="ctl" id="rxn-brand" placeholder="브랜드"></td><td><input class="ctl" id="rxn-sku" placeholder="자체상품코드"></td><td><input class="ctl" id="rxn-name" placeholder="상품명" style="min-width:260px"><input class="ctl" id="rxn-url" placeholder="URL" style="min-width:260px;margin-top:4px"></td><td><input class="ctl" id="rxn-origin" placeholder="원산지" style="width:80px"></td><td><input class="ctl num" id="rxn-price" placeholder="구매단가" inputmode="numeric" style="width:100px"></td><td class="num" id="rxn-calc" colspan="6"></td><td><select class="ctl" id="rxn-st">' + STATUS.map(function (s) { return "<option>" + s + "</option>"; }).join("") + '</select></td><td><input class="ctl" id="rxn-cat" style="width:90px"></td><td><input class="ctl" id="rxn-memo" style="width:120px"></td><td><button class="btn pri sm" data-rx="add">추가</button></td></tr>' : "";
   var body = rows.map(function (x) {
     var c = C.srcCalc(x.buy_price, p);
-    return '<tr data-id="' + esc(x.id) + '"><td class="num">' + esc(x.date || "") + "</td><td>" + esc(x.brand || "") + '</td><td class="num">' + esc(x.sku || "") + '</td><td class="name" title="' + esc(x.name || "") + '">' + (x.url ? '<a href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.name || "(상품명 없음)") + "</a>" : esc(x.name || "")) + "</td><td>" + esc(x.origin || "") + '</td><td class="num">' + (w ? '<input class="ctl num" data-f="buy_price" value="' + (x.buy_price == null ? "" : x.buy_price) + '" style="width:100px">' : wonOr(x.buy_price)) + '</td><td class="num"><b>' + (c.over ? '<span class="warn-t">구간 밖</span>' : wonOr(c.sale)) + '</b></td><td class="num">' + (c.rate == null ? "–" : U.pct(c.rate)) + '</td><td class="num ' + mcls(c.trenbi) + '">' + wonOr(c.trenbi) + '</td><td class="num ' + mcls(c.feelway) + '">' + wonOr(c.feelway) + '</td><td class="num">' + wonOr(c.malls[ss[0]]) + '</td><td class="num">' + wonOr(c.malls[lo[0]]) + "</td>" +
+    return '<tr data-id="' + esc(x.id) + '">' + (w ? '<td><input type="checkbox" data-sel' + (SEL.has(x.id) ? " checked" : "") + "></td>" : "") + '<td class="num">' + esc(x.date || "") + "</td><td>" + esc(x.brand || "") + '</td><td class="num">' + esc(x.sku || "") + '</td><td class="name" title="' + esc(x.name || "") + '">' + (x.url ? '<a href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.name || "(상품명 없음)") + "</a>" : esc(x.name || "")) + "</td><td>" + esc(x.origin || "") + '</td><td class="num">' + (w ? '<input class="ctl num" data-f="buy_price" value="' + (x.buy_price == null ? "" : x.buy_price) + '" style="width:100px">' : wonOr(x.buy_price)) + '</td><td class="num"><b>' + (c.over ? '<span class="warn-t">구간 밖</span>' : wonOr(c.sale)) + '</b></td><td class="num">' + (c.rate == null ? "–" : U.pct(c.rate)) + '</td><td class="num ' + mcls(c.trenbi) + '">' + wonOr(c.trenbi) + '</td><td class="num ' + mcls(c.feelway) + '">' + wonOr(c.feelway) + '</td><td class="num">' + wonOr(c.malls[ss[0]]) + '</td><td class="num">' + wonOr(c.malls[lo[0]]) + "</td>" +
       "<td>" + (w ? '<select class="ctl" data-f="status">' + STATUS.map(function (s) { return "<option" + (s === x.status ? " selected" : "") + ">" + s + "</option>"; }).join("") + "</select>" : esc(x.status || "")) + "</td>" +
       "<td>" + (w ? '<input class="ctl" data-f="category" value="' + esc(x.category || "") + '" style="width:90px">' : esc(x.category || "")) + "</td>" +
       "<td>" + (w ? '<input class="ctl" data-f="memo" value="' + esc(x.memo || "") + '" style="width:140px">' : esc(x.memo || "")) + "</td>" + (w ? '<td><button class="btn sm" data-rx="del" title="삭제">✕</button></td>' : "") + "</tr>";
   }).join("");
   return '<div class="head"><h2>사방넷 소싱폼</h2><div class="tools">' +
     '<input class="ctl" data-search="rxQ" placeholder="코드·브랜드·상품명·메모 검색" value="' + esc(v.rxQ) + '" style="min-width:240px">' +
-    '<button class="btn sm" data-rx="pol">' + (v.rxPol ? "가격식 닫기" : "가격식 보기·수정") + '</button><button class="btn sm" data-rx="xlsx">엑셀 내보내기 (' + all.length.toLocaleString() + ')</button><button class="btn sm" data-rx="reload">새로고침</button></div></div>' +
+    (w ? '<button class="btn pri sm" data-rx="sabang"' + (SEL.size ? "" : " disabled") + '>사방넷 엑셀 만들기 (' + SEL.size + ')</button>' + (SEL.size ? '<button class="btn sm" data-rx="selclear">선택 해제</button>' : "") : "") + '<button class="btn sm" data-rx="pol">' + (v.rxPol ? "가격식 닫기" : "가격식 보기·수정") + '</button><button class="btn sm" data-rx="xlsx">엑셀 내보내기 (' + all.length.toLocaleString() + ')</button><button class="btn sm" data-rx="reload">새로고침</button></div></div>' +
     (v.rxPol ? polHtml() : "") +
     '<div class="tools" style="margin:8px 0">' + ERP.chips("data-rxst", v.rxSt, chips) + "</div>" +
     '<div class="tbl-wrap"><table class="tbl rx">' + "<thead>" + head + "</thead><tbody>" + add + body + "</tbody></table></div>" +
@@ -95,6 +95,8 @@ function bind(root) {
     else if (a === "pol") { v.rxPol = !v.rxPol; ERP.render(); }
     else if (a === "reload") { await load(true); }
     else if (a === "xlsx") exportXlsx();
+    else if (a === "selclear") { SEL.clear(); ERP.render(); }
+    else if (a === "sabang") SABANG.open();
     else if (a === "addtier") { var p = readPol(root), l = p.tiers[p.tiers.length - 1]; p.tiers.push([num(l[1]) + 1, num(l[1]) + 1000000, l[2]]); S.SET.price_policy = p; ERP.render(); }
     else if (a === "deltier") { var p2 = readPol(root); if (p2.tiers.length > 1) p2.tiers.pop(); S.SET.price_policy = p2; ERP.render(); }
     else if (a === "resetpol") { if (confirm("스토어봇 기본값(2026-10-26)으로 되돌릴까요? 저장을 눌러야 반영돼요.")) { S.SET.price_policy = JSON.parse(JSON.stringify(C.PRICE_POLICY)); ERP.render(); } }
@@ -109,6 +111,8 @@ function bind(root) {
       if (await saveRow(o)) { ERP.toast("추가했어요."); v.rxSt = ""; v.rxQ = ""; v.rxPage = 0; ERP.render(); }
     }
   }; });
+  root.querySelectorAll("tr[data-id] [data-sel]").forEach(function (el) { el.onchange = function () { var id = el.closest("tr").dataset.id; if (el.checked) SEL.add(id); else SEL.delete(id); selBtn(root); }; });
+  var ra = root.querySelector("#rx-all"); if (ra) ra.onchange = function () { root.querySelectorAll("tr[data-id] [data-sel]").forEach(function (el) { el.checked = ra.checked; var id = el.closest("tr").dataset.id; if (ra.checked) SEL.add(id); else SEL.delete(id); }); selBtn(root); };
   var np = root.querySelector("#rxn-price"); if (np) np.oninput = function () { var c = C.srcCalc(np.value, pol()), o = root.querySelector("#rxn-calc"); o.innerHTML = c.sale ? "판매가 <b>" + won(c.sale) + "</b> · 트렌비 " + won(c.trenbi) + " · 필웨이 " + won(c.feelway) : c.over ? '<span class="warn-t">가격식 구간 밖</span>' : ""; };
   root.querySelectorAll("tr[data-id] [data-f]").forEach(function (el) { el.onchange = async function () {
     var id = el.closest("tr").dataset.id, x = ITEMS.get(id); if (!x) return; var o = Object.assign({}, x), f = el.dataset.f;
@@ -116,6 +120,82 @@ function bind(root) {
     if (await saveRow(o)) { if (f === "buy_price") ERP.render(); else ERP.toast("저장했어요."); }
   }; });
 }
+function selBtn(root) { var b = root.querySelector('[data-rx="sabang"]'); if (b) { b.disabled = !SEL.size; b.textContent = "사방넷 엑셀 만들기 (" + SEL.size + ")"; } }
+
+/* ---------- 사방넷 상품대량등록 엑셀 (구글시트 '사방넷 도구 › 엑셀 생성'과 같은 113칸) ----------
+   브랜드별 묶음 설정 = app_settings.sabang_presets[한글브랜드] (시트 Metadata·Brands에서 옮김)
+   이미지: https://gi.esmplus.com/{ESM}/{작업폴더}/{순번}␣␣{품번}/{n}.jpg — 대표 2, 부가6~8 = 3·4·5, 상세 = 배너 0 + 상세번호 */
+var SABANG = (function () {
+  var ESM = "djsouplim", TAG = 1.6, HEAD = null;
+  var COL = { name: 0, model: 2, modelNo: 3, brandEn: 4, sku: 5, kw: 6, kind: 8, maker: 12, origin: 13, gender: 17, state: 18, region: 19, tax: 20, shipKind: 21, shipFee: 22, cost: 24, sale: 25, tag: 26, opt1: 27, opt1v: 28, opt2: 29, opt2v: 30, img: 31, add6: 37, add7: 38, add8: 39, detail: 42, certNo: 44, certField: 50, stock: 51, memo: 68, optEdit: 69, attrCode: 79 };
+  function presets() { return S.SET.sabang_presets || {}; }
+  function yymmdd() { var t = U.today(); return t.slice(2, 4) + t.slice(5, 7) + t.slice(8, 10); }
+  function gender(name, def) { if (/남여|공용|유니섹스/.test(name)) return 3; if (/여성|우먼|womens?/i.test(name)) return 2; if (/남성|맨즈|mens?\b/i.test(name)) return 1; return Number(def) || 3; }
+  function enc(s) { return encodeURIComponent(s); }
+  function imgUrl(folder, no, sku, n) { return "https://gi.esmplus.com/" + ESM + "/" + enc(folder) + "/" + enc(no + "  " + sku) + "/" + n + ".jpg"; }
+  function bannerUrl(p, brand) { return p.banner || ("https://gi.esmplus.com/" + ESM + "/banners/" + enc(brand) + "/0.jpg"); }
+  function exists(url) { return new Promise(function (res) { var im = new Image(), t = setTimeout(function () { res(null); }, 8000); im.onload = function () { clearTimeout(t); res(true); }; im.onerror = function () { clearTimeout(t); res(false); }; im.src = url + (url.indexOf("?") < 0 ? "?v=" : "&v=") + Date.now(); }); }
+  async function head() { if (HEAD) return HEAD; var r = await fetch("data/sabang_head.json?v=1027c"); HEAD = await r.json(); return HEAD; }
+  function picked() { return Array.from(SEL).map(function (id) { return ITEMS.get(id); }).filter(Boolean).sort(function (a, b) { return String(a.date || "").localeCompare(String(b.date || "")) || ((a.extra && a.extra.row) || 0) - ((b.extra && b.extra.row) || 0) || String(a.created_at || "").localeCompare(String(b.created_at || "")); }); }
+  function open() {
+    var items = picked(); if (!items.length) return;
+    var brands = {}; items.forEach(function (x) { brands[x.brand || "(브랜드 없음)"] = (brands[x.brand || "(브랜드 없음)"] || 0) + 1; });
+    var bk = Object.keys(brands), main = bk.sort(function (a, b) { return brands[b] - brands[a]; })[0], p = presets()[main] || {};
+    var f = function (l, n, val, wide) { return '<div class="fd' + (wide ? " full" : "") + '"><label for="sx-' + n + '">' + l + '</label><input id="sx-' + n + '" name="' + n + '" value="' + esc(val == null ? "" : val) + '"></div>'; };
+    var html = '<p class="muted">' + items.length + "개 · " + bk.map(function (b) { return esc(b) + " " + brands[b]; }).join(", ") + (bk.length > 1 ? ' <b class="warn-t">브랜드가 섞여 있어요 — 아래 설정은 ' + esc(main) + " 기준으로 모두에 적용돼요.</b>" : "") + "</p>" +
+      '<div class="grid2 even">' + f("작업폴더명 (ESM 이미지 폴더)", "folder", yymmdd() + " " + main) + f("시작 순번", "start", 1) +
+      f("영문 브랜드명", "brandEn", p.brandEn || "") + f("제조사", "maker", p.maker || main) +
+      f("사이트검색어 (쉼표로)", "kw", p.kw || main, true) +
+      ERP.sel("남녀구분 (상품명에 남성/여성/남여공용 있으면 그걸 우선)", "gender", [["1", "1 남성"], ["2", "2 여성"], ["3", "3 공용"]], p.gender || "3") +
+      ERP.sel("속성분류코드", "attrCode", [["001", "001 의류"], ["002", "002 신발"], ["003", "003 가방"], ["004", "004 패션잡화"]], p.attrCode || "001") +
+      f("사이즈 옵션 (쉼표로)", "sizes", p.sizes || "단일사이즈[ONE SIZE]", true) +
+      f("상세 이미지 번호", "imgs", p.imgs || "0,2,3,4,5,6,7,9") + f("원산지 (비우면 소싱폼 값)", "origin", "") +
+      f("브랜드 배너 주소 (비우면 자동)", "banner", p.banner || "", true) +
+      '<div class="fd full"><label><input type="checkbox" name="check" checked> ESM에 이미지가 올라가 있는지 확인하고 없는 번호는 빼기</label></div></div>' +
+      '<p class="muted">판매가 = 공통 가격식(스토어봇과 같음) · TAG가 = 판매가 ×' + TAG + " · 원가 = 구매단가(렉스몬드 판매가) · 다 만들면 상태가 '등록요청'으로 바뀌어요.</p><div id=\"sx-log\"></div>";
+    ERP.openDrawer("사방넷 대량등록 엑셀", html, "sourcing_items", { brand: main }, true, { saveLabel: "엑셀 만들기" });
+  }
+  async function build(body, o) {
+    var items = picked(), pol = C.policy(S.SET.price_policy), H = await head(), log = body.querySelector("#sx-log");
+    var say = function (t) { if (log) log.innerHTML = t; };
+    var imgs = String(o.imgs || "").split(/[,\s]+/).filter(Boolean).map(Number), start = Number(o.start) || 1, rows = [], warn = [];
+    for (var i = 0; i < items.length; i++) {
+      var x = items[i], no = start + i, sku = (x.sku || "").trim(), sale = C.storePrice(x.buy_price, pol);
+      if (!sale) { warn.push(sku + ": 구매단가 없음/가격식 구간 밖 — 뺐어요"); continue; }
+      var have = {}; imgs.forEach(function (n) { have[n] = true; });
+      if (o.check) { say("이미지 확인 중 " + (i + 1) + "/" + items.length + " · " + esc(sku)); for (var k = 0; k < imgs.length; k++) { if (imgs[k] === 0) continue; var ok = await exists(imgUrl(o.folder, no, sku, imgs[k])); if (ok === false) have[imgs[k]] = false; } if (have[2] === false) warn.push(no + " " + sku + ": 2.jpg(대표) 없음"); }
+      var r = new Array(H[1].length).fill("");
+      r[COL.name] = x.name || ""; r[COL.model] = sku; r[COL.modelNo] = sku; r[COL.brandEn] = (o.brandEn || "").trim(); r[COL.sku] = sku; r[COL.kw] = o.kw || "";
+      r[COL.kind] = 3; r[COL.maker] = o.maker || x.brand || ""; r[COL.origin] = (o.origin || x.origin || "").trim(); r[COL.gender] = gender(x.name || "", o.gender);
+      r[COL.state] = 2; r[COL.region] = 1; r[COL.tax] = 1; r[COL.shipKind] = 1; r[COL.shipFee] = 0;
+      r[COL.cost] = Number(x.buy_price) || 0; r[COL.sale] = sale; r[COL.tag] = Math.round(sale * TAG);
+      r[COL.opt1] = "색상"; r[COL.opt1v] = "상세참조"; r[COL.opt2] = "사이즈"; r[COL.opt2v] = String(o.sizes || "단일사이즈[ONE SIZE]").replace(/\s*,\s*/g, ",").trim();
+      r[COL.img] = imgUrl(o.folder, no, sku, 2);
+      [[COL.add6, 3], [COL.add7, 4], [COL.add8, 5]].forEach(function (a) { if (have[a[1]] !== false) r[a[0]] = imgUrl(o.folder, no, sku, a[1]); });
+      r[COL.detail] = imgs.filter(function (n) { return have[n] !== false; }).map(function (n) { return "<img src='" + (n === 0 ? bannerUrl(o, x.brand || "") : imgUrl(o.folder, no, sku, n)) + "' />"; }).join("<br />\n");
+      r[COL.certNo] = "없음"; r[COL.certField] = "없음"; r[COL.stock] = "N"; r[COL.memo] = "로우나"; r[COL.optEdit] = 2; r[COL.attrCode] = o.attrCode || "001";
+      for (var q = 1; q <= 14; q++) r[COL.attrCode + q] = "상세참조";
+      rows.push({ x: x, no: no, r: r });
+    }
+    if (!rows.length) { say('<span class="neg">만들 상품이 없어요.</span><br>' + warn.map(esc).join("<br>")); return false; }
+    var ws = XLSX.utils.aoa_to_sheet(H.concat(rows.map(function (z) { return z.r; })));
+    ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 10 } }];
+    var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "사방넷상품대량등록_샘플파일");
+    var brandK = (items[0] && items[0].brand) || "상품", fname = "사방넷_" + brandK + "_" + U.today().replace(/-/g, ".") + ".xlsx";
+    ERP.downloadBlob(fname, new Blob([XLSX.write(wb, { bookType: "xlsx", type: "array" })], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    /* 브랜드 설정 저장 + 상태 '등록요청' */
+    var ps = Object.assign({}, presets()); ps[brandK] = { brandEn: o.brandEn, maker: o.maker, kw: o.kw, gender: o.gender, attrCode: o.attrCode, sizes: o.sizes, imgs: o.imgs, banner: o.banner || "" };
+    await ERP.saveSetting("sabang_presets", ps);
+    var now = new Date().toISOString(), up = rows.map(function (z) { var e = Object.assign({}, z.x.extra || {}, { sabang: { file: fname, folder: o.folder, no: z.no, at: now } }); return Object.assign({}, z.x, { status: "등록요청", extra: e, updated_at: now }); });
+    var res = await S.sb.from("sourcing_items").upsert(up); if (!res.error) up.forEach(function (u) { ITEMS.set(u.id, u); });
+    SEL.clear();
+    ERP.toast(rows.length + "개 엑셀을 만들었어요." + (warn.length ? " 확인할 것 " + warn.length + "개" : ""));
+    if (warn.length) setTimeout(function () { alert("확인할 것\n" + warn.join("\n")); }, 300);
+    return true;
+  }
+  return { open: open, build: build };
+})();
+ERP.forms.sourcing_items = { commit: async function (body, o) { var c = body.querySelector('input[name="check"]'); o.check = !!(c && c.checked); return SABANG.build(body, o); } };
 ERP.sourcingItems = function () { return ITEMS; };
 ERP.loadSourcing = load;
 ERP.page({ id: "rex-sourcing", title: "사방넷 소싱폼", wide: true, roles: ["owner", "accountant", "staff", "ai"], render: render, bind: bind });
