@@ -585,9 +585,21 @@ var CAND = (function () {
     ERP.render();
   }
   function score(c) { var B = cfg().brands || {}; return Math.round((Math.log10(1 + num(c.reviews)) * 30 + Math.max(0, 40 - num(c.rank) / 2) + (B[c.brand] ? 15 : 0)) * 10) / 10; }
+  /* 소싱 제외 규칙(대표님 지정): 모음전·묶음 상품은 재고·가격 연동이 안 돼서 제외, 15만원 미만 제외 */
+  var MIN_PRICE = 150000;
+  var EXCL_MULTI = /모음전|모음|기획전|균일가|골라담기|택\s?1|택일|외\s?\d+\s?종|\d+\s?종\s?(중|택)|색상\s?선택|컬러\s?선택|스타일\s?선택|사이즈별\s?가격/;
+  var EXCL_BUNDLE = /묶음|세트|\bSET\b|\d\s?\+\s?\d|(^|[^A-Z0-9])\d+\s?(개입|개|장|켤레|족|팩|매)(?![가-힣])|\d+\s?(PCS|PACK)\b|패키지/i;
+  function exclOf(c) {
+    var t = String(c.name || "");
+    if (EXCL_MULTI.test(t)) return "모음전";
+    if (EXCL_BUNDLE.test(t)) return "묶음";
+    if (!c.price || Number(c.price) < MIN_PRICE) return "15만원 미만";
+    return "";
+  }
   function rowsC() {
     var sb = sabang(), er = erpSet(), D = data(), out = [];
     Object.keys(D.items || {}).forEach(function (k) { var c = Object.assign({}, D.items[k]); c.dup = dupOf(c, sb, er); c.score = score(c); out.push(c); });
+    out = out.filter(function (c) { return !exclOf(c); });
     if (!v.candDup) out = out.filter(function (c) { return !c.dup; });
     if (v.candBrand) { var B = cfg().brands || {}; out = out.filter(function (c) { return B[c.brand]; }); }
     out = out.filter(function (c) { return !c.hidden; });
@@ -596,7 +608,7 @@ var CAND = (function () {
   }
   function html() {
     var w = ERP.canWrite("price_items"), sb = sabang(), D = data(), R = rowsC(), ST = stores(), c0 = cfg();
-    var h = '<div class="panel"><h2>소싱 후보<span class="sub">등록한 네이버 스토어의 인기순 목록에서 사방넷·ERP에 없는 상품만 보여요 · 점수 = 리뷰 수 + 인기 순위 + 등록 브랜드</span></h2>' +
+    var h = '<div class="panel"><h2>소싱 후보<span class="sub">등록한 네이버 스토어의 인기순 목록에서 사방넷·ERP에 없는 상품만 보여요 · 점수 = 리뷰 수 + 인기 순위 + 등록 브랜드 · 제외: 모음전·묶음·15만원 미만</span></h2>' +
       '<div class="tools">' + AUTO.badge() + (w ? '<button class="btn pri" data-act="candscan">후보 찾기 (스토어 ' + ST.filter(function (s) { return scanUrl(s.url); }).length + '곳)</button>' : "") +
       (w ? '<button class="btn" data-act="candsabang">사방넷 상품파일 올리기</button>' : "") +
       '<span class="muted">사방넷 품번 ' + sb.n.toLocaleString() + "개" + (sb.at ? " (" + String(sb.at).slice(0, 10) + ")" : " — 파일을 올려 주세요") + " · 마지막 검색 " + (D.at ? String(D.at).replace("T", " ").slice(0, 16) : "없음") + (running ? " · 읽는 중 " + running + "곳" : "") + "</span></div>" +
