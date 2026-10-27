@@ -129,7 +129,7 @@ var SABANG = (function () {
   var ESM = "djsouplim", TAG = 1.6, HEAD = null;
   var COL = { name: 0, model: 2, modelNo: 3, brandEn: 4, sku: 5, kw: 6, kind: 8, maker: 12, origin: 13, gender: 17, state: 18, region: 19, tax: 20, shipKind: 21, shipFee: 22, cost: 24, sale: 25, tag: 26, opt1: 27, opt1v: 28, opt2: 29, opt2v: 30, img: 31, add6: 37, add7: 38, add8: 39, detail: 42, certNo: 44, certField: 50, stock: 51, memo: 68, optEdit: 69, attrCode: 79 };
   function presets() { return S.SET.sabang_presets || {}; }
-  function yymmdd() { var t = U.today(); return t.slice(2, 4) + t.slice(5, 7) + t.slice(8, 10); }
+  function yymmdd(d) { var t = d || U.today(); return t.slice(2, 4) + t.slice(5, 7) + t.slice(8, 10); }
   function gender(name, def) { if (/남여|공용|유니섹스/.test(name)) return 3; if (/여성|우먼|womens?/i.test(name)) return 2; if (/남성|맨즈|mens?\b/i.test(name)) return 1; return Number(def) || 3; }
   function enc(s) { return encodeURIComponent(s); }
   function imgUrl(folder, no, sku, n) { return "https://gi.esmplus.com/" + ESM + "/" + enc(folder) + "/" + enc(no + "  " + sku) + "/" + n + ".jpg"; }
@@ -143,7 +143,7 @@ var SABANG = (function () {
     var bk = Object.keys(brands), main = bk.sort(function (a, b) { return brands[b] - brands[a]; })[0], p = presets()[main] || {};
     var f = function (l, n, val, wide) { return '<div class="fd' + (wide ? " full" : "") + '"><label for="sx-' + n + '">' + l + '</label><input id="sx-' + n + '" name="' + n + '" value="' + esc(val == null ? "" : val) + '"></div>'; };
     var html = '<p class="muted">' + items.length + "개 · " + bk.map(function (b) { return esc(b) + " " + brands[b]; }).join(", ") + (bk.length > 1 ? ' <b class="warn-t">브랜드가 섞여 있어요 — 아래 설정은 ' + esc(main) + " 기준으로 모두에 적용돼요.</b>" : "") + "</p>" +
-      '<div class="grid2 even">' + f("작업폴더명 (ESM 이미지 폴더)", "folder", yymmdd() + " " + main) + f("시작 순번", "start", 1) +
+      '<div class="grid2 even">' + f("작업폴더명 (ESM 이미지 폴더)", "folder", yymmdd(items[0].date) + " " + main) + f("시작 순번", "start", 1) +
       f("영문 브랜드명", "brandEn", p.brandEn || "") + f("제조사", "maker", p.maker || main) +
       f("사이트검색어 (쉼표로)", "kw", p.kw || main, true) +
       ERP.sel("남녀구분 (상품명에 남성/여성/남여공용 있으면 그걸 우선)", "gender", [["1", "1 남성"], ["2", "2 여성"], ["3", "3 공용"]], p.gender || "3") +
