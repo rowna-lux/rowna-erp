@@ -587,7 +587,7 @@ var CAND = (function () {
   function score(c) { var B = cfg().brands || {}; return Math.round((Math.log10(1 + num(c.reviews)) * 30 + Math.max(0, 40 - num(c.rank) / 2) + (B[c.brand] ? 15 : 0)) * 10) / 10; }
   /* 소싱 제외 규칙(대표님 지정): 모음전·묶음 상품은 재고·가격 연동이 안 돼서 제외, 15만원 미만 제외 */
   var MIN_PRICE = 150000;
-  var EXCL_MULTI = /모음전|모음|기획전|균일가|골라담기|택\s?1|택일|외\s?\d+\s?종|\d+\s?종\s?(중|택)|색상\s?선택|컬러\s?선택|스타일\s?선택|사이즈별\s?가격/;
+  var EXCL_MULTI = /모음전|모음|기획전|균일가|골라담기|택\s?1|택일|외\s?\d+\s?종|\d+\s?종(?!이)|색상\s?선택|컬러\s?선택|스타일\s?선택|사이즈별\s?가격/;
   var EXCL_BUNDLE = /묶음|세트|\bSET\b|\d\s?\+\s?\d|(^|[^A-Z0-9])\d+\s?(개입|개|장|켤레|족|팩|매)(?![가-힣])|\d+\s?(PCS|PACK)\b|패키지/i;
   function exclOf(c) {
     var t = String(c.name || "");
