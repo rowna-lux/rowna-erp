@@ -56,14 +56,15 @@ function open(s) {
 ERP.forms.sales = {
   open: open,
   afterOpen: function (body, rec) {
-    var upd = function () { var o = ERP.readForm(body, rec), d = ERP.derive(o); U.$("pv").innerHTML = "<div><span>수수료</span><b>" + won(d.fee) + "</b></div><div><span>정산액" + (d.st === "확정" ? "" : " (추정)") + "</span><b>" + won(d.settled) + "</b></div>" + (d.isDef ? "<div><span>후정산 광고비</span><b>" + won(d.defApplied) + "</b></div>" : "") + "<div><span>마진</span><b>" + (d.hasCost ? won(d.margin) : "원가 필요") + "</b></div><div><span>마진율</span><b>" + (d.hasCost ? pct(d.rate) : "–") + "</b></div>"; };
+    var upd = function () { var o = ERP.readForm(body, rec), d = ERP.derive(o); U.$("pv").innerHTML = "<div><span>수수료</span><b>" + won(d.fee) + "</b></div><div><span>정산액" + (d.st === "확정" ? "" : " (추정)") + "</span><b>" + won(d.settled) + "</b></div>" + (d.isDef ? "<div><span>후정산 광고비</span><b>" + won(d.defApplied) + "</b></div>" : "") + (d.vatLoss ? "<div><span>공제 못 받는 부가세</span><b>" + won(d.vatLoss) + "</b></div>" : "") + "<div><span>마진</span><b>" + (d.hasCost ? won(d.margin) : "원가 필요") + "</b></div><div><span>마진율</span><b>" + (d.hasCost ? pct(d.rate) : "–") + "</b></div>"; };
     body.addEventListener("input", upd); body.addEventListener("change", upd); upd();
-    var ps = body.querySelector("#i-purchaseId"); ps.addEventListener("change", function () { var p = ERP.DATA.purchases.get(ps.value); if (p) { body.querySelector("#i-cost").value = Math.round(C.effCost(p)); if (!body.querySelector("#i-itemCode").value) body.querySelector("#i-itemCode").value = p.itemCode || ""; upd(); } });
+    var ps = body.querySelector("#i-purchaseId"); ps.addEventListener("change", function () { var p = ERP.DATA.purchases.get(ps.value); if (p) { body.querySelector("#i-cost").value = Math.round(C.effCost(p)); var vc = body.querySelector("#i-vatCreditable"); if (vc) vc.checked = !(p.extra && p.extra.buyType === "personal"); if (!body.querySelector("#i-itemCode").value) body.querySelector("#i-itemCode").value = p.itemCode || ""; upd(); } });
     if (ERP.bindDocLinks) ERP.bindDocLinks(body);
   },
   commit: async function (body, o, st) {
     if (!o.date || !o.platformId) throw new Error("날짜와 쇼핑몰을 입력해 주세요.");
     o.deferredStatus = o.deferredStatus || null;
+    var lp = o.purchaseId ? ERP.DATA.purchases.get(o.purchaseId) : null; if (lp && lp.extra && lp.extra.buyType === "personal") o.vatCreditable = false;
     var prevP = st.rec.purchaseId || "", saved = await ERP.save("sales", o); if (!saved) return false;
     if (prevP !== (o.purchaseId || "")) {
       var old = ERP.DATA.purchases.get(prevP); if (old && old.soldSaleId === o.id) await ERP.save("purchases", Object.assign({}, old, { status: "in_stock", soldSaleId: null }));

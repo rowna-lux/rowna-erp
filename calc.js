@@ -24,9 +24,11 @@
     var defEst = isDef ? L * (Number(p.deferredRate) || 0) * (Number(p.multiplier) || 1) : 0;
     var defApplied = isDef ? (s.deferredStatus === "확정" ? num(s.deferredFinalAmount) : defEst) : 0;
     var noSale = st !== "확정" && L <= 0 && !O && !E;
-    var margin = noSale ? 0 : N + O + E - M - T - defApplied;
+    /* 개인 거래 매입(세금계산서 없음): 매입세액을 공제받지 못하는 만큼(원가÷11) 마진에서 차감 (대표님 지시 2026-10-27) */
+    var vatLoss = s.vatCreditable === false ? Math.round(M / 11) : 0;
+    var margin = noSale ? 0 : N + O + E - M - T - defApplied - vatLoss;
     return {
-      fee: f, settled: N, st: st, isDef: isDef, defApplied: defApplied, margin: margin,
+      fee: f, settled: N, st: st, isDef: isDef, defApplied: defApplied, margin: margin, vatLoss: vatLoss,
       hasCost: M > 0, rate: L ? margin / L : 0,
       outVat: Math.round(L / 11), inVat: s.vatCreditable === false ? 0 : Math.round(M / 11)
     };

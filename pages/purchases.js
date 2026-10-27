@@ -42,6 +42,9 @@ function open(p) {
     '<div class="full" id="pp-box" style="' + (per ? "" : "display:none") + ';grid-column:1/-1"><div class="fg" style="background:#fbf6f2;border:1px solid #e8d9cc;border-radius:10px;padding:12px">' +
     sel("거래 플랫폼", "pPlatform", PLATFORMS, x.platform || "당근") + fd("판매자 (닉네임·이름)", "pSeller", "text", x.sellerName || "") +
     sel("결제 방법", "pPay", ["계좌이체", "플랫폼 결제(안전결제)", "카드", "현금"], x.payMethod || "계좌이체") + fd("거래 링크·채팅 메모", "pLink", "text", x.dealLink || "") +
+    fd("판매자 실명 (매입확인서용)", "pReal", "text", x.realName || "") + fd("판매자 연락처", "pPhone", "text", x.phone || "") +
+    fd("입금 은행·계좌 (판매자 본인 명의)", "pBank", "text", x.bankAcct || "", "full") +
+    (isNew ? "" : '<div class="fd full"><button type="button" class="btn" id="pp-cert">매입확인서 출력 (PDF로 저장 가능)</button></div>') +
     '<p class="note full" style="grid-column:1/-1">개인 거래는 세금계산서가 없어요. 저장 후 다시 열어 거래 화면·이체내역 캡처를 증빙으로 붙여 두세요.</p></div></div>' +
     fd("매입일", "date", "date", p.date) + fd("매입처", "vendor", "text", p.vendor) + fd("브랜드", "brand", "text", p.brand) + fd("품번", "itemCode", "text", p.itemCode) + fd("옵션", "option", "text", p.option) + fd("시리얼·개체번호", "serialNo", "text", p.serialNo) +
     sel("분류", "category", [["", "미분류"]].concat(ERP.CATS), p.category) + (isNew ? fd("수량 (1개씩 나눠 저장돼요)", "qty", "number", 1) : "") + fd("매입가(1개)", "unitCost", "number", p.unitCost) +
@@ -56,7 +59,8 @@ ERP.forms.purchases = {
     if (ERP.bindDocLinks) ERP.bindDocLinks(body);
     var bt = body.querySelector("#i-buyType"), box = body.querySelector("#pp-box"), pf = body.querySelector("#i-pPlatform"), vd = body.querySelector("#i-vendor"), cd = body.querySelector("#i-cardId");
     var sync = function () { var per = bt.value === "personal"; box.style.display = per ? "" : "none"; if (per && (!vd.value || /렉스몬드|오케이몰/.test(vd.value))) { vd.value = pf.value; if (cd) cd.value = ""; } };
-    bt.addEventListener("change", sync); pf.addEventListener("change", function () { if (bt.value === "personal" && PLATFORMS.indexOf(vd.value) !== -1) vd.value = pf.value; });
+    bt.addEventListener("change", sync);
+    var cb = body.querySelector("#pp-cert"); if (cb) cb.onclick = function () { printCert(ERP.readForm(body, ERP.drawer().rec)); }; pf.addEventListener("change", function () { if (bt.value === "personal" && PLATFORMS.indexOf(vd.value) !== -1) vd.value = pf.value; });
   },
   commit: async function (body, o, st) {
     if (!o.date || !num(o.unitCost)) throw new Error("매입일과 매입가를 입력해 주세요.");
@@ -64,14 +68,30 @@ ERP.forms.purchases = {
     if (o.effectiveUnitCost === "") o.effectiveUnitCost = Math.round(num(o.unitCost) * (1 - rate));
     var per = o.buyType === "personal";
     o.extra = Object.assign({}, o.extra || {}, { cardRateApplied: rate, buyType: per ? "personal" : "business" });
-    if (per) Object.assign(o.extra, { platform: o.pPlatform, sellerName: o.pSeller, payMethod: o.pPay, dealLink: o.pLink, noTaxInvoice: true });
-    else ["platform", "sellerName", "payMethod", "dealLink", "noTaxInvoice"].forEach(function (k) { delete o.extra[k]; });
-    ["buyType", "pPlatform", "pSeller", "pPay", "pLink"].forEach(function (k) { delete o[k]; });
+    if (per) Object.assign(o.extra, { platform: o.pPlatform, sellerName: o.pSeller, payMethod: o.pPay, dealLink: o.pLink, realName: o.pReal, phone: o.pPhone, bankAcct: o.pBank, noTaxInvoice: true });
+    else ["platform", "sellerName", "payMethod", "dealLink", "realName", "phone", "bankAcct", "noTaxInvoice"].forEach(function (k) { delete o.extra[k]; });
+    ["buyType", "pPlatform", "pSeller", "pPay", "pLink", "pReal", "pPhone", "pBank"].forEach(function (k) { delete o[k]; });
     var qty = st.isNew ? Math.max(1, Math.min(50, num(o.qty) || 1)) : 1; o.qty = 1;
     if (qty > 1) { var rows = []; for (var i = 0; i < qty; i++) rows.push(ERP.toRow("purchases", Object.assign({}, o, { id: i ? U.uid() : o.id }))); await ERP.saveBatch("purchases", rows); rows.forEach(function (r) { ERP.applyRow("purchases", r); }); ERP.toast(qty + "개를 재고로 저장했어요."); return true; }
     if (await ERP.save("purchases", o)) { ERP.toast("매입을 저장했어요."); return true; } return false;
   }
 };
+/* 매입확인서 (개인 거래 증빙) — 새 창에서 인쇄/PDF 저장 */
+function printCert(o) {
+  var B = S.SET.business_info || {}, w = window.open("", "_blank");
+  if (!w) { ERP.toast("팝업이 막혔어요. 주소창 오른쪽에서 팝업을 허용해 주세요."); return; }
+  var row = function (k, val) { return "<tr><th>" + k + "</th><td>" + esc(val == null ? "" : val) + "</td></tr>"; };
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>매입확인서</title><style>@page{size:A4;margin:18mm}body{font-family:"Malgun Gothic",sans-serif;color:#111}h1{text-align:center;letter-spacing:12px;font-size:26px;margin:0 0 6px}p.s{text-align:center;color:#555;margin:0 0 24px}table{width:100%;border-collapse:collapse;margin-bottom:18px}th,td{border:1px solid #333;padding:9px 10px;font-size:13px;text-align:left}th{background:#f3eee9;width:28%}h2{font-size:15px;margin:18px 0 8px}.sig{display:flex;justify-content:space-between;margin-top:40px;font-size:14px}.sig div{width:46%}.line{border-bottom:1px solid #333;height:34px;margin-top:6px}.tip{background:#fff6e0;padding:8px;font-size:12px;margin-bottom:12px}@media print{.tip{display:none}}</style></head><body>' +
+    '<div class="tip">Ctrl+P → 대상 "PDF로 저장"을 고르면 PDF 파일로 저장돼요. 판매자 서명 후 신분증 사본·이체내역과 함께 보관하세요.</div>' +
+    '<h1>매입확인서</h1><p class="s">아래 물품을 정상적으로 매입하였음을 확인합니다.</p>' +
+    "<h2>1. 물품 정보</h2><table>" + row("브랜드", o.brand) + row("품명·품번", (o.itemCode || "") + " " + (o.option || "")) + row("시리얼·개체번호", o.serialNo) + row("매입 금액", (Number(o.unitCost) || 0).toLocaleString("ko-KR") + " 원") + row("거래일", o.date) + row("거래 경로", o.pPlatform + (o.pLink ? " (" + o.pLink + ")" : "")) + row("결제 방법", o.pPay) + "</table>" +
+    "<h2>2. 판매자 (양도인)</h2><table>" + row("성명", o.pReal) + row("닉네임", o.pSeller) + row("연락처", o.pPhone) + row("입금 계좌", o.pBank) + "</table>" +
+    "<h2>3. 매입자 (양수인)</h2><table>" + row("상호", B.name || "로우나명품") + row("대표자", B.owner || "") + row("사업자등록번호", B.bizNo || "") + row("주소", B.addr || "") + "</table>" +
+    '<p style="font-size:13px">판매자는 위 물품이 본인 소유의 정품이며, 도난·분실품이 아님을 확인합니다.</p>' +
+    '<div class="sig"><div>판매자 서명<div class="line"></div></div><div>매입자 서명<div class="line"></div></div></div>' +
+    '<p style="text-align:right;margin-top:30px">' + esc(o.date || "") + "</p></body></html>");
+  w.document.close();
+}
 ERP.acts.newpurch = function () { open(); };
 ERP.purchRowsX = function (list) { return list.map(function (p) { var c = ERP.card(p.cardId); return { "매입일": p.date, "매입처": p.vendor || "", "매입유형": isPersonal(p) ? "개인 거래" : "사업자", "판매자": (p.extra && p.extra.sellerName) || "", "결제방법": (p.extra && p.extra.payMethod) || "", "세금계산서": isPersonal(p) ? "없음" : "", "브랜드": p.brand || "", "품번": p.itemCode || "", "옵션": p.option || "", "시리얼": p.serialNo || "", "매입가": num(p.unitCost), "실질원가": C.effCost(p), "결제카드": c ? c.name : "", "상태": { in_stock: "재고", sold: "판매됨", cancelled: "취소" }[p.status] || p.status, "재고나이": p.status === "in_stock" ? C.agingBucket(p.date, U.today()) : "", "주문번호": p.rexOrderNo || "", "증빙": ERP.docsFor("purchase", p.id).length }; }); };
 ERP.acts.exportpurch = function () { var l = ERP.list("purchases").filter(function (p) { return cross() ? p.status === "in_stock" : U.ym(p.date) === v.month; }); ERP.downloadBlob("로우나_매입_" + (cross() ? "재고_" + U.today() : v.month) + ".xlsx", ERP.xlsxBlob([{ name: "매입", rows: ERP.purchRowsX(l) }])); };
