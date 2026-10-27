@@ -157,7 +157,7 @@ var SABANG = (function () {
   function imgUrl(folder, no, sku, n) { return "https://gi.esmplus.com/" + ESM + "/" + enc(folder) + "/" + enc(no + "  " + sku) + "/" + n + ".jpg"; }
   function bannerUrl(p, brand) { return p.banner || ("https://gi.esmplus.com/" + ESM + "/banners/" + enc(brand) + "/0.jpg"); }
   function exists(url) { return new Promise(function (res) { var im = new Image(), t = setTimeout(function () { res(null); }, 8000); im.onload = function () { clearTimeout(t); res(true); }; im.onerror = function () { clearTimeout(t); res(false); }; im.src = url + (url.indexOf("?") < 0 ? "?v=" : "&v=") + Date.now(); }); }
-  async function head() { if (HEAD) return HEAD; var r = await fetch("data/sabang_head.json?v=1027f"); HEAD = await r.json(); return HEAD; }
+  async function head() { if (HEAD) return HEAD; var r = await fetch("data/sabang_head.json?v=1027g"); HEAD = await r.json(); return HEAD; }
   function picked() { return Array.from(SEL).map(function (id) { return ITEMS.get(id); }).filter(Boolean).sort(function (a, b) { return String(a.date || "").localeCompare(String(b.date || "")) || ((a.extra && a.extra.row) || 0) - ((b.extra && b.extra.row) || 0) || String(a.created_at || "").localeCompare(String(b.created_at || "")); }); }
   function open() {
     var items = picked(); if (!items.length) return;
@@ -207,13 +207,16 @@ var SABANG = (function () {
     var ws = XLSX.utils.aoa_to_sheet(H.concat(rows.map(function (z) { return z.r; })));
     ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 10 } }];
     var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "사방넷상품대량등록_샘플파일");
-    var brandK = (items[0] && items[0].brand) || "상품", fname = "사방넷_" + brandK + "_" + U.today().replace(/-/g, ".") + ".xlsx";
+    var brandK = (items[0] && items[0].brand) || "상품", fname;
+    var bset = []; rows.forEach(function (z) { var b = z.x.brand || "상품"; if (bset.indexOf(b) < 0) bset.push(b); });
+    var tab = (U.today().replace(/-/g, ".") + "_" + bset.join("·")).replace(/[\[\]:*?\/\\]/g, " ").slice(0, 31);
+    fname = "사방넷_" + bset.join("·").slice(0, 40) + "_" + U.today().replace(/-/g, ".") + ".xlsx";
     var XT = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     ERP.downloadBlob(fname, new Blob([XLSX.write(wb, { bookType: "xlsx", type: "array" })], { type: XT }));
     /* 스토어봇 파일: 마켓 sabang · 마켓아이디 · 자체상품코드 · 옵션(상세참조-사이즈) · 렉스몬드 URL */
     var sb = [["마켓", "마켓아이디", "마켓상품ID", "옵션(사방넷 필수)", "연동상품URL"]].concat(rows.map(function (z) { return ["sabang", MARKET, z.r[COL.sku], z.sizes.split(",").map(function (v) { return "상세참조-" + v; }).join(","), z.url]; }));
-    var wb2 = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb2, XLSX.utils.aoa_to_sheet(sb), "시트1");
-    var sname = "스토어봇_" + brandK + "_" + U.today().replace(/-/g, ".") + ".xlsx";
+    var wb2 = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb2, XLSX.utils.aoa_to_sheet(sb), tab);
+    var sname = "스토어봇_" + bset.join("·").slice(0, 40) + "_" + U.today().replace(/-/g, ".") + ".xlsx";
     setTimeout(function () { ERP.downloadBlob(sname, new Blob([XLSX.write(wb2, { bookType: "xlsx", type: "array" })], { type: XT })); }, 1200);
     /* 브랜드 설정 저장 + 상태 '등록요청' */
     var ps = Object.assign({}, presets()); ps[brandK] = Object.assign({}, ps[brandK] || {}, { brandEn: o.brandEn, maker: o.maker, kw: o.kw, gender: o.gender, attrCode: o.attrCode, imgs: o.imgs, banner: o.banner || "" });
