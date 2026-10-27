@@ -132,10 +132,32 @@ var SABANG = (function () {
   function yymmdd(d) { var t = d || U.today(); return t.slice(2, 4) + t.slice(5, 7) + t.slice(8, 10); }
   function gender(name, def) { if (/남여|공용|유니섹스/.test(name)) return 3; if (/여성|우먼|womens?/i.test(name)) return 2; if (/남성|맨즈|mens?\b/i.test(name)) return 1; return Number(def) || 3; }
   function enc(s) { return encodeURIComponent(s); }
+  /* 사이즈 = 렉스몬드 상품페이지(대표님 규칙 2026-10-27): '구매 가능 사이즈' + '사이즈 선택 TIP' 표에서 앞뒤로 한 칸씩 더 → 택사이즈[실측] */
+  function parseSizes(t) {
+    var am = (t.match(/구매 가능 사이즈\s*\t?\s*([^\n]*)/) || [])[1] || "", avail = am.split(/\s*,\s*/).map(function (x) { return x.trim(); }).filter(Boolean);
+    var i = t.indexOf("사이즈 선택 TIP"), tips = [];
+    if (i >= 0) { var seg = t.slice(i, i + 3000), e = seg.search(/\n(혼용률|소재|상품의 라벨|구성품)/); if (e > 0) seg = seg.slice(0, e); seg.split("\n").slice(1).forEach(function (ln) { var c = ln.split("\t").map(function (x) { return x.trim(); }); if (c.length >= 2 && c[0] && c[1] && !/도움말|택 사이즈/.test(c[0])) tips.push([c[0], c[1].replace(/\s*(㎜|mm)\s*$/i, "")]); }); }
+    var nz = function (x) { return String(x).replace(/\s|㎜|mm/gi, "").toUpperCase(); };
+    if (!avail.length && !tips.length) return { sizes: "단일사이즈[ONE SIZE]", how: "사이즈 없음" };
+    if (avail.length && avail.every(function (a) { return /^(FREE|F|ONE ?SIZE|단일|OS)$/i.test(a); })) return { sizes: "단일사이즈[ONE SIZE]", how: "단일" };
+    if (!tips.length) return { sizes: avail.map(function (a) { return a + "[" + a + "]"; }).join(","), how: "TIP 표 없음 — 구매가능 사이즈만", warn: true };
+    var idx = []; tips.forEach(function (tp, k) { if (avail.some(function (a) { return nz(a) === nz(tp[1]) || nz(a) === nz(tp[0]); })) idx.push(k); });
+    if (!idx.length) return { sizes: tips.map(function (tp) { return tp[0] + "[" + tp[1] + "]"; }).join(","), how: "구매가능 사이즈를 TIP 표에서 못 찾음 — 표 전체", warn: true };
+    var a = Math.max(0, Math.min.apply(null, idx) - 1), b = Math.min(tips.length - 1, Math.max.apply(null, idx) + 1);
+    return { sizes: tips.slice(a, b + 1).map(function (tp) { return tp[0] + "[" + tp[1] + "]"; }).join(","), how: "구매가능 " + idx.length + "개 + 앞뒤 1칸" };
+  }
+  async function rexSizes(x) {
+    var url = /rexmonde\.com\/products\/view/.test(x.url || "") ? x.url : "https://www.rexmonde.com/products/list?search_keyword=" + encodeURIComponent(x.sku || "");
+    var d = await ERP.helperAsk("page", { rexGap: 15, url: url, waitFor: "사이즈 선택 TIP|상품정보고시|상품이 없|검색 결과", minLen: 300, tries: 15 });
+    if (!/products\/view/.test(d.url || "")) return { fail: "렉스몬드 상품페이지를 못 찾음" };
+    var t = d.text || ""; if (x.sku && t.indexOf(x.sku) < 0 && (d.title || "").indexOf(x.sku) < 0) return { fail: "렉스몬드 품번 불일치" };
+    if (/일시품절|품절된 상품|SOLD OUT/i.test(t.slice(0, 3000)) && !/구매 가능 사이즈/.test(t)) return { fail: "렉스몬드 품절" };
+    return parseSizes(t);
+  }
   function imgUrl(folder, no, sku, n) { return "https://gi.esmplus.com/" + ESM + "/" + enc(folder) + "/" + enc(no + "  " + sku) + "/" + n + ".jpg"; }
   function bannerUrl(p, brand) { return p.banner || ("https://gi.esmplus.com/" + ESM + "/banners/" + enc(brand) + "/0.jpg"); }
   function exists(url) { return new Promise(function (res) { var im = new Image(), t = setTimeout(function () { res(null); }, 8000); im.onload = function () { clearTimeout(t); res(true); }; im.onerror = function () { clearTimeout(t); res(false); }; im.src = url + (url.indexOf("?") < 0 ? "?v=" : "&v=") + Date.now(); }); }
-  async function head() { if (HEAD) return HEAD; var r = await fetch("data/sabang_head.json?v=1027c"); HEAD = await r.json(); return HEAD; }
+  async function head() { if (HEAD) return HEAD; var r = await fetch("data/sabang_head.json?v=1027d"); HEAD = await r.json(); return HEAD; }
   function picked() { return Array.from(SEL).map(function (id) { return ITEMS.get(id); }).filter(Boolean).sort(function (a, b) { return String(a.date || "").localeCompare(String(b.date || "")) || ((a.extra && a.extra.row) || 0) - ((b.extra && b.extra.row) || 0) || String(a.created_at || "").localeCompare(String(b.created_at || "")); }); }
   function open() {
     var items = picked(); if (!items.length) return;
@@ -148,20 +170,24 @@ var SABANG = (function () {
       f("사이트검색어 (쉼표로)", "kw", p.kw || main, true) +
       ERP.sel("남녀구분 (상품명에 남성/여성/남여공용 있으면 그걸 우선)", "gender", [["1", "1 남성"], ["2", "2 여성"], ["3", "3 공용"]], p.gender || "3") +
       ERP.sel("속성분류코드", "attrCode", [["001", "001 의류"], ["002", "002 신발"], ["003", "003 가방"], ["004", "004 패션잡화"]], p.attrCode || "001") +
-      f("사이즈 옵션 (쉼표로)", "sizes", p.sizes || "단일사이즈[ONE SIZE]", true) +
       f("상세 이미지 번호", "imgs", p.imgs || "0,2,3,4,5,6,7,9") + f("원산지 (비우면 소싱폼 값)", "origin", "") +
       f("브랜드 배너 주소 (비우면 자동)", "banner", p.banner || "", true) +
       '<div class="fd full"><label><input type="checkbox" name="check" checked> ESM에 이미지가 올라가 있는지 확인하고 없는 번호는 빼기</label></div></div>' +
-      '<p class="muted">판매가 = 공통 가격식(스토어봇과 같음) · TAG가 = 판매가 ×' + TAG + " · 원가 = 구매단가(렉스몬드 판매가) · 다 만들면 상태가 '등록요청'으로 바뀌어요.</p><div id=\"sx-log\"></div>";
+      '<p class="muted">판매가 = 공통 가격식(스토어봇과 같음) · TAG가 = 판매가 ×' + TAG + " · 원가 = 구매단가(렉스몬드 판매가) · 사이즈 = 렉스몬드 구매가능 사이즈 + 앞뒤 1칸(상품당 약 15초) · 다 만들면 상태가 '등록요청'으로 바뀌어요.</p><div id=\"sx-log\"></div>";
     ERP.openDrawer("사방넷 대량등록 엑셀", html, "sourcing_items", { brand: main }, true, { saveLabel: "엑셀 만들기" });
   }
   async function build(body, o) {
+    if (!(ERP.helperOn && ERP.helperOn())) { ERP.toast("사이즈를 렉스몬드에서 가져오려면 로우나 도우미(크롬 확장)가 켜진 컴퓨터에서 만들어 주세요."); return false; }
     var items = picked(), pol = C.policy(S.SET.price_policy), H = await head(), log = body.querySelector("#sx-log");
     var say = function (t) { if (log) log.innerHTML = t; };
     var imgs = String(o.imgs || "").split(/[,\s]+/).filter(Boolean).map(Number), start = Number(o.start) || 1, rows = [], warn = [];
     for (var i = 0; i < items.length; i++) {
       var x = items[i], no = start + i, sku = (x.sku || "").trim(), sale = C.storePrice(x.buy_price, pol);
       if (!sale) { warn.push(sku + ": 구매단가 없음/가격식 구간 밖 — 뺐어요"); continue; }
+      say("렉스몬드 사이즈 확인 중 " + (i + 1) + "/" + items.length + " · " + esc(sku) + " (상품당 약 15초)");
+      var sz; try { sz = await rexSizes(x); } catch (e) { sz = { fail: "렉스몬드 확인 실패: " + (e.message || e) }; }
+      if (sz.fail) { warn.push(sku + ": " + sz.fail + " — 뺐어요"); continue; }
+      if (sz.warn) warn.push(sku + ": 사이즈 " + sz.how + " → " + sz.sizes);
       var have = {}; imgs.forEach(function (n) { have[n] = true; });
       if (o.check) { say("이미지 확인 중 " + (i + 1) + "/" + items.length + " · " + esc(sku)); for (var k = 0; k < imgs.length; k++) { if (imgs[k] === 0) continue; var ok = await exists(imgUrl(o.folder, no, sku, imgs[k])); if (ok === false) have[imgs[k]] = false; } if (have[2] === false) warn.push(no + " " + sku + ": 2.jpg(대표) 없음"); }
       var r = new Array(H[1].length).fill("");
@@ -169,13 +195,13 @@ var SABANG = (function () {
       r[COL.kind] = 3; r[COL.maker] = o.maker || x.brand || ""; r[COL.origin] = (o.origin || x.origin || "").trim(); r[COL.gender] = gender(x.name || "", o.gender);
       r[COL.state] = 2; r[COL.region] = 1; r[COL.tax] = 1; r[COL.shipKind] = 1; r[COL.shipFee] = 0;
       r[COL.cost] = Number(x.buy_price) || 0; r[COL.sale] = sale; r[COL.tag] = Math.round(sale * TAG);
-      r[COL.opt1] = "색상"; r[COL.opt1v] = "상세참조"; r[COL.opt2] = "사이즈"; r[COL.opt2v] = String(o.sizes || "단일사이즈[ONE SIZE]").replace(/\s*,\s*/g, ",").trim();
+      r[COL.opt1] = "색상"; r[COL.opt1v] = "상세참조"; r[COL.opt2] = "사이즈"; r[COL.opt2v] = sz.sizes;
       r[COL.img] = imgUrl(o.folder, no, sku, 2);
       [[COL.add6, 3], [COL.add7, 4], [COL.add8, 5]].forEach(function (a) { if (have[a[1]] !== false) r[a[0]] = imgUrl(o.folder, no, sku, a[1]); });
       r[COL.detail] = imgs.filter(function (n) { return have[n] !== false; }).map(function (n) { return "<img src='" + (n === 0 ? bannerUrl(o, x.brand || "") : imgUrl(o.folder, no, sku, n)) + "' />"; }).join("<br />\n");
       r[COL.certNo] = "없음"; r[COL.certField] = "없음"; r[COL.stock] = "N"; r[COL.memo] = "로우나"; r[COL.optEdit] = 2; r[COL.attrCode] = o.attrCode || "001";
       for (var q = 1; q <= 14; q++) r[COL.attrCode + q] = "상세참조";
-      rows.push({ x: x, no: no, r: r });
+      rows.push({ x: x, no: no, r: r, sizes: sz.sizes });
     }
     if (!rows.length) { say('<span class="neg">만들 상품이 없어요.</span><br>' + warn.map(esc).join("<br>")); return false; }
     var ws = XLSX.utils.aoa_to_sheet(H.concat(rows.map(function (z) { return z.r; })));
@@ -184,9 +210,9 @@ var SABANG = (function () {
     var brandK = (items[0] && items[0].brand) || "상품", fname = "사방넷_" + brandK + "_" + U.today().replace(/-/g, ".") + ".xlsx";
     ERP.downloadBlob(fname, new Blob([XLSX.write(wb, { bookType: "xlsx", type: "array" })], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
     /* 브랜드 설정 저장 + 상태 '등록요청' */
-    var ps = Object.assign({}, presets()); ps[brandK] = { brandEn: o.brandEn, maker: o.maker, kw: o.kw, gender: o.gender, attrCode: o.attrCode, sizes: o.sizes, imgs: o.imgs, banner: o.banner || "" };
+    var ps = Object.assign({}, presets()); ps[brandK] = Object.assign({}, ps[brandK] || {}, { brandEn: o.brandEn, maker: o.maker, kw: o.kw, gender: o.gender, attrCode: o.attrCode, imgs: o.imgs, banner: o.banner || "" });
     await ERP.saveSetting("sabang_presets", ps);
-    var now = new Date().toISOString(), up = rows.map(function (z) { var e = Object.assign({}, z.x.extra || {}, { sabang: { file: fname, folder: o.folder, no: z.no, at: now } }); return Object.assign({}, z.x, { status: "등록요청", extra: e, updated_at: now }); });
+    var now = new Date().toISOString(), up = rows.map(function (z) { var e = Object.assign({}, z.x.extra || {}, { sizes: z.sizes, sabang: { file: fname, folder: o.folder, no: z.no, at: now } }); return Object.assign({}, z.x, { status: "등록요청", extra: e, updated_at: now }); });
     var res = await S.sb.from("sourcing_items").upsert(up); if (!res.error) up.forEach(function (u) { ITEMS.set(u.id, u); });
     SEL.clear();
     ERP.toast(rows.length + "개 엑셀을 만들었어요." + (warn.length ? " 확인할 것 " + warn.length + "개" : ""));
