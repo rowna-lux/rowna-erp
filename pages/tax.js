@@ -9,7 +9,15 @@ var KEY = "tax_settings";
 var BRACKETS = [[14e6, 0.06, 0], [50e6, 0.15, 1260000], [88e6, 0.24, 5760000], [150e6, 0.35, 15440000], [300e6, 0.38, 19940000], [500e6, 0.40, 25940000], [1e9, 0.42, 35940000], [Infinity, 0.45, 65940000]];
 var DEF = { biz: { name: "로우나명품", owner: "", bizNo: "", addr: "" }, deduction: 0,
   expenses: [{ name: "사무실 임대료", monthly: 660000, vat: true }, { name: "스토어봇", monthly: 350000, vat: true }, { name: "사방넷", monthly: 0, vat: true }, { name: "비품", monthly: 100000, vat: true }] };
-function cfg() { var c = S.SET[KEY]; if (!c) { c = JSON.parse(JSON.stringify(DEF)); } return c; }
+/* 홈택스 매출자료 (대표님 제공 2026-10-27: 현금영수증 매출내역누계 1~6월, 신용카드·판매대행 매출 1~2분기) */
+var HT0 = { "2026-1": { pg: 246853269, card: 0, cash: 51211506, cashVat: 4655561 }, "2026-2": { pg: 209489603, card: 0, cash: 49885004, cashVat: 4534970 } };
+function cfg() { var c = S.SET[KEY]; if (!c) { c = JSON.parse(JSON.stringify(DEF)); } if (!c.hometax) c.hometax = JSON.parse(JSON.stringify(HT0)); return c; }
+function qtrOf(mk) { return mk.slice(0, 4) + "-" + Math.ceil(+mk.slice(5, 7) / 3); }
+function htCalc(q) {
+  var o = { sale: num(q.pg) + num(q.card) + num(q.cash) + num(q.etc), out: 0, inv: num(q.inTax) + num(q.inCard) + num(q.inFee) + num(q.inExp) };
+  o.out = Math.round((num(q.pg) + num(q.card) + num(q.etc)) / 11) + (q.cashVat !== "" && q.cashVat != null ? num(q.cashVat) : Math.round(num(q.cash) / 11));
+  o.due = o.out - o.inv; return o;
+}
 function incomeTax(base) { if (base <= 0) return 0; for (var i = 0; i < BRACKETS.length; i++) if (base <= BRACKETS[i][0]) return Math.max(0, Math.round(base * BRACKETS[i][1] - BRACKETS[i][2])); return 0; }
 function expMonth(c) { var t = 0, tv = 0; (c.expenses || []).forEach(function (e) { var m = num(e.monthly); t += m; if (e.vat) tv += Math.round(m / 11); }); return { total: t, vat: tv }; }
 
@@ -55,11 +63,30 @@ function render() {
   h += '<div class="panel"><h2>③ 매달 고정 경비<span class="sub">부가세 체크 = 세금계산서·카드영수증 받는 경비</span></h2><div class="table-wrap"><table><thead><tr><th>항목</th><th class="r">월 금액</th><th>부가세</th><th></th></tr></thead><tbody>' +
     (c.expenses || []).map(function (e, i) { return '<tr><td><input class="ctl" data-exn="' + i + '" value="' + esc(e.name) + '"></td><td class="r"><input class="ctl num" type="number" data-exm="' + i + '" value="' + num(e.monthly) + '" style="width:130px"></td><td><input type="checkbox" data-exv="' + i + '"' + (e.vat ? " checked" : "") + ' aria-label="부가세 있음"></td><td><button class="btn sm" data-act="taxexdel" data-i="' + i + '">삭제</button></td></tr>'; }).join("") +
     '</tbody></table></div><div class="tools" style="margin-top:8px"><button class="btn" data-act="taxexadd">+ 경비 추가</button><button class="btn pri" data-act="taxsave">경비 저장</button><span class="pill p-mute">월 합계 ' + won(expMonth(c).total) + "원</span></div></div>";
+  h += htPanel(c, y);
   var B = c.biz || {};
   h += '<div class="panel"><h2>④ 사업자 정보<span class="sub">매입확인서에 자동으로 들어가요</span></h2><div class="fg">' +
     ERP.fd("상호", "tx-name", "text", B.name) + ERP.fd("대표자", "tx-owner", "text", B.owner) + ERP.fd("사업자등록번호", "tx-bizNo", "text", B.bizNo) + ERP.fd("사업장 주소", "tx-addr", "text", B.addr, "full") + ERP.fd("소득공제 합계 (원, 모르면 0)", "tx-ded", "number", c.deduction) + "</div>" +
     '<div class="tools" style="margin-top:10px"><button class="btn pri" data-act="taxsave">저장</button></div></div>';
   return h;
+}
+function htPanel(c, y) {
+  var F = [["pg", "판매(결제)대행 매출"], ["card", "신용카드 매출"], ["cash", "현금영수증 매출"], ["cashVat", "└ 현금영수증 세액"], ["etc", "기타 매출(세금계산서 등)"], ["inTax", "매입 세금계산서 세액"], ["inCard", "매입 카드·현금영수증 세액"], ["inFee", "쇼핑몰 수수료 세액"], ["inExp", "기타 경비 세액"]];
+  var Q = [1, 2, 3, 4].map(function (n) { return y + "-" + n; });
+  var erp = {}; Q.forEach(function (k) { erp[k] = 0; });
+  ERP.list("sales").forEach(function (s) { if (!s.date || ERP.excluded(s)) return; var k = qtrOf(U.ym(s.date)); if (k in erp) erp[k] += num(s.salePrice); });
+  var head = "<tr><th>항목 (홈택스 금액, 원)</th>" + Q.map(function (k) { return '<th class="r">' + k.slice(5) + "분기</th>"; }).join("") + "</tr>";
+  var body = F.map(function (f) { return "<tr><td>" + f[1] + "</td>" + Q.map(function (k) { var q = c.hometax[k] || {}; return '<td class="r"><input class="ctl num" type="number" style="width:130px" data-ht="' + k + "|" + f[0] + '" value="' + (q[f[0]] == null || q[f[0]] === "" ? "" : num(q[f[0]])) + '"></td>'; }).join("") + "</tr>"; }).join("");
+  var R = Q.map(function (k) { return htCalc(c.hometax[k] || {}); });
+  var line = function (label, fn, cls) { return '<tr class="' + (cls || "") + '"><td><b>' + label + "</b></td>" + Q.map(function (k, i) { return '<td class="r num">' + fn(R[i], k) + "</td>"; }).join("") + "</tr>"; };
+  body += line("매출 합계", function (r) { return won(r.sale); }, "qtr") + line("ERP 매출 (비교)", function (r, k) { var d = erp[k] - r.sale; return won(erp[k]) + (r.sale ? '<br><small class="' + (Math.abs(d) > r.sale * 0.05 ? "neg" : "") + '">차이 ' + (d > 0 ? "+" : "") + won(d) + "</small>" : ""); }) +
+    line("매출세액", function (r) { return won(r.out); }) + line("매입세액 합계", function (r) { return won(r.inv); }) +
+    line("납부할 부가세 (추정)", function (r) { return '<b class="' + (r.due < 0 ? "neg" : "") + '">' + won(r.due) + "</b>"; }, "sum");
+  var h1 = R[0].due + R[1].due, h2 = R[2].due + R[3].due;
+  return '<div class="panel"><h2>⑤ 홈택스 자료로 부가세 계산<span class="sub">홈택스에서 받은 분기별 금액을 넣으면 납부세액을 계산해요 · 1·2분기 매출은 보내주신 파일 값으로 채워 두었어요</span></h2><div class="table-wrap"><table><thead>' + head + "</thead><tbody>" + body + "</tbody></table></div>" +
+    '<div class="tiles" style="margin-top:10px">' + ERP.tile("1기 (1~6월) 납부 추정", won(h1) + "원", "매입세액을 넣어야 정확해요") + ERP.tile("2기 (7~12월) 납부 추정", won(h2) + "원") + "</div>" +
+    '<div class="tools" style="margin-top:8px"><button class="btn pri" data-act="taxsave">홈택스 자료 저장</button></div>' +
+    '<p class="note">매출세액 = (판매대행 + 신용카드 + 기타) ÷ 11 + 현금영수증 세액. 판매대행 자료와 현금영수증이 겹치는 거래가 있으면 매출이 두 번 잡혀요 — 세무사 확인 필요. 매입세액은 홈택스 [세금계산서 매입]·[신용카드 매입] 조회 금액을 넣어 주세요.</p></div>';
 }
 function taxRate(base) { for (var i = 0; i < BRACKETS.length; i++) if (base <= BRACKETS[i][0]) return Math.round(BRACKETS[i][1] * 100) + "%"; return "-"; }
 function readCfg() {
@@ -67,6 +94,7 @@ function readCfg() {
   document.querySelectorAll("[data-exn]").forEach(function (el) { c.expenses[+el.dataset.exn].name = el.value; });
   document.querySelectorAll("[data-exm]").forEach(function (el) { c.expenses[+el.dataset.exm].monthly = num(el.value); });
   document.querySelectorAll("[data-exv]").forEach(function (el) { c.expenses[+el.dataset.exv].vat = el.checked; });
+  document.querySelectorAll("[data-ht]").forEach(function (el) { var p = el.dataset.ht.split("|"); c.hometax[p[0]] = c.hometax[p[0]] || {}; c.hometax[p[0]][p[1]] = el.value === "" ? "" : num(el.value); });
   var g = function (id) { var el = document.getElementById("i-" + id); return el ? el.value : ""; };
   if (document.getElementById("i-tx-name")) { c.biz = { name: g("tx-name"), owner: g("tx-owner"), bizNo: g("tx-bizNo"), addr: g("tx-addr") }; c.deduction = num(g("tx-ded")); }
   return c;
