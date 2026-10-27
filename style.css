@@ -297,3 +297,6 @@ body.resizing,body.resizing *{cursor:col-resize!important;user-select:none!impor
 table.sheet tr.so>td,table.sheet tr.so>th{background:#fde4e4!important}table.sheet tr.so>td.key{background:#fbd5d5!important}
 
 .tbl tr.dup td{background:rgba(245,158,11,.16)}
+
+/* 소싱 후보 표: 스크롤해도 제목줄(점수·스토어·브랜드·상품명…) 고정 */
+table.cand-tbl thead th{position:sticky;top:0;z-index:2;background:var(--surface-2)}
