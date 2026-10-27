@@ -18,7 +18,7 @@ var COLS = ERP.COLS = {
   price_items: ["id","status","tier","sku","buy_link","vendor","brand","category","name","buy_price","card_rate","margin","fee_rate","fixed_price","store_price","memo","extra"],
   kream_wholesale: ["id","supplier","list_date","brand","sku","name","kream_url","size","qty","wholesale_price","kream_price","kream_recent","kream_checked_at","decision","memo","extra"]
 };
-var WRITE_ROLES = { staff: ["purchases","returns","documents","kream_wholesale","price_items"], ai: ["purchases","returns","documents","kream_wholesale","price_items"] };
+var WRITE_ROLES = { staff: ["purchases","returns","documents","kream_wholesale","price_items","sourcing_items"], ai: ["purchases","returns","documents","kream_wholesale","price_items","sourcing_items"] };
 ERP.view = { tab: "home", month: C.ym(today()), year: today().slice(0, 4) };
 try { var sv = JSON.parse(localStorage.getItem("rowna-erp-view") || "null"); if (sv && sv.tab) ERP.view.tab = sv.tab; } catch (e) {}
 
@@ -204,7 +204,7 @@ async function afterLogin() {
 /* 메뉴 순서·묶음은 여기서만 정합니다. 화면 내용은 pages/*.js */
 var MENU = ERP.MENU = [
   { g: "운영" }, { id: "home" }, { id: "sales" }, { id: "purchases" }, { id: "returns" }, { id: "stock" }, { id: "documents" },
-  { g: "소싱관리" }, { id: "sourcing" }, { id: "naver-auto" }, { id: "ss-attr" },
+  { g: "소싱관리" }, { id: "rex-sourcing" }, { id: "sourcing" }, { id: "naver-auto" }, { id: "ss-attr" },
   { g: "크림" }, { id: "kream-yeolmu" }, { soon: "크림 시세 소싱" },
   { g: "분석", roles: ["owner", "accountant"] }, { id: "reports" }, { id: "channels" },
   { g: "설정", roles: ["owner", "accountant"] }, { id: "settings" }, { id: "users" }, { id: "activity" }, { id: "data" },

@@ -177,6 +177,30 @@
     if (o.linkDiff) o.warn = (o.warn ? o.warn + " · " : "") + "매입가 변동";
     return o;
   }
-  var api = { sourcing: sourcing, priceCalc: priceCalc, ceilTo: ceilTo, kream: kream, num: num, ym: ym, fee: fee, derive: derive, retLoss: retLoss, retDate: retDate, effCost: effCost, isExcluded: isExcluded, aggregate: aggregate, agingBucket: agingBucket, findCol: findCol, normDate: normDate, toCamel: toCamel, toSnake: toSnake };
+
+  /* 로우나 공통 가격식 (스토어봇 '로우나명품' 가격정책과 동일, 2026-10-26 대표님 입력값)
+     판매가 = 구매가 ÷ divisor + 구간 정액 → round 단위 올림. 몰별 판매가 = 판매가 × 몰 배수(사방넷 별도정보)
+     설정 화면에서 바꾸면 app_settings.price_policy 에 저장되어 소싱폼·사방넷 엑셀·별도정보 파일이 모두 같이 바뀜 */
+  var PRICE_POLICY = {
+    divisor: 0.85, round: 1000,
+    tiers: [[10000, 150000, 16000], [150001, 250000, 22000], [250001, 400000, 29000], [400001, 550000, 40000], [550001, 700000, 50000], [700001, 850000, 54000], [850001, 1200000, 57000], [1200001, 2500000, 77000], [2500001, 3500000, 280000], [3500001, 4500000, 360000], [4500001, 6000000, 460000], [6000001, 7000000, 560000]],
+    malls: [["shop0055", "스마트스토어", 1.02], ["shop0234", "머스트잇", 1.03], ["shop0372", "롯데온", 1.45], ["shop0381", "에이블리", 1.10], ["shop0464", "11번가", 1.03]],
+    trenbi: 0.871, feelway: 0.901, ship: 4000
+  };
+  function policy(p) { var d = PRICE_POLICY, o = Object.assign({}, d, p || {}); if (!o.tiers || !o.tiers.length) o.tiers = d.tiers; if (!o.malls || !o.malls.length) o.malls = d.malls; return o; }
+  function storePrice(buy, p) {
+    p = policy(p); var b = num(buy); if (!b) return null;
+    var t = p.tiers.find(function (x) { return b >= num(x[0]) && b <= num(x[1]); });
+    if (!t) { var lo = p.tiers[0], hi = p.tiers[p.tiers.length - 1]; if (b < num(lo[0])) t = lo; else return null; }
+    var r = num(p.round) || 1, v = b / (Number(p.divisor) || 1) + num(t[2]);
+    return Math.ceil(Math.round(v * 100) / 100 / r) * r;
+  }
+  function mallPrices(base, p) { p = policy(p); var o = {}; p.malls.forEach(function (m) { o[m[0]] = base ? Math.round(base * Number(m[2])) : null; }); return o; }
+  function srcCalc(buy, p) {
+    p = policy(p); var b = num(buy), sp = storePrice(b, p);
+    if (!sp) return { sale: null, over: !!b, trenbi: null, feelway: null, rate: null, malls: {} };
+    return { sale: sp, over: false, trenbi: Math.round(sp * p.trenbi - p.ship - b), feelway: Math.round(sp * p.feelway - p.ship - b), rate: (sp - b) / sp, malls: mallPrices(sp, p) };
+  }
+  var api = { PRICE_POLICY: PRICE_POLICY, policy: policy, storePrice: storePrice, mallPrices: mallPrices, srcCalc: srcCalc, sourcing: sourcing, priceCalc: priceCalc, ceilTo: ceilTo, kream: kream, num: num, ym: ym, fee: fee, derive: derive, retLoss: retLoss, retDate: retDate, effCost: effCost, isExcluded: isExcluded, aggregate: aggregate, agingBucket: agingBucket, findCol: findCol, normDate: normDate, toCamel: toCamel, toSnake: toSnake };
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.RownaCalc = api;
 })(this);
