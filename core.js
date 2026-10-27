@@ -206,7 +206,7 @@ var MENU = ERP.MENU = [
   { g: "운영" }, { id: "home" }, { id: "sales" }, { id: "purchases" }, { id: "returns" }, { id: "stock" }, { id: "documents" },
   { g: "소싱관리" }, { id: "rex-sourcing" }, { id: "sourcing" }, { id: "naver-auto" }, { id: "ss-attr" },
   { g: "크림" }, { id: "kream-yeolmu" }, { soon: "크림 시세 소싱" },
-  { g: "분석", roles: ["owner", "accountant"] }, { id: "reports" }, { id: "channels" },
+  { g: "분석", roles: ["owner", "accountant"] }, { id: "tax" }, { id: "reports" }, { id: "channels" },
   { g: "설정", roles: ["owner", "accountant"] }, { id: "settings" }, { id: "users" }, { id: "activity" }, { id: "data" },
   { g: "준비 중", roles: ["owner"] }, { soon: "자산·현금" }, { soon: "정산 대사" }, { soon: "사방넷·택배" }, { soon: "병행수입 원가" }, { soon: "하이엔드 발주" }, { soon: "고객 관리" }
 ];
