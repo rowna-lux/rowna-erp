@@ -300,3 +300,17 @@ table.sheet tr.so>td,table.sheet tr.so>th{background:#fde4e4!important}table.she
 
 /* 소싱 후보 표: 스크롤해도 제목줄(점수·스토어·브랜드·상품명…) 고정 */
 table.cand-tbl thead th{position:sticky;top:0;z-index:2;background:var(--surface-2)}
+
+/* 사방넷 소싱폼: 열 너비·줄 높이 조절 */
+.tbl.rx thead th{position:relative}
+.tbl.rx .rx-rz{position:absolute;top:0;right:-3px;width:7px;height:100%;cursor:col-resize;z-index:2}
+.tbl.rx .rx-rz:hover{background:rgba(99,102,241,.35)}
+.tbl.rx.fixed{table-layout:fixed;width:max-content}
+.tbl.rx.fixed td,.tbl.rx.fixed th{overflow:hidden;text-overflow:ellipsis}
+.tbl.rx.fixed td .ctl{width:100%!important;min-width:0!important;box-sizing:border-box}
+.tbl.rx td.name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tbl.rx.wrap td.name{white-space:normal}
+.tbl.rx.den-s td,.tbl.rx.den-s th{padding:2px 6px;font-size:12px}
+.tbl.rx.den-s .ctl{padding:2px 4px;font-size:12px;min-height:0;height:24px}
+.tbl.rx.den-l td,.tbl.rx.den-l th{padding:10px 10px;font-size:15px}
+.tbl.rx.fixed td.name{min-width:0;max-width:none}

@@ -65,8 +65,8 @@ function render() {
     '<input class="ctl" data-search="rxQ" placeholder="코드·브랜드·상품명·메모 검색" value="' + esc(v.rxQ) + '" style="min-width:240px">' +
     (w ? '<button class="btn pri sm" data-rx="sabang"' + (SEL.size ? "" : " disabled") + '>사방넷·스토어봇 파일 (' + SEL.size + ')</button>' + (SEL.size ? '<button class="btn sm" data-rx="selclear">선택 해제</button>' : "") : "") + '<button class="btn sm" data-rx="pol">' + (v.rxPol ? "가격식 닫기" : "가격식 보기·수정") + '</button>' + (w ? '<button class="btn sm" data-rx="sync" title="사방넷 › 상품관리 › 사방넷상품대량수정(또는 상품조회) 엑셀로 대조">사방넷 상품파일로 대조</button>' : "") + '<button class="btn sm" data-rx="xlsx">엑셀 내보내기 (' + all.length.toLocaleString() + ')</button><button class="btn sm" data-rx="reload">새로고침</button></div></div>' +
     (v.rxPol ? polHtml() : "") +
-    '<div class="tools" style="margin:8px 0">' + ERP.chips("data-rxst", v.rxSt, chips) + "</div>" +
-    '<div class="tbl-wrap"><table class="tbl rx">' + "<thead>" + head + "</thead><tbody>" + add + body + "</tbody></table></div>" +
+    '<div class="tools" style="margin:8px 0">' + ERP.chips("data-rxst", v.rxSt, chips) + '<span style="flex:1"></span><label class="muted" for="rx-den">줄 높이·글자</label><select class="ctl" id="rx-den">' + [["s", "작게"], ["m", "보통"], ["l", "크게"]].map(function (o) { return '<option value="' + o[0] + '"' + (den() === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + '</select><label class="muted"><input type="checkbox" id="rx-wrap"' + (lsGet("rx-wrap") === "1" ? " checked" : "") + '> 상품명 줄바꿈</label><button class="btn sm" id="rx-wreset" title="열 너비를 처음대로">열 너비 초기화</button></div>' +
+    '<div class="tbl-wrap"><table class="tbl rx den-' + den() + (lsGet("rx-wrap") === "1" ? " wrap" : "") + '">' + "<thead>" + head + "</thead><tbody>" + add + body + "</tbody></table></div>" +
     '<div class="tools" style="justify-content:center;margin:10px 0"><button class="btn sm" data-rx="prev"' + (v.rxPage ? "" : " disabled") + '>‹ 이전</button><span class="muted">' + (v.rxPage + 1) + " / " + pages + ' 쪽 · ' + all.length.toLocaleString() + '건</span><button class="btn sm" data-rx="next"' + (v.rxPage < pages - 1 ? "" : " disabled") + ">다음 ›</button></div>";
 }
 
@@ -92,8 +92,34 @@ function readPol(root) {
   root.querySelectorAll("[data-pp]").forEach(function (el) { p[el.dataset.pp] = Number(el.value); });
   return p;
 }
+function lsGet(k) { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } }
+function lsSet(k, val) { try { if (val == null) localStorage.removeItem(k); else localStorage.setItem(k, val); } catch (e) {} }
+function den() { return lsGet("rx-den") || "m"; }
+/* 열 너비: 머리글 오른쪽 끝을 끌어서 조절(두 번 클릭 = 그 열 자동) · 이 브라우저에 저장 */
+function colResize(tb) {
+  var ths = Array.prototype.slice.call(tb.querySelectorAll("thead th")), W = {};
+  try { W = JSON.parse(lsGet("rx-colw") || "{}"); } catch (e) {}
+  var key = function (th, i) { return (th.textContent || "").trim() || ("#" + i); };
+  if (Object.keys(W).length) { tb.classList.add("fixed"); ths.forEach(function (th, i) { th.style.width = (W[key(th, i)] || th.offsetWidth) + "px"; }); }
+  ths.forEach(function (th, i) {
+    var h = document.createElement("span"); h.className = "rx-rz"; h.title = "끌어서 너비 조절 · 두 번 클릭하면 자동"; th.appendChild(h);
+    h.onmousedown = function (e) {
+      e.preventDefault(); e.stopPropagation();
+      if (!tb.classList.contains("fixed")) { ths.forEach(function (t) { t.style.width = t.offsetWidth + "px"; }); tb.classList.add("fixed"); }
+      var x0 = e.clientX, w0 = th.offsetWidth;
+      var mv = function (ev) { th.style.width = Math.max(36, w0 + ev.clientX - x0) + "px"; };
+      var up = function () { document.removeEventListener("mousemove", mv); document.removeEventListener("mouseup", up); ths.forEach(function (t, j) { W[key(t, j)] = t.offsetWidth; }); lsSet("rx-colw", JSON.stringify(W)); };
+      document.addEventListener("mousemove", mv); document.addEventListener("mouseup", up);
+    };
+    h.ondblclick = function (e) { e.stopPropagation(); delete W[key(th, i)]; lsSet("rx-colw", JSON.stringify(W)); ERP.render(); };
+  });
+}
 function bind(root) {
   if (!ITEMS) return;
+  var tb = root.querySelector("table.rx"); if (tb) colResize(tb);
+  var dn = root.querySelector("#rx-den"); if (dn) dn.onchange = function () { lsSet("rx-den", dn.value); ERP.render(); };
+  var wr = root.querySelector("#rx-wrap"); if (wr) wr.onchange = function () { lsSet("rx-wrap", wr.checked ? "1" : null); ERP.render(); };
+  var wre = root.querySelector("#rx-wreset"); if (wre) wre.onclick = function () { lsSet("rx-colw", null); ERP.render(); };
   root.querySelectorAll("[data-rxst]").forEach(function (b) { b.onclick = function () { v.rxSt = b.dataset.rxst; v.rxPage = 0; ERP.render(); }; });
   root.querySelectorAll("[data-rx]").forEach(function (b) { b.onclick = async function () {
     var a = b.dataset.rx, tr = b.closest("tr"), id = tr && tr.dataset.id;
