@@ -6,7 +6,7 @@
 "use strict";
 var ERP = window.ERP, U = ERP.U, S = ERP.S, C = ERP.C, esc = U.esc, won = U.won, num = U.num;
 var v = ERP.view; v.rxQ = v.rxQ || ""; v.rxSt = v.rxSt || ""; v.rxPage = v.rxPage || 0; v.rxPol = !!v.rxPol;
-var STATUS = ["소싱", "등록요청", "등록완료", "품절", "보류"], PAGE = 100;
+var STATUS = ["소싱", "등록요청", "등록완료", "품절", "보류"], OUT = "사방넷없음", PAGE = 100;
 var ITEMS = null, loading = false, SEL = new Set();
 function pol() { return C.policy(S.SET.price_policy); }
 async function load(force) {
@@ -16,13 +16,14 @@ async function load(force) {
   loading = false; if (ERP.view.tab === "rex-sourcing") ERP.render();
 }
 /* 중복 = 자체상품코드(띄어쓰기·대소문자 무시)가 같은 줄. 대표님 지시: 소싱폼에 중복은 절대 안 됨 */
-function dupCount() { var m = {}; ITEMS.forEach(function (x) { var k = U.norm(x.sku); if (k) m[k] = (m[k] || 0) + 1; }); return m; }
+function dupCount() { var m = {}; ITEMS.forEach(function (x) { if (x.status === OUT) return; var k = U.norm(x.sku); if (k) m[k] = (m[k] || 0) + 1; }); return m; }
 function list() {
   var DUP = dupCount();
   var q = v.rxQ.trim().toLowerCase();
   return Array.from(ITEMS.values()).filter(function (x) {
-    if (v.rxSt === "__dup") { if ((DUP[U.norm(x.sku)] || 0) < 2) return false; }
-    else if (v.rxSt && x.status !== v.rxSt) return false;
+    if (v.rxSt === "__dup") { if (x.status === OUT || (DUP[U.norm(x.sku)] || 0) < 2) return false; }
+    else if (v.rxSt) { if (x.status !== v.rxSt) return false; }
+    else if (x.status === OUT) return false;   /* 사방넷에 없는 상품은 따로(전체에서 뺌) */
     if (q && ((x.sku || "") + " " + (x.brand || "") + " " + (x.name || "") + " " + (x.memo || "") + " " + (x.category || "")).toLowerCase().indexOf(q) === -1) return false;
     return true;
   }).sort(function (a, b) { if (v.rxSt === "__dup") { var c = U.norm(a.sku).localeCompare(U.norm(b.sku)); if (c) return c; } return String(b.date || "").localeCompare(String(a.date || "")) || String(b.created_at || "").localeCompare(String(a.created_at || "")); });
@@ -48,7 +49,7 @@ function render() {
   var rows = all.slice(v.rxPage * PAGE, (v.rxPage + 1) * PAGE);
   var cnt = {}; ITEMS.forEach(function (x) { cnt[x.status || ""] = (cnt[x.status || ""] || 0) + 1; });
   var DUP = dupCount(), dupRows = 0; Object.keys(DUP).forEach(function (k) { if (DUP[k] > 1) dupRows += DUP[k]; });
-  var chips = [["", "전체 " + ITEMS.size]].concat(STATUS.map(function (s) { return [s, s + " " + (cnt[s] || 0)]; })).concat(dupRows ? [["__dup", "⚠ 중복 " + dupRows]] : []);
+  var chips = [["", "전체 " + (ITEMS.size - (cnt[OUT] || 0))]].concat(STATUS.map(function (s) { return [s, s + " " + (cnt[s] || 0)]; })).concat(dupRows ? [["__dup", "⚠ 중복 " + dupRows]] : []).concat([[OUT, "사방넷에 없음 " + (cnt[OUT] || 0)]]);
   var ss = p.malls[0], lo = p.malls.find(function (m) { return m[0] === "shop0372"; }) || p.malls[2];
   var head = "<tr>" + (w ? '<th><input type="checkbox" id="rx-all" title="이 쪽 전체 선택"></th>' : "") + "<th>소싱날짜</th><th>브랜드</th><th>자체상품코드</th><th>상품명</th><th>원산지</th><th class=num>구매단가</th><th class=num>판매가</th><th class=num>마진율</th><th class=num>트렌비 마진</th><th class=num>필웨이 마진</th><th class=num>" + esc(ss[1]) + "</th><th class=num>" + esc(lo[1]) + "</th><th>상태</th><th>카테고리</th><th>메모</th>" + (w ? "<th></th>" : "") + "</tr>";
   var add = w ? '<tr class="rx-new"><td></td><td><input class="ctl" type="date" id="rxn-date" value="' + U.today() + '"></td><td><input class="ctl" id="rxn-brand" placeholder="브랜드"></td><td><input class="ctl" id="rxn-sku" placeholder="자체상품코드"></td><td><input class="ctl" id="rxn-name" placeholder="상품명" style="min-width:260px"><input class="ctl" id="rxn-url" placeholder="URL" style="min-width:260px;margin-top:4px"></td><td><input class="ctl" id="rxn-origin" placeholder="원산지" style="width:80px"></td><td><input class="ctl num" id="rxn-price" placeholder="구매단가" inputmode="numeric" style="width:100px"></td><td class="num" id="rxn-calc" colspan="6"></td><td><select class="ctl" id="rxn-st">' + STATUS.map(function (s) { return "<option>" + s + "</option>"; }).join("") + '</select></td><td><input class="ctl" id="rxn-cat" style="width:90px"></td><td><input class="ctl" id="rxn-memo" style="width:120px"></td><td><button class="btn pri sm" data-rx="add">추가</button></td></tr>' : "";
@@ -62,7 +63,7 @@ function render() {
   }).join("");
   return '<div class="head"><h2>사방넷 소싱폼</h2><div class="tools">' +
     '<input class="ctl" data-search="rxQ" placeholder="코드·브랜드·상품명·메모 검색" value="' + esc(v.rxQ) + '" style="min-width:240px">' +
-    (w ? '<button class="btn pri sm" data-rx="sabang"' + (SEL.size ? "" : " disabled") + '>사방넷·스토어봇 파일 (' + SEL.size + ')</button>' + (SEL.size ? '<button class="btn sm" data-rx="selclear">선택 해제</button>' : "") : "") + '<button class="btn sm" data-rx="pol">' + (v.rxPol ? "가격식 닫기" : "가격식 보기·수정") + '</button><button class="btn sm" data-rx="xlsx">엑셀 내보내기 (' + all.length.toLocaleString() + ')</button><button class="btn sm" data-rx="reload">새로고침</button></div></div>' +
+    (w ? '<button class="btn pri sm" data-rx="sabang"' + (SEL.size ? "" : " disabled") + '>사방넷·스토어봇 파일 (' + SEL.size + ')</button>' + (SEL.size ? '<button class="btn sm" data-rx="selclear">선택 해제</button>' : "") : "") + '<button class="btn sm" data-rx="pol">' + (v.rxPol ? "가격식 닫기" : "가격식 보기·수정") + '</button>' + (w ? '<button class="btn sm" data-rx="sync" title="사방넷 › 상품관리 › 사방넷상품대량수정(또는 상품조회) 엑셀로 대조">사방넷 상품파일로 대조</button>' : "") + '<button class="btn sm" data-rx="xlsx">엑셀 내보내기 (' + all.length.toLocaleString() + ')</button><button class="btn sm" data-rx="reload">새로고침</button></div></div>' +
     (v.rxPol ? polHtml() : "") +
     '<div class="tools" style="margin:8px 0">' + ERP.chips("data-rxst", v.rxSt, chips) + "</div>" +
     '<div class="tbl-wrap"><table class="tbl rx">' + "<thead>" + head + "</thead><tbody>" + add + body + "</tbody></table></div>" +
@@ -101,6 +102,7 @@ function bind(root) {
     else if (a === "pol") { v.rxPol = !v.rxPol; ERP.render(); }
     else if (a === "reload") { await load(true); }
     else if (a === "xlsx") exportXlsx();
+    else if (a === "sync") ERP.pickFile(".xlsx,.xls,.csv", syncSabang);
     else if (a === "selclear") { SEL.clear(); ERP.render(); }
     else if (a === "sabang") SABANG.open();
     else if (a === "addtier") { var p = readPol(root), l = p.tiers[p.tiers.length - 1]; p.tiers.push([num(l[1]) + 1, num(l[1]) + 1000000, l[2]]); S.SET.price_policy = p; ERP.render(); }
@@ -111,10 +113,12 @@ function bind(root) {
     else if (a === "add") {
       var g = function (k) { var el = root.querySelector("#rxn-" + k); return el ? el.value.trim() : ""; };
       if (!g("sku") && !g("name")) { ERP.toast("자체상품코드나 상품명을 넣어주세요."); return; }
-      var dupe = g("sku") && Array.from(ITEMS.values()).filter(function (x) { return U.norm(x.sku) === U.norm(g("sku")); });
+      var same = g("sku") ? Array.from(ITEMS.values()).filter(function (x) { return U.norm(x.sku) === U.norm(g("sku")); }) : [];
+      var dupe = same.filter(function (x) { return x.status !== OUT; }), olds = same.filter(function (x) { return x.status === OUT; });
       if (dupe && dupe.length) { ERP.toast("이미 소싱폼에 있는 코드라 추가할 수 없어요 (" + dupe.map(function (x) { return x.date || "날짜없음"; }).join(", ") + ")."); v.rxQ = g("sku"); v.rxSt = ""; ERP.render(); return; }
       var o = { id: U.uid(), date: g("date") || null, brand: g("brand"), sku: g("sku"), url: g("url"), origin: g("origin"), buy_price: g("price") ? num(g("price")) : null, name: g("name"), status: g("st") || "소싱", category: g("cat"), memo: g("memo"), extra: {} };
-      if (await saveRow(o)) { ERP.toast("추가했어요."); v.rxSt = ""; v.rxQ = ""; v.rxPage = 0; ERP.render(); }
+      if (olds.length) { var dr = await S.sb.from("sourcing_items").delete().in("id", olds.map(function (x) { return x.id; })); if (!dr.error) olds.forEach(function (x) { ITEMS.delete(x.id); }); }
+      if (await saveRow(o)) { ERP.toast(olds.length ? "추가했어요 · '사방넷에 없음' 목록의 같은 코드 " + olds.length + "줄은 지웠어요." : "추가했어요."); v.rxSt = ""; v.rxQ = ""; v.rxPage = 0; ERP.render(); }
     }
   }; });
   root.querySelectorAll("tr[data-id] [data-sel]").forEach(function (el) { el.onchange = function () { var id = el.closest("tr").dataset.id; if (el.checked) SEL.add(id); else SEL.delete(id); selBtn(root); }; });
@@ -125,6 +129,33 @@ function bind(root) {
     o[f] = f === "buy_price" ? (el.value === "" ? null : num(el.value)) : el.value;
     if (await saveRow(o)) { if (f === "buy_price") ERP.render(); else ERP.toast("저장했어요."); }
   }; });
+}
+/* 사방넷 대조: 사방넷 상품 엑셀(자체상품코드 열)과 비교
+   - 소싱폼에 있는데 사방넷에 없음 → 상태 '사방넷없음'(따로 관리, 전체에서 빠짐)
+   - '사방넷없음'인데 사방넷에 다시 생김(재입고 재등록) → 그 목록에서 지움(같은 코드가 이미 있으면 삭제, 없으면 등록완료로) */
+async function syncSabang(file) {
+  try {
+    var wb = XLSX.read(await file.arrayBuffer()), a = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "" });
+    var hr = -1, col = -1; for (var r = 0; r < Math.min(10, a.length) && col < 0; r++) for (var c = 0; c < a[r].length; c++) if (String(a[r][c]).replace(/\s/g, "").indexOf("자체상품코드") === 0) { hr = r; col = c; break; }
+    if (col < 0) { ERP.toast("이 파일에서 '자체상품코드' 칸을 못 찾았어요."); return; }
+    var SB = new Set(); a.slice(hr + 1).forEach(function (row) { var k = U.norm(row[col]); if (k && !/^▶/.test(String(row[col]))) SB.add(k); });
+    if (SB.size < 1000 && !confirm("사방넷 코드가 " + SB.size + "개뿐이에요. 전체 상품 파일이 맞나요? (기간 2000-01-01부터, 상태 전체)")) return;
+    var all = Array.from(ITEMS.values()), active = {}, toOut = [], back = [], drop = [];
+    all.forEach(function (x) { if (x.status !== OUT) { var k = U.norm(x.sku); if (k) active[k] = 1; } });
+    all.forEach(function (x) { var k = U.norm(x.sku), inS = k && SB.has(k);
+      if (x.status !== OUT && !inS) toOut.push(x);
+      else if (x.status === OUT && inS) { if (active[k]) drop.push(x); else { back.push(x); active[k] = 1; } } });
+    if (!toOut.length && !back.length && !drop.length) { ERP.toast("사방넷과 소싱폼이 맞아요. 바꿀 것 없음 (사방넷 " + SB.size + "개)"); return; }
+    if (!confirm("사방넷 상품 " + SB.size + "개와 대조했어요.\n\n· 사방넷에 없어서 '사방넷에 없음'으로 옮김: " + toOut.length + "줄\n· 사방넷에 다시 생겨서 목록에서 지움: " + (back.length + drop.length) + "줄\n\n진행할까요?")) return;
+    var now = new Date().toISOString(), up = [];
+    toOut.forEach(function (x) { up.push(Object.assign({}, x, { status: OUT, extra: Object.assign({}, x.extra || {}, { prevStatus: x.status, outAt: now }), updated_at: now })); });
+    back.forEach(function (x) { var e = Object.assign({}, x.extra || {}); var ps = e.prevStatus; delete e.prevStatus; e.backAt = now; up.push(Object.assign({}, x, { status: ps && ps !== OUT ? ps : "등록완료", extra: e, updated_at: now })); });
+    for (var i = 0; i < up.length; i += 500) { var res = await S.sb.from("sourcing_items").upsert(up.slice(i, i + 500)); if (res.error) throw res.error; }
+    up.forEach(function (u) { ITEMS.set(u.id, u); });
+    if (drop.length) { for (var j = 0; j < drop.length; j += 200) { var dr = await S.sb.from("sourcing_items").delete().in("id", drop.slice(j, j + 200).map(function (x) { return x.id; })); if (dr.error) throw dr.error; } drop.forEach(function (x) { ITEMS.delete(x.id); }); }
+    await ERP.saveSetting("sabang_sync", { at: now, codes: SB.size, out: toOut.length, back: back.length + drop.length });
+    ERP.render();
+  } catch (e) { ERP.toast("대조 실패: " + (e.message || e)); }
 }
 function selBtn(root) { var b = root.querySelector('[data-rx="sabang"]'); if (b) { b.disabled = !SEL.size; b.textContent = "사방넷·스토어봇 파일 (" + SEL.size + ")"; } }
 
@@ -163,7 +194,7 @@ var SABANG = (function () {
   function imgUrl(folder, no, sku, n) { return "https://gi.esmplus.com/" + ESM + "/" + enc(folder) + "/" + enc(no + "  " + sku) + "/" + n + ".jpg"; }
   function bannerUrl(p, brand) { return p.banner || ("https://gi.esmplus.com/" + ESM + "/banners/" + enc(brand) + "/0.jpg"); }
   function exists(url) { return new Promise(function (res) { var im = new Image(), t = setTimeout(function () { res(null); }, 8000); im.onload = function () { clearTimeout(t); res(true); }; im.onerror = function () { clearTimeout(t); res(false); }; im.src = url + (url.indexOf("?") < 0 ? "?v=" : "&v=") + Date.now(); }); }
-  async function head() { if (HEAD) return HEAD; var r = await fetch("data/sabang_head.json?v=1027h"); HEAD = await r.json(); return HEAD; }
+  async function head() { if (HEAD) return HEAD; var r = await fetch("data/sabang_head.json?v=1027i"); HEAD = await r.json(); return HEAD; }
   function picked() { return Array.from(SEL).map(function (id) { return ITEMS.get(id); }).filter(Boolean).sort(function (a, b) { return String(a.date || "").localeCompare(String(b.date || "")) || ((a.extra && a.extra.row) || 0) - ((b.extra && b.extra.row) || 0) || String(a.created_at || "").localeCompare(String(b.created_at || "")); }); }
   function open() {
     var items = picked(); if (!items.length) return;
