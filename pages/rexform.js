@@ -136,8 +136,8 @@ var SABANG = (function () {
   function parseSizes(t) {
     var am = (t.match(/구매 가능 사이즈\s*\t?\s*([^\n]*)/) || [])[1] || "", avail = am.split(/\s*,\s*/).map(function (x) { return x.trim(); }).filter(Boolean);
     var i = t.indexOf("사이즈 선택 TIP"), tips = [];
-    if (i >= 0) { var seg = t.slice(i, i + 3000), e = seg.search(/\n(혼용률|소재|상품의 라벨|구성품)/); if (e > 0) seg = seg.slice(0, e); seg.split("\n").slice(1).forEach(function (ln) { var c = ln.split("\t").map(function (x) { return x.trim(); }); if (c.length >= 2 && c[0] && c[1] && !/도움말|택 사이즈/.test(c[0])) tips.push([c[0], c[1].replace(/\s*(㎜|mm)\s*$/i, "")]); }); }
-    var nz = function (x) { return String(x).replace(/\s|㎜|mm/gi, "").toUpperCase(); };
+    if (i >= 0) { var seg = t.slice(i, i + 3000), e = seg.search(/\n(혼용률|소재|상품의 라벨|구성품)/); if (e > 0) seg = seg.slice(0, e); seg.split("\n").slice(1).forEach(function (ln) { var c = ln.split("\t").map(function (x) { return x.trim(); }); if (c.length >= 2 && c[0] && c[1] && !/도움말|택 사이즈/.test(c[0])) tips.push([c[0], c[1].replace(/\s*(㎜|mm)?\s*(전후)?\s*$/i, "").trim()]); }); }
+    var nz = function (x) { return String(x).replace(/\s|㎜|mm|전후/gi, "").toUpperCase(); };
     if (!avail.length && !tips.length) return { sizes: "단일사이즈[ONE SIZE]", how: "사이즈 없음" };
     if (avail.length && avail.every(function (a) { return /^(FREE|F|ONE ?SIZE|단일|OS)$/i.test(a); })) return { sizes: "단일사이즈[ONE SIZE]", how: "단일" };
     if (!tips.length) return { sizes: avail.map(function (a) { return a + "[" + a + "]"; }).join(","), how: "TIP 표 없음 — 구매가능 사이즈만", warn: true };
@@ -157,7 +157,7 @@ var SABANG = (function () {
   function imgUrl(folder, no, sku, n) { return "https://gi.esmplus.com/" + ESM + "/" + enc(folder) + "/" + enc(no + "  " + sku) + "/" + n + ".jpg"; }
   function bannerUrl(p, brand) { return p.banner || ("https://gi.esmplus.com/" + ESM + "/banners/" + enc(brand) + "/0.jpg"); }
   function exists(url) { return new Promise(function (res) { var im = new Image(), t = setTimeout(function () { res(null); }, 8000); im.onload = function () { clearTimeout(t); res(true); }; im.onerror = function () { clearTimeout(t); res(false); }; im.src = url + (url.indexOf("?") < 0 ? "?v=" : "&v=") + Date.now(); }); }
-  async function head() { if (HEAD) return HEAD; var r = await fetch("data/sabang_head.json?v=1027e"); HEAD = await r.json(); return HEAD; }
+  async function head() { if (HEAD) return HEAD; var r = await fetch("data/sabang_head.json?v=1027f"); HEAD = await r.json(); return HEAD; }
   function picked() { return Array.from(SEL).map(function (id) { return ITEMS.get(id); }).filter(Boolean).sort(function (a, b) { return String(a.date || "").localeCompare(String(b.date || "")) || ((a.extra && a.extra.row) || 0) - ((b.extra && b.extra.row) || 0) || String(a.created_at || "").localeCompare(String(b.created_at || "")); }); }
   function open() {
     var items = picked(); if (!items.length) return;
