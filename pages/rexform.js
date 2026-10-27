@@ -56,7 +56,7 @@ function render() {
   }).join("");
   return '<div class="head"><h2>사방넷 소싱폼</h2><div class="tools">' +
     '<input class="ctl" data-search="rxQ" placeholder="코드·브랜드·상품명·메모 검색" value="' + esc(v.rxQ) + '" style="min-width:240px">' +
-    (w ? '<button class="btn pri sm" data-rx="sabang"' + (SEL.size ? "" : " disabled") + '>사방넷 엑셀 만들기 (' + SEL.size + ')</button>' + (SEL.size ? '<button class="btn sm" data-rx="selclear">선택 해제</button>' : "") : "") + '<button class="btn sm" data-rx="pol">' + (v.rxPol ? "가격식 닫기" : "가격식 보기·수정") + '</button><button class="btn sm" data-rx="xlsx">엑셀 내보내기 (' + all.length.toLocaleString() + ')</button><button class="btn sm" data-rx="reload">새로고침</button></div></div>' +
+    (w ? '<button class="btn pri sm" data-rx="sabang"' + (SEL.size ? "" : " disabled") + '>사방넷·스토어봇 파일 (' + SEL.size + ')</button>' + (SEL.size ? '<button class="btn sm" data-rx="selclear">선택 해제</button>' : "") : "") + '<button class="btn sm" data-rx="pol">' + (v.rxPol ? "가격식 닫기" : "가격식 보기·수정") + '</button><button class="btn sm" data-rx="xlsx">엑셀 내보내기 (' + all.length.toLocaleString() + ')</button><button class="btn sm" data-rx="reload">새로고침</button></div></div>' +
     (v.rxPol ? polHtml() : "") +
     '<div class="tools" style="margin:8px 0">' + ERP.chips("data-rxst", v.rxSt, chips) + "</div>" +
     '<div class="tbl-wrap"><table class="tbl rx">' + "<thead>" + head + "</thead><tbody>" + add + body + "</tbody></table></div>" +
@@ -120,13 +120,13 @@ function bind(root) {
     if (await saveRow(o)) { if (f === "buy_price") ERP.render(); else ERP.toast("저장했어요."); }
   }; });
 }
-function selBtn(root) { var b = root.querySelector('[data-rx="sabang"]'); if (b) { b.disabled = !SEL.size; b.textContent = "사방넷 엑셀 만들기 (" + SEL.size + ")"; } }
+function selBtn(root) { var b = root.querySelector('[data-rx="sabang"]'); if (b) { b.disabled = !SEL.size; b.textContent = "사방넷·스토어봇 파일 (" + SEL.size + ")"; } }
 
 /* ---------- 사방넷 상품대량등록 엑셀 (구글시트 '사방넷 도구 › 엑셀 생성'과 같은 113칸) ----------
    브랜드별 묶음 설정 = app_settings.sabang_presets[한글브랜드] (시트 Metadata·Brands에서 옮김)
    이미지: https://gi.esmplus.com/{ESM}/{작업폴더}/{순번}␣␣{품번}/{n}.jpg — 대표 2, 부가6~8 = 3·4·5, 상세 = 배너 0 + 상세번호 */
 var SABANG = (function () {
-  var ESM = "djsouplim", TAG = 1.6, HEAD = null;
+  var ESM = "djsouplim", TAG = 1.6, MARKET = "shinmy777", HEAD = null;
   var COL = { name: 0, model: 2, modelNo: 3, brandEn: 4, sku: 5, kw: 6, kind: 8, maker: 12, origin: 13, gender: 17, state: 18, region: 19, tax: 20, shipKind: 21, shipFee: 22, cost: 24, sale: 25, tag: 26, opt1: 27, opt1v: 28, opt2: 29, opt2v: 30, img: 31, add6: 37, add7: 38, add8: 39, detail: 42, certNo: 44, certField: 50, stock: 51, memo: 68, optEdit: 69, attrCode: 79 };
   function presets() { return S.SET.sabang_presets || {}; }
   function yymmdd(d) { var t = d || U.today(); return t.slice(2, 4) + t.slice(5, 7) + t.slice(8, 10); }
@@ -152,12 +152,12 @@ var SABANG = (function () {
     if (!/products\/view/.test(d.url || "")) return { fail: "렉스몬드 상품페이지를 못 찾음" };
     var t = d.text || ""; if (x.sku && t.indexOf(x.sku) < 0 && (d.title || "").indexOf(x.sku) < 0) return { fail: "렉스몬드 품번 불일치" };
     if (/일시품절|품절된 상품|SOLD OUT/i.test(t.slice(0, 3000)) && !/구매 가능 사이즈/.test(t)) return { fail: "렉스몬드 품절" };
-    return parseSizes(t);
+    var r = parseSizes(t), no = (String(d.url).match(/[?&]no=(\d+)/) || [])[1]; r.url = no ? "https://www.rexmonde.com/products/view?no=" + no : String(d.url).split("&")[0]; return r;
   }
   function imgUrl(folder, no, sku, n) { return "https://gi.esmplus.com/" + ESM + "/" + enc(folder) + "/" + enc(no + "  " + sku) + "/" + n + ".jpg"; }
   function bannerUrl(p, brand) { return p.banner || ("https://gi.esmplus.com/" + ESM + "/banners/" + enc(brand) + "/0.jpg"); }
   function exists(url) { return new Promise(function (res) { var im = new Image(), t = setTimeout(function () { res(null); }, 8000); im.onload = function () { clearTimeout(t); res(true); }; im.onerror = function () { clearTimeout(t); res(false); }; im.src = url + (url.indexOf("?") < 0 ? "?v=" : "&v=") + Date.now(); }); }
-  async function head() { if (HEAD) return HEAD; var r = await fetch("data/sabang_head.json?v=1027d"); HEAD = await r.json(); return HEAD; }
+  async function head() { if (HEAD) return HEAD; var r = await fetch("data/sabang_head.json?v=1027e"); HEAD = await r.json(); return HEAD; }
   function picked() { return Array.from(SEL).map(function (id) { return ITEMS.get(id); }).filter(Boolean).sort(function (a, b) { return String(a.date || "").localeCompare(String(b.date || "")) || ((a.extra && a.extra.row) || 0) - ((b.extra && b.extra.row) || 0) || String(a.created_at || "").localeCompare(String(b.created_at || "")); }); }
   function open() {
     var items = picked(); if (!items.length) return;
@@ -174,7 +174,7 @@ var SABANG = (function () {
       f("브랜드 배너 주소 (비우면 자동)", "banner", p.banner || "", true) +
       '<div class="fd full"><label><input type="checkbox" name="check" checked> ESM에 이미지가 올라가 있는지 확인하고 없는 번호는 빼기</label></div></div>' +
       '<p class="muted">판매가 = 공통 가격식(스토어봇과 같음) · TAG가 = 판매가 ×' + TAG + " · 원가 = 구매단가(렉스몬드 판매가) · 사이즈 = 렉스몬드 구매가능 사이즈 + 앞뒤 1칸(상품당 약 15초) · 다 만들면 상태가 '등록요청'으로 바뀌어요.</p><div id=\"sx-log\"></div>";
-    ERP.openDrawer("사방넷 대량등록 엑셀", html, "sourcing_items", { brand: main }, true, { saveLabel: "엑셀 만들기" });
+    ERP.openDrawer("사방넷 엑셀 + 스토어봇 파일", html, "sourcing_items", { brand: main }, true, { saveLabel: "파일 2개 만들기" });
   }
   async function build(body, o) {
     if (!(ERP.helperOn && ERP.helperOn())) { ERP.toast("사이즈를 렉스몬드에서 가져오려면 로우나 도우미(크롬 확장)가 켜진 컴퓨터에서 만들어 주세요."); return false; }
@@ -201,21 +201,27 @@ var SABANG = (function () {
       r[COL.detail] = imgs.filter(function (n) { return have[n] !== false; }).map(function (n) { return "<img src='" + (n === 0 ? bannerUrl(o, x.brand || "") : imgUrl(o.folder, no, sku, n)) + "' />"; }).join("<br />\n");
       r[COL.certNo] = "없음"; r[COL.certField] = "없음"; r[COL.stock] = "N"; r[COL.memo] = "로우나"; r[COL.optEdit] = 2; r[COL.attrCode] = o.attrCode || "001";
       for (var q = 1; q <= 14; q++) r[COL.attrCode + q] = "상세참조";
-      rows.push({ x: x, no: no, r: r, sizes: sz.sizes });
+      rows.push({ x: x, no: no, r: r, sizes: sz.sizes, url: sz.url });
     }
     if (!rows.length) { say('<span class="neg">만들 상품이 없어요.</span><br>' + warn.map(esc).join("<br>")); return false; }
     var ws = XLSX.utils.aoa_to_sheet(H.concat(rows.map(function (z) { return z.r; })));
     ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 10 } }];
     var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "사방넷상품대량등록_샘플파일");
     var brandK = (items[0] && items[0].brand) || "상품", fname = "사방넷_" + brandK + "_" + U.today().replace(/-/g, ".") + ".xlsx";
-    ERP.downloadBlob(fname, new Blob([XLSX.write(wb, { bookType: "xlsx", type: "array" })], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    var XT = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    ERP.downloadBlob(fname, new Blob([XLSX.write(wb, { bookType: "xlsx", type: "array" })], { type: XT }));
+    /* 스토어봇 파일: 마켓 sabang · 마켓아이디 · 자체상품코드 · 옵션(상세참조-사이즈) · 렉스몬드 URL */
+    var sb = [["마켓", "마켓아이디", "마켓상품ID", "옵션(사방넷 필수)", "연동상품URL"]].concat(rows.map(function (z) { return ["sabang", MARKET, z.r[COL.sku], z.sizes.split(",").map(function (v) { return "상세참조-" + v; }).join(","), z.url]; }));
+    var wb2 = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb2, XLSX.utils.aoa_to_sheet(sb), "시트1");
+    var sname = "스토어봇_" + brandK + "_" + U.today().replace(/-/g, ".") + ".xlsx";
+    setTimeout(function () { ERP.downloadBlob(sname, new Blob([XLSX.write(wb2, { bookType: "xlsx", type: "array" })], { type: XT })); }, 1200);
     /* 브랜드 설정 저장 + 상태 '등록요청' */
     var ps = Object.assign({}, presets()); ps[brandK] = Object.assign({}, ps[brandK] || {}, { brandEn: o.brandEn, maker: o.maker, kw: o.kw, gender: o.gender, attrCode: o.attrCode, imgs: o.imgs, banner: o.banner || "" });
     await ERP.saveSetting("sabang_presets", ps);
-    var now = new Date().toISOString(), up = rows.map(function (z) { var e = Object.assign({}, z.x.extra || {}, { sizes: z.sizes, sabang: { file: fname, folder: o.folder, no: z.no, at: now } }); return Object.assign({}, z.x, { status: "등록요청", extra: e, updated_at: now }); });
+    var now = new Date().toISOString(), up = rows.map(function (z) { var e = Object.assign({}, z.x.extra || {}, { sizes: z.sizes, rexUrl: z.url, sabang: { file: fname, storebot: sname, folder: o.folder, no: z.no, at: now } }); return Object.assign({}, z.x, { status: "등록요청", extra: e, updated_at: now }); });
     var res = await S.sb.from("sourcing_items").upsert(up); if (!res.error) up.forEach(function (u) { ITEMS.set(u.id, u); });
     SEL.clear();
-    ERP.toast(rows.length + "개 엑셀을 만들었어요." + (warn.length ? " 확인할 것 " + warn.length + "개" : ""));
+    ERP.toast(rows.length + "개 · 사방넷 엑셀 + 스토어봇 파일을 만들었어요." + (warn.length ? " 확인할 것 " + warn.length + "개" : ""));
     if (warn.length) setTimeout(function () { alert("확인할 것\n" + warn.join("\n")); }, 300);
     return true;
   }
