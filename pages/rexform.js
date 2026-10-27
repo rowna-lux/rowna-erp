@@ -15,13 +15,17 @@ async function load(force) {
   catch (e) { ERP.toast("소싱폼을 불러오지 못했어요: " + (e.message || e)); ITEMS = ITEMS || new Map(); }
   loading = false; if (ERP.view.tab === "rex-sourcing") ERP.render();
 }
+/* 중복 = 자체상품코드(띄어쓰기·대소문자 무시)가 같은 줄. 대표님 지시: 소싱폼에 중복은 절대 안 됨 */
+function dupCount() { var m = {}; ITEMS.forEach(function (x) { var k = U.norm(x.sku); if (k) m[k] = (m[k] || 0) + 1; }); return m; }
 function list() {
+  var DUP = dupCount();
   var q = v.rxQ.trim().toLowerCase();
   return Array.from(ITEMS.values()).filter(function (x) {
-    if (v.rxSt && x.status !== v.rxSt) return false;
+    if (v.rxSt === "__dup") { if ((DUP[U.norm(x.sku)] || 0) < 2) return false; }
+    else if (v.rxSt && x.status !== v.rxSt) return false;
     if (q && ((x.sku || "") + " " + (x.brand || "") + " " + (x.name || "") + " " + (x.memo || "") + " " + (x.category || "")).toLowerCase().indexOf(q) === -1) return false;
     return true;
-  }).sort(function (a, b) { return String(b.date || "").localeCompare(String(a.date || "")) || String(b.created_at || "").localeCompare(String(a.created_at || "")); });
+  }).sort(function (a, b) { if (v.rxSt === "__dup") { var c = U.norm(a.sku).localeCompare(U.norm(b.sku)); if (c) return c; } return String(b.date || "").localeCompare(String(a.date || "")) || String(b.created_at || "").localeCompare(String(a.created_at || "")); });
 }
 function wonOr(n) { return n == null ? '<span class="muted">–</span>' : won(n); }
 function mcls(n) { return n == null ? "" : n < 0 ? "neg" : ""; }
@@ -43,13 +47,15 @@ function render() {
   if (v.rxPage >= pages) v.rxPage = pages - 1;
   var rows = all.slice(v.rxPage * PAGE, (v.rxPage + 1) * PAGE);
   var cnt = {}; ITEMS.forEach(function (x) { cnt[x.status || ""] = (cnt[x.status || ""] || 0) + 1; });
-  var chips = [["", "전체 " + ITEMS.size]].concat(STATUS.map(function (s) { return [s, s + " " + (cnt[s] || 0)]; }));
+  var DUP = dupCount(), dupRows = 0; Object.keys(DUP).forEach(function (k) { if (DUP[k] > 1) dupRows += DUP[k]; });
+  var chips = [["", "전체 " + ITEMS.size]].concat(STATUS.map(function (s) { return [s, s + " " + (cnt[s] || 0)]; })).concat(dupRows ? [["__dup", "⚠ 중복 " + dupRows]] : []);
   var ss = p.malls[0], lo = p.malls.find(function (m) { return m[0] === "shop0372"; }) || p.malls[2];
   var head = "<tr>" + (w ? '<th><input type="checkbox" id="rx-all" title="이 쪽 전체 선택"></th>' : "") + "<th>소싱날짜</th><th>브랜드</th><th>자체상품코드</th><th>상품명</th><th>원산지</th><th class=num>구매단가</th><th class=num>판매가</th><th class=num>마진율</th><th class=num>트렌비 마진</th><th class=num>필웨이 마진</th><th class=num>" + esc(ss[1]) + "</th><th class=num>" + esc(lo[1]) + "</th><th>상태</th><th>카테고리</th><th>메모</th>" + (w ? "<th></th>" : "") + "</tr>";
   var add = w ? '<tr class="rx-new"><td></td><td><input class="ctl" type="date" id="rxn-date" value="' + U.today() + '"></td><td><input class="ctl" id="rxn-brand" placeholder="브랜드"></td><td><input class="ctl" id="rxn-sku" placeholder="자체상품코드"></td><td><input class="ctl" id="rxn-name" placeholder="상품명" style="min-width:260px"><input class="ctl" id="rxn-url" placeholder="URL" style="min-width:260px;margin-top:4px"></td><td><input class="ctl" id="rxn-origin" placeholder="원산지" style="width:80px"></td><td><input class="ctl num" id="rxn-price" placeholder="구매단가" inputmode="numeric" style="width:100px"></td><td class="num" id="rxn-calc" colspan="6"></td><td><select class="ctl" id="rxn-st">' + STATUS.map(function (s) { return "<option>" + s + "</option>"; }).join("") + '</select></td><td><input class="ctl" id="rxn-cat" style="width:90px"></td><td><input class="ctl" id="rxn-memo" style="width:120px"></td><td><button class="btn pri sm" data-rx="add">추가</button></td></tr>' : "";
   var body = rows.map(function (x) {
     var c = C.srcCalc(x.buy_price, p);
-    return '<tr data-id="' + esc(x.id) + '">' + (w ? '<td><input type="checkbox" data-sel' + (SEL.has(x.id) ? " checked" : "") + "></td>" : "") + '<td class="num">' + esc(x.date || "") + "</td><td>" + esc(x.brand || "") + '</td><td class="num">' + esc(x.sku || "") + '</td><td class="name" title="' + esc(x.name || "") + '">' + (x.url ? '<a href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.name || "(상품명 없음)") + "</a>" : esc(x.name || "")) + "</td><td>" + esc(x.origin || "") + '</td><td class="num">' + (w ? '<input class="ctl num" data-f="buy_price" value="' + (x.buy_price == null ? "" : x.buy_price) + '" style="width:100px">' : wonOr(x.buy_price)) + '</td><td class="num"><b>' + (c.over ? '<span class="warn-t">구간 밖</span>' : wonOr(c.sale)) + '</b></td><td class="num">' + (c.rate == null ? "–" : U.pct(c.rate)) + '</td><td class="num ' + mcls(c.trenbi) + '">' + wonOr(c.trenbi) + '</td><td class="num ' + mcls(c.feelway) + '">' + wonOr(c.feelway) + '</td><td class="num">' + wonOr(c.malls[ss[0]]) + '</td><td class="num">' + wonOr(c.malls[lo[0]]) + "</td>" +
+    var dn = DUP[U.norm(x.sku)] || 0;
+    return '<tr data-id="' + esc(x.id) + '"' + (dn > 1 ? ' class="dup" title="같은 자체상품코드가 ' + dn + '줄 있어요"' : "") + '>'  + (w ? '<td><input type="checkbox" data-sel' + (SEL.has(x.id) ? " checked" : "") + "></td>" : "") + '<td class="num">' + esc(x.date || "") + "</td><td>" + esc(x.brand || "") + '</td><td class="num">' + esc(x.sku || "") + (dn > 1 ? ' <span class="pill p-warn">중복 ' + dn + "</span>" : "") + '</td><td class="name" title="' + esc(x.name || "") + '">' + (x.url ? '<a href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.name || "(상품명 없음)") + "</a>" : esc(x.name || "")) + "</td><td>" + esc(x.origin || "") + '</td><td class="num">' + (w ? '<input class="ctl num" data-f="buy_price" value="' + (x.buy_price == null ? "" : x.buy_price) + '" style="width:100px">' : wonOr(x.buy_price)) + '</td><td class="num"><b>' + (c.over ? '<span class="warn-t">구간 밖</span>' : wonOr(c.sale)) + '</b></td><td class="num">' + (c.rate == null ? "–" : U.pct(c.rate)) + '</td><td class="num ' + mcls(c.trenbi) + '">' + wonOr(c.trenbi) + '</td><td class="num ' + mcls(c.feelway) + '">' + wonOr(c.feelway) + '</td><td class="num">' + wonOr(c.malls[ss[0]]) + '</td><td class="num">' + wonOr(c.malls[lo[0]]) + "</td>" +
       "<td>" + (w ? '<select class="ctl" data-f="status">' + STATUS.map(function (s) { return "<option" + (s === x.status ? " selected" : "") + ">" + s + "</option>"; }).join("") + "</select>" : esc(x.status || "")) + "</td>" +
       "<td>" + (w ? '<input class="ctl" data-f="category" value="' + esc(x.category || "") + '" style="width:90px">' : esc(x.category || "")) + "</td>" +
       "<td>" + (w ? '<input class="ctl" data-f="memo" value="' + esc(x.memo || "") + '" style="width:140px">' : esc(x.memo || "")) + "</td>" + (w ? '<td><button class="btn sm" data-rx="del" title="삭제">✕</button></td>' : "") + "</tr>";
@@ -106,7 +112,7 @@ function bind(root) {
       var g = function (k) { var el = root.querySelector("#rxn-" + k); return el ? el.value.trim() : ""; };
       if (!g("sku") && !g("name")) { ERP.toast("자체상품코드나 상품명을 넣어주세요."); return; }
       var dupe = g("sku") && Array.from(ITEMS.values()).filter(function (x) { return U.norm(x.sku) === U.norm(g("sku")); });
-      if (dupe && dupe.length && !confirm("이미 소싱폼에 있는 코드예요 (" + dupe.map(function (x) { return x.date; }).join(", ") + "). 그래도 추가할까요?")) return;
+      if (dupe && dupe.length) { ERP.toast("이미 소싱폼에 있는 코드라 추가할 수 없어요 (" + dupe.map(function (x) { return x.date || "날짜없음"; }).join(", ") + ")."); v.rxQ = g("sku"); v.rxSt = ""; ERP.render(); return; }
       var o = { id: U.uid(), date: g("date") || null, brand: g("brand"), sku: g("sku"), url: g("url"), origin: g("origin"), buy_price: g("price") ? num(g("price")) : null, name: g("name"), status: g("st") || "소싱", category: g("cat"), memo: g("memo"), extra: {} };
       if (await saveRow(o)) { ERP.toast("추가했어요."); v.rxSt = ""; v.rxQ = ""; v.rxPage = 0; ERP.render(); }
     }
@@ -157,7 +163,7 @@ var SABANG = (function () {
   function imgUrl(folder, no, sku, n) { return "https://gi.esmplus.com/" + ESM + "/" + enc(folder) + "/" + enc(no + "  " + sku) + "/" + n + ".jpg"; }
   function bannerUrl(p, brand) { return p.banner || ("https://gi.esmplus.com/" + ESM + "/banners/" + enc(brand) + "/0.jpg"); }
   function exists(url) { return new Promise(function (res) { var im = new Image(), t = setTimeout(function () { res(null); }, 8000); im.onload = function () { clearTimeout(t); res(true); }; im.onerror = function () { clearTimeout(t); res(false); }; im.src = url + (url.indexOf("?") < 0 ? "?v=" : "&v=") + Date.now(); }); }
-  async function head() { if (HEAD) return HEAD; var r = await fetch("data/sabang_head.json?v=1027g"); HEAD = await r.json(); return HEAD; }
+  async function head() { if (HEAD) return HEAD; var r = await fetch("data/sabang_head.json?v=1027h"); HEAD = await r.json(); return HEAD; }
   function picked() { return Array.from(SEL).map(function (id) { return ITEMS.get(id); }).filter(Boolean).sort(function (a, b) { return String(a.date || "").localeCompare(String(b.date || "")) || ((a.extra && a.extra.row) || 0) - ((b.extra && b.extra.row) || 0) || String(a.created_at || "").localeCompare(String(b.created_at || "")); }); }
   function open() {
     var items = picked(); if (!items.length) return;
