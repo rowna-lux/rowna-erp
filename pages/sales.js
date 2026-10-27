@@ -16,6 +16,13 @@ function rows() {
     return true;
   }).sort(function (a, b) { return ((b.date || "") + (b.orderTime || "")).localeCompare((a.date || "") + (a.orderTime || "")); });
 }
+/* 개인 거래(당근·크림 등)로 산 상품: 원가 위에 작은 라벨 */
+function perTag(s) {
+  var p = s.purchaseId ? ERP.DATA.purchases.get(s.purchaseId) : null, x = p && p.extra;
+  var pl = x && x.buyType === "personal" ? (x.platform || "개인") : (s.extra && s.extra.personalPlatform) || "";
+  return pl ? '<span class="pill p-warn" style="display:block;width:max-content;margin:0 0 2px auto;font-size:10px;padding:1px 6px">' + esc(pl) + " 매입</span>" : "";
+}
+ERP.perTag = perTag;
 function render() {
   var list = rows(), cross = v.saleFilter === "nocost" || v.saleFilter === "pending", w = ERP.canWrite("sales"), t = { rev: 0, fee: 0, set: 0, cost: 0, margin: 0, mrev: 0 };
   var body = list.map(function (s) {
@@ -23,7 +30,7 @@ function render() {
     if (!off) { t.rev += num(s.salePrice); t.fee += d.fee; t.set += d.settled; t.cost += num(s.cost); if (d.hasCost) { t.margin += d.margin; t.mrev += num(s.salePrice); } }
     var stp = d.st === "확정" ? '<span class="pill p-good">확정</span>' : d.st === "예상" ? '<span class="pill p-warn">예상</span>' : '<span class="pill p-crit">미확인</span>';
     var rp = r ? ' <span class="pill ' + (r.status === "완료" ? "p-mute" : "p-crit") + '">' + esc(r.type) + " " + esc(r.status) + "</span>" : "";
-    return '<tr class="click ' + (off ? "off" : "") + '" data-edit="sales:' + esc(s.id) + '" tabindex="0"><td class="num">' + esc((s.date || "날짜없음").slice(5)) + "</td><td>" + esc(ERP.platName(s.platformId)) + '</td><td class="name">' + esc(s.productName) + rp + '<small class="num">' + esc(s.itemCode || "") + (s.sabangOrderNo ? " · 사방넷 " + esc(s.sabangOrderNo) : "") + '</small></td><td class="r num">' + won(s.salePrice) + '</td><td class="r num">' + won(d.fee) + '</td><td class="r num">' + won(d.settled) + " " + stp + '</td><td class="r num">' + (num(s.cost) ? won(s.cost) : '<span class="pill p-warn">미입력</span>') + '</td><td class="r num ' + (d.hasCost && d.margin < 0 ? "neg" : "") + '">' + (d.hasCost ? won(d.margin) : "–") + '</td><td class="r num">' + (d.hasCost ? pct(d.rate) : "–") + "</td></tr>";
+    return '<tr class="click ' + (off ? "off" : "") + '" data-edit="sales:' + esc(s.id) + '" tabindex="0"><td class="num">' + esc((s.date || "날짜없음").slice(5)) + "</td><td>" + esc(ERP.platName(s.platformId)) + '</td><td class="name">' + esc(s.productName) + rp + '<small class="num">' + esc(s.itemCode || "") + (s.sabangOrderNo ? " · 사방넷 " + esc(s.sabangOrderNo) : "") + '</small></td><td class="r num">' + won(s.salePrice) + '</td><td class="r num">' + won(d.fee) + '</td><td class="r num">' + won(d.settled) + " " + stp + '</td><td class="r num">' + perTag(s) + (num(s.cost) ? won(s.cost) : '<span class="pill p-warn">미입력</span>') + '</td><td class="r num ' + (d.hasCost && d.margin < 0 ? "neg" : "") + '">' + (d.hasCost ? won(d.margin) : "–") + '</td><td class="r num">' + (d.hasCost ? pct(d.rate) : "–") + "</td></tr>";
   }).join("");
   var h = '<div class="head"><div><h1>매출</h1><p>' + (cross ? "모든 기간" : v.month.replace("-", "년 ") + "월") + " · " + list.length + "건" + (w ? " · 줄을 누르면 수정해요" : "") + '</p></div><div class="tools">' + (cross ? "" : ERP.monthBar()) + (w ? '<button class="btn" data-act="sabangimport">사방넷 주문 가져오기</button><button class="btn pri" data-act="newsale">+ 매출 추가</button>' : "") + '<button class="btn" data-act="exportsales">엑셀 내보내기</button></div></div>';
   h += '<div class="tools filters">' + ERP.chips("data-view", "saleFilter=" + v.saleFilter, [["saleFilter=all", "전체"], ["saleFilter=nocost", "원가 미입력"], ["saleFilter=pending", "정산 미확정"], ["saleFilter=ret", "반품·취소 건"]]) + '<select class="ctl" id="f-plat" aria-label="쇼핑몰">' + ERP.platOptions(v.platform, true) + '</select><input class="ctl search" data-search="q" type="search" aria-label="검색" placeholder="상품명·품번·주문번호" value="' + esc(v.q) + '"></div>';
