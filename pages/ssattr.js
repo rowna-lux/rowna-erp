@@ -200,9 +200,9 @@ ERP.acts.ssattrrun = async function (btn) {
     var row = await one(list[i], s, {}); log(s, row); n++; ERP.render();
     fails = row.status === "실패" ? fails + (/시간 초과/.test(row.err || "") ? 5 : 1) : 0;   /* 시간 초과가 한 번 나면 뒤 상품도 줄줄이 막혀서(기록상 재시작하면 풀림) 바로 1분 쉬고 다시 시작 */
     if (fails >= 5) { ERP.toast("⚠ 5개 연속 실패라 멈췄어요. 기록을 확인해 주세요."); break; }
-    if (n === 3 || n % 25 === 0) dl(s, new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-"));
+    if (n % 200 === 0) dl(s, new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-"));   /* 기록 파일은 200개마다만(자주 받으면 탭이 멈춤) */
   }
-  running = false; dl(s, "끝_" + new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")); ERP.toast("상품속성 자동입력: " + n + "개 처리했어요."); ERP.render();
+  running = false; if (n >= 20) dl(s, "끝_" + new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")); ERP.toast("상품속성 자동입력: " + n + "개 처리했어요."); ERP.render();
   return { n: n, left: list.length - i, failStop: fails >= 5, stopped: stopReq };
 };
 /* 끝까지 자동: 이전 상품 빈 칸·태그 → 나머지 전체. 연속 실패(로그인 풀림 등)면 1분 쉬고 다시, 최대 30번 */
