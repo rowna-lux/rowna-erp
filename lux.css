@@ -189,3 +189,5 @@ input,select,textarea,.ctl{background:rgba(8,20,42,.85)!important;border:1px sol
 @media (max-width:1300px){.lux-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.lux-globe{display:none}}
 @media (max-width:1000px){.lux-alerts{grid-template-columns:repeat(2,minmax(0,1fr))}.lux-row{grid-template-columns:minmax(0,1fr)}.lux-hero .head>div:first-child{flex-direction:column;align-items:flex-start;gap:6px}}
 @media (max-width:600px){.lux-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.lux-alerts{grid-template-columns:minmax(0,1fr)}.dn-wrap{grid-template-columns:minmax(0,1fr)}}
+.lux-alert .v em{font-style:normal;color:#5f7598;margin:0 8px;font-weight:400}
+.lux-kpi[data-go]{cursor:pointer}.lux-kpi[data-go]:hover{box-shadow:0 0 0 1px rgba(90,175,255,.8),0 0 26px -6px rgba(30,155,255,.9)}

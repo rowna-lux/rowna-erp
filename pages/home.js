@@ -105,20 +105,21 @@ function render() {
     '<div class="tools"><div class="lux-date">' + ico("cal") + dt.getFullYear() + ". " + ("0" + (dt.getMonth() + 1)).slice(-2) + ". " + ("0" + dt.getDate()).slice(-2) + " (" + WK[dt.getDay()] + ')</div><button class="lux-ring" data-act="refreshreport" title="보고 새로고침" aria-label="보고 새로고침"></button></div></div></div>';
 
   // 알림 카드 4
-  var alerts = [["memo", "원가 미입력", T.no_cost || 0, "sales:saleFilter=nocost"], ["db", "정산 미확정", T.settle_pending_count || 0, "sales:saleFilter=pending"], ["back", "진행 중 반품·취소", T.open_returns || 0, "returns"], ["warn", "90일 넘은 재고", K.aged_90 || 0, "purchases:pStatus=aging"]];
-  h += '<div class="lux-alerts">' + alerts.map(function (a) { return '<button class="lux-alert" data-go="' + a[3] + '"><span class="ic">' + ico(a[0]) + '</span><span class="tx"><span class="l">' + a[1] + '</span><span class="v num">' + a[2].toLocaleString("ko-KR") + "<small>건</small></span></span>" + CHEV + "</button>"; }).join("") + "</div>";
+  var todayAgg = ERP.aggregate(function (d) { return d.slice(0, 10) === today; });
+  var alerts = [["cart", "어제 / 오늘 주문", [Y.orders || 0, todayAgg.n], "sales"], ["db", "정산 미확정", T.settle_pending_count || 0, "sales:saleFilter=pending"], ["back", "진행 중 반품·취소", T.open_returns || 0, "returns"], ["warn", "90일 넘은 재고", K.aged_90 || 0, "purchases:pStatus=aging"]];
+  h += '<div class="lux-alerts">' + alerts.map(function (a) { return '<button class="lux-alert" data-go="' + a[3] + '"><span class="ic">' + ico(a[0]) + '</span><span class="tx"><span class="l">' + a[1] + '</span><span class="v num">' + (Array.isArray(a[2]) ? a[2][0].toLocaleString("ko-KR") + '<small>건</small><em>/</em>' + a[2][1].toLocaleString("ko-KR") : a[2].toLocaleString("ko-KR")) + "<small>건</small></span></span>" + CHEV + "</button>"; }).join("") + "</div>";
 
   // 지표 카드 6
   var gp = target ? ya.rev / target : 0;
   var kpis = [
-    ["cart", "어제 주문", (Y.orders || 0).toLocaleString("ko-KR") + "<small>건</small>", delta(Y.orders || 0, ydPrev.n), spark(dayAgg.map(function (a) { return a.n; }), "bars", "#1e9bff"), "edge"],
+    ["memo", "원가 미입력", (T.no_cost || 0).toLocaleString("ko-KR") + "<small>건</small>", '<div class="dl"><span>이번 달 마진 계산에서 ' + (M.no_cost || 0) + "건 제외</span></div>", spark(dayAgg.map(function (a) { return a.noCost; }), "bars", "#ffc163"), "edge", "sales:saleFilter=nocost"],
     ["db", "이번 달 매출", "₩ " + won(M.revenue), delta(mtd.rev, pmtd.rev), spark(dayAgg.map(function (a) { return a.rev; }), "line", "#2aa7ff"), ""],
     ["pie", "이번 달 마진", "₩ " + won(M.margin), delta(mtd.margin, pmtd.margin), spark(dayAgg.map(function (a) { return a.margin; }), "line", "#2ee6a6"), ""],
     ["back", "반품 손익", "₩ " + won(-U.num(M.return_loss)), delta(mtd.retLoss, pmtd.retLoss, false), spark(dayAgg.map(function (a) { return -a.retLoss; }), "line", "#9b7bff"), ""],
     ["box", "보유 재고", (K.count || 0).toLocaleString("ko-KR") + "<small>개</small>", '<div class="dl"><span>₩ ' + won(K.value) + " · 61–90일 " + (K.aged_61_90 || 0) + "개</span></div>", spark(pcount, "bars", "#1e9bff"), ""],
-    ["goal", "연간 목표", target ? "₩ " + won(target) : "미설정", '<div class="dl"><span class="w">진행률</span><b class="w">' + (target ? Math.round(gp * 100) : 0) + "%</b></div>", '<div class="lux-prog"><i style="width:' + Math.min(100, gp * 100).toFixed(1) + '%"></i></div>', "edge"]
+    ["goal", "연간 목표", target ? "₩ " + U.shortWon(target) : "미설정", '<div class="dl"><span class="w">진행률</span><b class="w">' + (target ? Math.round(gp * 100) : 0) + "%</b></div>", '<div class="lux-prog"><i style="width:' + Math.min(100, gp * 100).toFixed(1) + '%"></i></div>', "edge"]
   ];
-  h += '<div class="lux-kpis">' + kpis.map(function (k) { return '<div class="lux-kpi ' + k[5] + '"><div class="hd"><span class="ic">' + ico(k[0]) + '</span><span class="l">' + k[1] + '</span></div><div class="v num">' + k[2] + "</div>" + k[3] + '<div class="sp">' + k[4] + "</div></div>"; }).join("") + "</div>";
+  h += '<div class="lux-kpis">' + kpis.map(function (k) { return '<div class="lux-kpi ' + k[5] + '"' + (k[6] ? ' data-go="' + k[6] + '" role="button" tabindex="0"' : "") + '><div class="hd"><span class="ic">' + ico(k[0]) + '</span><span class="l">' + k[1] + '</span></div><div class="v num">' + k[2] + "</div>" + k[3] + '<div class="sp">' + k[4] + "</div></div>"; }).join("") + "</div>";
 
   // 일별 매출 + 도넛
   var days = new Date(+m.slice(0, 4), +m.slice(5, 7), 0).getDate(), dv = [];
