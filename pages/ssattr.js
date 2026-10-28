@@ -124,8 +124,7 @@ async function writePage(origin, attrs, pick, tags) {
     /* 2~7: 상세설명 스마트에디터 ONE 변환 → 뜬 창에서 [등록] (이미 변환된 상품은 버튼이 없어 자동으로 건너뜀) */
     { op: "click", text: "으로 변환하기 (1회성)" }, { op: "switchNew", ms: 12000, urlHas: "editor", need: 2 },
     { op: "waitText", text: "등록", ms: 25000, frames: true, need: 3, gap: 6000 }, { op: "click", sel: "button.progress-button", frames: true, need: 4, gap: 2500 },
-    { op: "closed", ms: 20000, need: 5 }, { op: "switchBack" }, { op: "wait", ms: 3000 }, { op: "click", text: "확인" }, { op: "wait", ms: 800 }];
-  opt.push(9, 10);   /* 위 안내창 닫기는 없으면 건너뜀 */
+    { op: "closed", ms: 20000, need: 5 }, { op: "switchBack" }, { op: "wait", ms: 3000 }];
   Object.keys(pick).forEach(function (k) { var a = attrs.filter(function (x) { return x.name === k; })[0];
     pick[k].forEach(function (v) {
       if (a.type === "multi") { [v, v + " 추천", v + "추천"].forEach(function (vv) { opt.push(ops.length); ops.push({ op: "check", near: k, value: vv }); }); }
@@ -135,8 +134,7 @@ async function writePage(origin, attrs, pick, tags) {
   ops.push({ op: "html", sel: "#attribute-table", max: 200000 });
   /* KC인증: 대표님 지시(10/28) — 'KC인증 없음 › KC 안전관리대상 아님'. KC 칸이 없는 카테고리는 건너뜀(선택 항목) */
   /* 처음 뜨는 '안전기준 준수' 안내창은 [확인]으로 닫고, KC인증 없음 › KC 안전관리대상 아님 선택 (대표님 지시 10/29) */
-  opt.push(ops.length); ops.push({ op: "click", text: "확인" });
-  opt.push(ops.length); ops.push({ op: "wait", ms: 800 });
+  /* 안내창은 화면만 가리고 클릭(코드)은 막지 않음 — '확인' 글자 클릭은 다른 '…확인' 링크를 누를 위험이 있어 쓰지 않음 */
   opt.push(ops.length); ops.push({ op: "click", sel: 'label[for="kcYn_TRUE"]' });
   opt.push(ops.length); ops.push({ op: "wait", ms: 800 });
   opt.push(ops.length); ops.push({ op: "click", text: "KC 안전관리대상 아님" });
