@@ -191,7 +191,7 @@ ERP.acts.ssattrrun = async function (btn) {
   ERP.toast("상품속성 자동입력 시작: 남은 " + list.length + "개 중 " + (lim === Infinity ? "전부" : lim + "개"));
   for (var i = 0; i < list.length && n < lim && !stopReq; i++) {
     var row = await one(list[i], s, {}); log(s, row); n++; ERP.render();
-    fails = row.status === "실패" ? fails + 1 : 0;
+    fails = row.status === "실패" ? fails + (/시간 초과/.test(row.err || "") ? 5 : 1) : 0;   /* 시간 초과가 한 번 나면 뒤 상품도 줄줄이 막혀서(기록상 재시작하면 풀림) 바로 1분 쉬고 다시 시작 */
     if (fails >= 5) { ERP.toast("⚠ 5개 연속 실패라 멈췄어요. 기록을 확인해 주세요."); break; }
     if (n === 3 || n % 25 === 0) dl(s, new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-"));
   }
