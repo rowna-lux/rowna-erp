@@ -132,9 +132,13 @@ async function writePage(origin, attrs, pick, tags) {
     }); });
   if (tags && tags.length) { opt.push(ops.length); ops.push({ op: "click", sel: "#anchor-tag .title-line" }); opt.push(ops.length); ops.push({ op: "wait", ms: 1200 }); opt.push(ops.length); ops.push({ op: "selzAdd", sel: TAGSEL, values: tags, max: 10, mode: "create", chips: CHIPS + " .choice-label" }); opt.push(ops.length); ops.push({ op: "html", sel: CHIPS, max: 20000, tagChips: 1 }); }
   ops.push({ op: "html", sel: "#attribute-table", max: 200000 });
+  /* KC인증: 대표님 지시(10/28) — 'KC인증 없음 › KC 안전관리대상 아님'. KC 칸이 없는 카테고리는 건너뜀(선택 항목) */
+  opt.push(ops.length); ops.push({ op: "click", sel: "#kcYn_TRUE" });
+  opt.push(ops.length); ops.push({ op: "wait", ms: 600 });
+  opt.push(ops.length); ops.push({ op: "click", sel: 'input[name="kcExemptionType"]:not([value])' });
   ops.push({ op: "click", text: "저장하기" }, { op: "wait", ms: 5000 }, { op: "text" });
   var r = await ERP.helperAsk("act", { url: editUrl(origin), ops: ops });
-  var res = r.results, before = res.length - 4, after = parseAttrs((res[before] || {}).html || "");
+  var res = r.results, before = ops.findIndex(function (o) { return o.op === "html" && o.sel === "#attribute-table"; }), after = parseAttrs((res[before] || {}).html || "");
   var applied = Object.keys(pick).every(function (k) { var a = after.filter(function (x) { return x.name === k; })[0]; return a && pick[k].every(function (v) { return a.selected.indexOf(v) >= 0; }); });
   var t1 = "", t2 = (res[res.length - 1] || {}).text || "";
   var conv = !res[2].ok ? "변환 버튼 없음(이미 변환)" : res[6] && res[6].ok ? "변환 완료" : "변환 실패(" + [3, 4, 5, 6].map(function (i) { return res[i] && !res[i].ok && !res[i].skipped ? i + ":" + (res[i].error || "실패") : ""; }).filter(Boolean).join(",") + ")";
