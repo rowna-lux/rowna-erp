@@ -212,7 +212,7 @@ ERP.acts.ssattrrun = async function (btn) {
   if (running) { ERP.toast("이미 진행 중이에요."); return; }
   if (!(ERP.helperOn && ERP.helperOn())) { ERP.toast("크롬 확장 ‘로우나 도우미’가 꺼져 있어요."); return; }
   var lim = Number((btn && btn.dataset && btn.dataset.limit) || 0) || Infinity;
-  try { var pg = await ERP.helperAsk("ping", {}); var vv = String(pg && pg.version || "0").split(".").map(Number); HV2 = vv[0] > 2 || (vv[0] === 2 && vv[1] >= 4); HV25 = vv[0] > 2 || (vv[0] === 2 && vv[1] >= 5); } catch (e) { HV2 = false; HV25 = false; }
+  try { var pg = await ERP.helperAsk("ping", {}); var vv = String(pg && pg.version || "0").split(".").map(Number); HV2 = vv[0] > 2 || (vv[0] === 2 && vv[1] >= 4); HV25 = false;   /* 태그 한 번에(tagAuto)는 10/30 시험에서 저장 단계가 멈춰서 끔 — 원인 확인 후 다시 켬 */ } catch (e) { HV2 = false; HV25 = false; }
   running = true; stopReq = false; var s = st(), done = {}; (s.log || []).forEach(function (x) { if (x.v >= 2 && /저장 완료|할 일 없음/.test(x.status)) done[x.ch] = Math.max(done[x.ch] || 0, x.v); });
   var SHOE = /신발|화$|화>|샌들|슬리퍼|부츠|힐|로퍼|스니커즈|뮬|플랫/;   /* 신발은 굽높이 규칙(v3) 전에 한 것을 한 번 더 봄 */
   var list = (await targets()).filter(function (t) { var d = done[t.ch] || 0; return !(d >= 5); }), n = 0, fails = 0;
