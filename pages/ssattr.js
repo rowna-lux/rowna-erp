@@ -166,7 +166,8 @@ async function writePage(origin, attrs, pick, tags) {
   var tr = ta >= 0 ? (res[ta] || {}) : null;
   return { tagReg: tr ? (tr.added || []).filter(function (x) { return (tr.reg || []).indexOf(x) >= 0; }) : null, tagInfo: tr ? { checked: tr.checked, removed: (tr.removed || []).length, rmFail: tr.rmFail || [] } : null, tagsNow: ti >= 0 && res[ti] ? parseChips(res[ti].html) : null, dialogs: r.dialogs || [], conv: conv, applied: applied, opsFailed: res.filter(function (x, i) { return x && !x.ok && !x.skipped && (i < 2 || i > 8) && opt.indexOf(i) < 0; }).map(function (x) { return x.error; }), saveMsg: ((t1 + "\n" + t2).match(/[^\n]*(수정되었|저장되었|완료되었|오류|실패|입력해 주세요|확인해 주세요)[^\n]*/g) || []).slice(0, 4) };
 }
-function log(s, row) { s.log = (s.log || []).concat([row]).slice(-3000); save(s); }
+var lastProg = Date.now();
+function log(s, row) { lastProg = Date.now(); s.log = (s.log || []).concat([row]).slice(-3000); save(s); }
 function dl(s, tag) { var rows = (s.log || []).map(function (x) { return [x.at, x.ch, x.origin || "", x.status, x.name, JSON.stringify(x.pick || {}), x.why || "", x.rex || "", x.conv || "", (x.tags || []).join(" "), (x.tagsNow || []).join(" "), (x.err || "") + (x.saveMsg ? " " + x.saveMsg.join(" / ") : "")].map(function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(","); });
   ERP.downloadBlob("스마트스토어_속성입력기록_" + tag + ".csv", new Blob(["﻿시각,채널상품번호,원상품번호,결과,상품명,넣은속성,AI메모,렉스몬드,에디터변환,추가태그,저장후태그,오류/저장메시지\n" + rows.join("\n")], { type: "text/csv" })); }
 
@@ -239,6 +240,17 @@ ERP.acts.ssattrauto = async function () {
   if (autoOn) { ERP.toast("이미 자동 진행 중이에요."); return; }
   if (!lockOk()) { ERP.toast("다른 ERP 탭에서 이미 자동 진행 중이라 이 탭은 쉬어요."); return; }
   lockBeat(); var beat = setInterval(lockBeat, 30000);
+  lastProg = Date.now();
+  var dog = setInterval(async function () {   /* 감시: 9분 동안 한 상품도 안 끝나면 도우미가 멈춘 것 — 도우미 2.6이면 도우미를 다시 켜고 ERP도 새로고침(사람 손 없이 복구) */
+    if (Date.now() - lastProg < 540000) return;
+    var last = 0; try { last = Number(localStorage.getItem("rowna-ssattr-dog") || 0); } catch (e) {}
+    if (Date.now() - last < 900000) return;   /* 15분에 한 번까지만 */
+    try { localStorage.setItem("rowna-ssattr-dog", String(Date.now())); } catch (e) {}
+    try { var pg = await Promise.race([ERP.helperAsk("ping", {}), new Promise(function (r) { setTimeout(r, 8000); })]); var vv = String(pg && pg.version || "0").split(".").map(Number);
+      if (vv[0] > 2 || (vv[0] === 2 && vv[1] >= 6)) { ERP.toast("도우미가 멈춰서 다시 켜요…"); ERP.helperAsk("reload", {}).catch(function () {}); }
+    } catch (e) {}
+    setTimeout(function () { location.reload(); }, 20000);
+  }, 60000);
   autoOn = true; var tries = 0;
   try {
     for (;;) {
@@ -251,7 +263,7 @@ ERP.acts.ssattrauto = async function () {
       if (full && full.failStop) { if (++tries > 30) break; ERP.toast("연속 실패라 1분 쉬고 다시 해요(스마트스토어 로그인이 풀렸으면 로그인해 주세요)."); await new Promise(function (r) { setTimeout(r, 60000); }); continue; }
       if (full && full.left <= 0) break;
     }
-  } finally { autoOn = false; clearInterval(beat); }
+  } finally { autoOn = false; clearInterval(beat); clearInterval(dog); }
 };
 setTimeout(function () { if (/[?&]auto=1/.test(location.search) && /ss-attr/.test(location.hash)) { var k = 0, iv = setInterval(function () { if ((ERP.helperOn && ERP.helperOn()) || ++k > 60) { clearInterval(iv); ERP.acts.ssattrauto(); } }, 2000); } }, 3000);
 ERP.acts.ssattrstop = function () { stopReq = true; ERP.toast("지금 상품까지만 하고 멈춰요."); };
