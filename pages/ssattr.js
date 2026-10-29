@@ -8,7 +8,7 @@
 var ERP = window.ERP, U = ERP.U, esc = U.esc, KEY = "rowna-ssattr-v1";
 function st() { try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { return {}; } }
 function save(s) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {} }
-var T = null, running = false, stopReq = false, HV2 = false;   /* HV2: 도우미 2.4 이상 */
+var T = null, running = false, stopReq = false, HV2 = false, HV25 = false;   /* HV2: 도우미 2.4 이상 */
 async function targets() { if (T) return T; var r = await fetch("data/ss_targets.json?v=" + Date.now()); var j = await r.json(); T = j.rows.map(function (a) { return { ch: a[0], code: a[1], name: a[2], cat: a[3], brand: a[4], sold: a[5] }; }); return T; }
 
 function clean(x) { return String(x || "").replace(/\s+/g, " ").replace(/\s*추천$/, "").trim(); }   /* 네이버가 붙이는 '추천' 표시는 떼고 봄 */
@@ -102,12 +102,14 @@ async function tagProbe(origin, cands, known) {   /* 저장하지 않는 시험:
 function viaSearchOps(ch) { return [{ op: "waitText", text: "상품목록", ms: 30000, gap: 0 }, { op: "wait", ms: 1500 },
   { op: "fill", sel: 'textarea[ng-model="vm.searchFormData.searchKeyword"]', value: String(ch) }, { op: "click", text: "검색", sel: null }, { op: "wait", ms: 3500 },
   { op: "click", sel: 'button[data-nclicks-code="itg.edit"]', retry: 8 },
-  { op: "waitText", text: "상품속성", ms: 30000 }, { op: "wait", ms: 1500 }, { op: "html", sel: "#attribute-table", max: 200000 }, { op: "text" }]; }
+  { op: "waitText", text: "상품속성", ms: 30000 }, { op: "wait", ms: 1500 }, { op: "html", sel: "#attribute-table", max: 200000 }, { op: "text" },
+  { op: "click", sel: "#anchor-tag .title-line" }, { op: "wait", ms: 1200 }, { op: "html", sel: "#anchor-tag", max: 60000 }]; }
 async function readViaSearch(ch) {
   var r = await ERP.helperAsk("act", { url: "https://sell.smartstore.naver.com/#/products/origin-list", visible: true, ops: viaSearchOps(ch) });
-  var res = r.results, last = res[res.length - 1] || {}, url = last.url || "", origin = (url.match(/products\/edit\/(\d+)/) || [])[1];
+  var res = r.results, last = res[9] || {}, url = last.url || "", origin = (url.match(/products\/edit\/(\d+)/) || [])[1];
   if (!origin) throw new Error("목록에서 수정 화면으로 못 들어감 (" + res.map(function (x, i) { return x && !x.ok ? i + ":" + (x.error || "실패") : ""; }).filter(Boolean).join(", ") + ")");
-  return { origin: origin, attrs: parseAttrs((res[res.length - 2] || {}).html || ""), text: last.text || "" };
+  var th = res[12] && res[12].ok && res[12].html;
+  return { origin: origin, attrs: parseAttrs((res[8] || {}).html || ""), text: last.text || "", have: th ? parseChips(th) : null };
 }
 function editUrl(origin) { return "https://sell.smartstore.naver.com/#/products/edit/" + origin; }
 async function readPage(origin) {
@@ -142,7 +144,10 @@ async function writePage(origin, attrs, pick, tags) {
       if (a.type === "multi") { if (HV2) ops.push({ op: "check", near: k, value: v }); else [v, v + " 추천", v + "추천"].forEach(function (vv) { opt.push(ops.length); ops.push({ op: "check", near: k, value: vv }); }); }   /* 도우미 2.4부터 '값 추천'도 한 번에 찾음 — 조작 1번 */
       else { var o = a.options.filter(function (x) { return x.text === v; })[0]; ops.push({ op: "click", within: k, sel: ".selectize-input" }); ops.push({ op: "click", within: k, sel: '.selectize-dropdown-content .option[data-value="' + o.id + '"]' }); }
     }); });
-  if (tags && tags.length) { opt.push(ops.length); ops.push({ op: "click", sel: "#anchor-tag .title-line" }); opt.push(ops.length); ops.push({ op: "wait", ms: 1200 }); opt.push(ops.length); ops.push({ op: "selzAdd", sel: TAGSEL, values: tags, max: 10, mode: "create", chips: CHIPS + " .choice-label" }); opt.push(ops.length); ops.push({ op: "html", sel: CHIPS, max: 20000, tagChips: 1 }); }
+  var ta = -1;
+  if (tags && tags.length && HV25) { opt.push(ops.length); ops.push({ op: "click", sel: "#anchor-tag .title-line" }); opt.push(ops.length); ops.push({ op: "wait", ms: 1200 });
+    ta = ops.length; ops.push({ op: "tagAuto", sel: TAGSEL, values: tags, max: 10, chips: CHIPS, check: '[data-nclicks-code="sch.tagcheck"]', ms: 2500 }); opt.push(ops.length); ops.push({ op: "html", sel: CHIPS, max: 20000, tagChips: 1 }); }
+  else if (tags && tags.length) { opt.push(ops.length); ops.push({ op: "click", sel: "#anchor-tag .title-line" }); opt.push(ops.length); ops.push({ op: "wait", ms: 1200 }); opt.push(ops.length); ops.push({ op: "selzAdd", sel: TAGSEL, values: tags, max: 10, mode: "create", chips: CHIPS + " .choice-label" }); opt.push(ops.length); ops.push({ op: "html", sel: CHIPS, max: 20000, tagChips: 1 }); }
   ops.push({ op: "html", sel: "#attribute-table", max: 200000 });
   /* KC인증: 대표님 지시(10/28) — 'KC인증 없음 › KC 안전관리대상 아님'. KC 칸이 없는 카테고리는 건너뜀(선택 항목) */
   /* 처음 뜨는 '안전기준 준수' 안내창은 [확인]으로 닫고, KC인증 없음 › KC 안전관리대상 아님 선택 (대표님 지시 10/29) */
@@ -158,7 +163,8 @@ async function writePage(origin, attrs, pick, tags) {
   var t1 = "", t2 = (res[res.length - 1] || {}).text || "";
   var conv = !res[2].ok ? "변환 버튼 없음(이미 변환)" : res[6] && res[6].ok ? "변환 완료" : "변환 실패(" + [3, 4, 5, 6].map(function (i) { return res[i] && !res[i].ok && !res[i].skipped ? i + ":" + (res[i].error || "실패") : ""; }).filter(Boolean).join(",") + ")";
   var ti = -1; ops.forEach(function (o, i) { if (o.tagChips) ti = i; });
-  return { tagsNow: ti >= 0 && res[ti] ? parseChips(res[ti].html) : null, dialogs: r.dialogs || [], conv: conv, applied: applied, opsFailed: res.filter(function (x, i) { return x && !x.ok && !x.skipped && (i < 2 || i > 8) && opt.indexOf(i) < 0; }).map(function (x) { return x.error; }), saveMsg: ((t1 + "\n" + t2).match(/[^\n]*(수정되었|저장되었|완료되었|오류|실패|입력해 주세요|확인해 주세요)[^\n]*/g) || []).slice(0, 4) };
+  var tr = ta >= 0 ? (res[ta] || {}) : null;
+  return { tagReg: tr ? (tr.added || []).filter(function (x) { return (tr.reg || []).indexOf(x) >= 0; }) : null, tagInfo: tr ? { checked: tr.checked, removed: (tr.removed || []).length, rmFail: tr.rmFail || [] } : null, tagsNow: ti >= 0 && res[ti] ? parseChips(res[ti].html) : null, dialogs: r.dialogs || [], conv: conv, applied: applied, opsFailed: res.filter(function (x, i) { return x && !x.ok && !x.skipped && (i < 2 || i > 8) && opt.indexOf(i) < 0; }).map(function (x) { return x.error; }), saveMsg: ((t1 + "\n" + t2).match(/[^\n]*(수정되었|저장되었|완료되었|오류|실패|입력해 주세요|확인해 주세요)[^\n]*/g) || []).slice(0, 4) };
 }
 function log(s, row) { s.log = (s.log || []).concat([row]).slice(-3000); save(s); }
 function dl(s, tag) { var rows = (s.log || []).map(function (x) { return [x.at, x.ch, x.origin || "", x.status, x.name, JSON.stringify(x.pick || {}), x.why || "", x.rex || "", x.conv || "", (x.tags || []).join(" "), (x.tagsNow || []).join(" "), (x.err || "") + (x.saveMsg ? " " + x.saveMsg.join(" / ") : "")].map(function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(","); });
@@ -176,14 +182,16 @@ async function one(t, s, opts) {
       c = await choose(t, p.attrs, rex);
     }
     row.pick = c.pick; row.why = c.why; row.v = 5;
-    var tp = { have: [], reg: [] };
-    try { var cands = await makeTags(t, typeof rex !== "undefined" ? rex : null, []); tp = await tagProbe(origin, cands, p.have); } catch (e) { row.tagErr = e.message; }
+    var tp = { have: p.have || [], reg: [] }, cands = [];
+    if (HV25) {   /* 2.5: 태그 확인을 저장 화면에서 같이(페이지 1번 덜 엶) */
+      if (!p.have || p.have.length < 10) { try { cands = await makeTags(t, rex, p.have || []); } catch (e) { row.tagErr = e.message; } }
+    } else { try { cands = await makeTags(t, typeof rex !== "undefined" ? rex : null, []); tp = await tagProbe(origin, cands, p.have); } catch (e) { row.tagErr = e.message; } }
     row.tags = tp.reg; row.tagsHad = tp.have.length;
-    if (!Object.keys(c.pick).length && !needConv && !tp.reg.length) { row.status = "할 일 없음(이미 입력·변환됨)"; return row; }
+    if (!Object.keys(c.pick).length && !needConv && !(HV25 ? cands.length : tp.reg.length)) { row.status = "할 일 없음(이미 입력·변환됨)"; return row; }
     if (opts.dry) { row.status = "미리보기(저장 안 함)"; return row; }
     var preConv = null;
     if (needConv) preConv = await convertOnly(origin);   /* 스마트에디터 변환은 따로 먼저(같이 하면 4분 넘어 시간 초과) */
-    var w = await writePage(origin, p.attrs, c.pick, tp.reg); if (preConv) w.conv = preConv; row.tagsNow = w.tagsNow; row.saveMsg = w.saveMsg; row.conv = w.conv; if (w.dialogs.length) row.saveMsg = w.dialogs.concat(row.saveMsg || []);
+    var w = await writePage(origin, p.attrs, c.pick, HV25 ? cands : tp.reg); if (preConv) w.conv = preConv; if (w.tagReg) { row.tags = w.tagReg; row.tagInfo = w.tagInfo; } row.tagsNow = w.tagsNow; row.saveMsg = w.saveMsg; row.conv = w.conv; if (w.dialogs.length) row.saveMsg = w.dialogs.concat(row.saveMsg || []);
     var convBad = needConv && w.conv !== "변환 완료";
     row.status = w.applied && !w.opsFailed.length && !convBad ? "저장 완료" : "일부 실패"; if (w.opsFailed.length) row.err = w.opsFailed.join(" / ");
   } catch (e) { row.status = "실패"; row.err = e.message; if (/멈춤|멈췄/.test(e.message)) stopReq = true; }
@@ -204,7 +212,7 @@ ERP.acts.ssattrrun = async function (btn) {
   if (running) { ERP.toast("이미 진행 중이에요."); return; }
   if (!(ERP.helperOn && ERP.helperOn())) { ERP.toast("크롬 확장 ‘로우나 도우미’가 꺼져 있어요."); return; }
   var lim = Number((btn && btn.dataset && btn.dataset.limit) || 0) || Infinity;
-  try { var pg = await ERP.helperAsk("ping", {}); var vv = String(pg && pg.version || "0").split(".").map(Number); HV2 = vv[0] > 2 || (vv[0] === 2 && vv[1] >= 4); } catch (e) { HV2 = false; }
+  try { var pg = await ERP.helperAsk("ping", {}); var vv = String(pg && pg.version || "0").split(".").map(Number); HV2 = vv[0] > 2 || (vv[0] === 2 && vv[1] >= 4); HV25 = vv[0] > 2 || (vv[0] === 2 && vv[1] >= 5); } catch (e) { HV2 = false; HV25 = false; }
   running = true; stopReq = false; var s = st(), done = {}; (s.log || []).forEach(function (x) { if (x.v >= 2 && /저장 완료|할 일 없음/.test(x.status)) done[x.ch] = Math.max(done[x.ch] || 0, x.v); });
   var SHOE = /신발|화$|화>|샌들|슬리퍼|부츠|힐|로퍼|스니커즈|뮬|플랫/;   /* 신발은 굽높이 규칙(v3) 전에 한 것을 한 번 더 봄 */
   var list = (await targets()).filter(function (t) { var d = done[t.ch] || 0; return !(d >= 5); }), n = 0, fails = 0;
