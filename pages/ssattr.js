@@ -8,7 +8,7 @@
 var ERP = window.ERP, U = ERP.U, esc = U.esc, KEY = "rowna-ssattr-v1";
 function st() { try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { return {}; } }
 function save(s) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {} }
-var T = null, running = false, stopReq = false;
+var T = null, running = false, stopReq = false, HV2 = false;   /* HV2: 도우미 2.4 이상 */
 async function targets() { if (T) return T; var r = await fetch("data/ss_targets.json?v=" + Date.now()); var j = await r.json(); T = j.rows.map(function (a) { return { ch: a[0], code: a[1], name: a[2], cat: a[3], brand: a[4], sold: a[5] }; }); return T; }
 
 function clean(x) { return String(x || "").replace(/\s+/g, " ").replace(/\s*추천$/, "").trim(); }   /* 네이버가 붙이는 '추천' 표시는 떼고 봄 */
@@ -127,7 +127,7 @@ async function writePage(origin, attrs, pick, tags) {
     { op: "closed", ms: 20000, need: 5 }, { op: "switchBack" }, { op: "wait", ms: 3000 }];
   Object.keys(pick).forEach(function (k) { var a = attrs.filter(function (x) { return x.name === k; })[0];
     pick[k].forEach(function (v) {
-      if (a.type === "multi") { [v, v + " 추천", v + "추천"].forEach(function (vv) { opt.push(ops.length); ops.push({ op: "check", near: k, value: vv }); }); }
+      if (a.type === "multi") { if (HV2) ops.push({ op: "check", near: k, value: v }); else [v, v + " 추천", v + "추천"].forEach(function (vv) { opt.push(ops.length); ops.push({ op: "check", near: k, value: vv }); }); }   /* 도우미 2.4부터 '값 추천'도 한 번에 찾음 — 조작 1번 */
       else { var o = a.options.filter(function (x) { return x.text === v; })[0]; ops.push({ op: "click", within: k, sel: ".selectize-input" }); ops.push({ op: "click", within: k, sel: '.selectize-dropdown-content .option[data-value="' + o.id + '"]' }); }
     }); });
   if (tags && tags.length) { opt.push(ops.length); ops.push({ op: "click", sel: "#anchor-tag .title-line" }); opt.push(ops.length); ops.push({ op: "wait", ms: 1200 }); opt.push(ops.length); ops.push({ op: "selzAdd", sel: TAGSEL, values: tags, max: 10, mode: "create", chips: CHIPS + " .choice-label" }); opt.push(ops.length); ops.push({ op: "html", sel: CHIPS, max: 20000, tagChips: 1 }); }
@@ -190,6 +190,7 @@ ERP.acts.ssattrrun = async function (btn) {
   if (running) { ERP.toast("이미 진행 중이에요."); return; }
   if (!(ERP.helperOn && ERP.helperOn())) { ERP.toast("크롬 확장 ‘로우나 도우미’가 꺼져 있어요."); return; }
   var lim = Number((btn && btn.dataset && btn.dataset.limit) || 0) || Infinity;
+  try { var pg = await ERP.helperAsk("ping", {}); var vv = String(pg && pg.version || "0").split(".").map(Number); HV2 = vv[0] > 2 || (vv[0] === 2 && vv[1] >= 4); } catch (e) { HV2 = false; }
   running = true; stopReq = false; var s = st(), done = {}; (s.log || []).forEach(function (x) { if (x.v >= 2 && /저장 완료|할 일 없음/.test(x.status)) done[x.ch] = Math.max(done[x.ch] || 0, x.v); });
   var SHOE = /신발|화$|화>|샌들|슬리퍼|부츠|힐|로퍼|스니커즈|뮬|플랫/;   /* 신발은 굽높이 규칙(v3) 전에 한 것을 한 번 더 봄 */
   var list = (await targets()).filter(function (t) { var d = done[t.ch] || 0; return !(d >= 5); }), n = 0, fails = 0;
