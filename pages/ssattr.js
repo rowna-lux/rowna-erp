@@ -215,8 +215,9 @@ ERP.acts.ssattrrun = async function (btn) {
   try { var pg = await ERP.helperAsk("ping", {}); var vv = String(pg && pg.version || "0").split(".").map(Number); HV2 = vv[0] > 2 || (vv[0] === 2 && vv[1] >= 4); HV25 = false;   /* 태그 한 번에(tagAuto)는 10/30 시험에서 저장 단계가 멈춰서 끔 — 원인 확인 후 다시 켬 */ } catch (e) { HV2 = false; HV25 = false; }
   running = true; stopReq = false; var s = st(), done = {}; (s.log || []).forEach(function (x) { if (x.v >= 2 && /저장 완료|할 일 없음/.test(x.status)) done[x.ch] = Math.max(done[x.ch] || 0, x.v); });
   var SHOE = /신발|화$|화>|샌들|슬리퍼|부츠|힐|로퍼|스니커즈|뮬|플랫/;   /* 신발은 굽높이 규칙(v3) 전에 한 것을 한 번 더 봄 */
-  var list = (await targets()).filter(function (t) { var d = done[t.ch] || 0; return !(d >= 5); }), n = 0, fails = 0;
-  if (btn && btn.dataset && btn.dataset.redo) { list = (await targets()).filter(function (t) { return (done[t.ch] || 0) > 0 && done[t.ch] < 5; }); }   /* 예전 기준으로 한 상품의 빈 칸 다시 채우기 */
+  var nf = {}; (s.log || []).forEach(function (x) { if (x.status === "실패") nf[x.ch] = (nf[x.ch] || 0) + 1; });   /* 2번 이상 실패한 상품은 뒤로 미룸(한 상품이 계속 막아서 전체가 멈추던 문제) */
+  var list = (await targets()).filter(function (t) { var d = done[t.ch] || 0; return !(d >= 5) && (nf[t.ch] || 0) < 2; }), n = 0, fails = 0;
+  if (btn && btn.dataset && btn.dataset.redo) { list = (await targets()).filter(function (t) { return (done[t.ch] || 0) > 0 && done[t.ch] < 5 && (nf[t.ch] || 0) < 2; }); }   /* 예전 기준으로 한 상품의 빈 칸 다시 채우기 */
   if (btn && btn.dataset && btn.dataset.sold) { list = list.filter(function (t) { return t.sold > 0; }); lim = Infinity; }
   ERP.toast("상품속성 자동입력 시작: 남은 " + list.length + "개 중 " + (lim === Infinity ? "전부" : lim + "개"));
   for (var i = 0; i < list.length && n < lim && !stopReq; i++) {
