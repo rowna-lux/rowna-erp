@@ -118,6 +118,18 @@ async function readPage(origin) {
   var tagHtml = (r.results[6] && r.results[6].ok && r.results[6].html) || null;   /* 태그 칸을 열어 기존 태그도 같이 읽음(페이지 한 번 덜 엶) */
   return { attrs: html ? parseAttrs(html) : [], text: text, have: tagHtml !== null ? parseChips(tagHtml) : null };
 }
+/* 스마트에디터 ONE 변환만 따로: 변환 → 등록 → 창 닫힘 → 저장 (상품당 1~2분) */
+async function convertOnly(origin) {
+  var ops = [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "wait", ms: 800 },
+    { op: "click", text: "으로 변환하기 (1회성)" }, { op: "switchNew", ms: 12000, urlHas: "editor", need: 2 },
+    { op: "waitText", text: "등록", ms: 25000, frames: true, need: 3, gap: 6000 }, { op: "click", sel: "button.progress-button", frames: true, need: 4, gap: 2500 },
+    { op: "closed", ms: 20000, need: 5 }, { op: "switchBack" }, { op: "wait", ms: 3000 },
+    { op: "click", sel: 'label[for="kcYn_TRUE"]' }, { op: "wait", ms: 600 }, { op: "click", text: "KC 안전관리대상 아님" }, { op: "wait", ms: 600 },
+    { op: "click", text: "저장하기", need: 6 }, { op: "wait", ms: 5000 }];
+  try { var r = await ERP.helperAsk("act", { url: editUrl(origin), ops: ops }); var res = r.results || [];
+    return !res[2] || !res[2].ok ? "변환 버튼 없음(이미 변환)" : res[6] && res[6].ok && res[13] && res[13].ok ? "변환 완료" : "변환 실패(" + [3, 4, 5, 6].map(function (i) { return res[i] && !res[i].ok && !res[i].skipped ? i + ":" + (res[i].error || "실패") : ""; }).filter(Boolean).join(",") + ")";
+  } catch (e) { return "변환 실패(" + e.message + ")"; }
+}
 async function writePage(origin, attrs, pick, tags) {
   var opt = [];   /* '추천' 표시 유무에 따라 하나만 맞으면 되는 체크들 */
   var ops = [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "wait", ms: 800 },
@@ -169,7 +181,9 @@ async function one(t, s, opts) {
     row.tags = tp.reg; row.tagsHad = tp.have.length;
     if (!Object.keys(c.pick).length && !needConv && !tp.reg.length) { row.status = "할 일 없음(이미 입력·변환됨)"; return row; }
     if (opts.dry) { row.status = "미리보기(저장 안 함)"; return row; }
-    var w = await writePage(origin, p.attrs, c.pick, tp.reg); row.tagsNow = w.tagsNow; row.saveMsg = w.saveMsg; row.conv = w.conv; if (w.dialogs.length) row.saveMsg = w.dialogs.concat(row.saveMsg || []);
+    var preConv = null;
+    if (needConv) preConv = await convertOnly(origin);   /* 스마트에디터 변환은 따로 먼저(같이 하면 4분 넘어 시간 초과) */
+    var w = await writePage(origin, p.attrs, c.pick, tp.reg); if (preConv) w.conv = preConv; row.tagsNow = w.tagsNow; row.saveMsg = w.saveMsg; row.conv = w.conv; if (w.dialogs.length) row.saveMsg = w.dialogs.concat(row.saveMsg || []);
     var convBad = needConv && w.conv !== "변환 완료";
     row.status = w.applied && !w.opsFailed.length && !convBad ? "저장 완료" : "일부 실패"; if (w.opsFailed.length) row.err = w.opsFailed.join(" / ");
   } catch (e) { row.status = "실패"; row.err = e.message; if (/멈춤|멈췄/.test(e.message)) stopReq = true; }
