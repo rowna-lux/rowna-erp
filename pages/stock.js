@@ -295,7 +295,25 @@ function lookup(model) {
 }
 
 /* ---------- 라벨 출력 (40×20mm) ---------- */
-function printLabels(L, locs) {
+/* PC의 '라벨 도우미'(127.0.0.1:17777)가 켜져 있으면 4B-2054N으로 바로 출력, 꺼져 있으면 화면 인쇄로 */
+var HELPER = "http://127.0.0.1:17777";
+async function helperPrint(L, locs) {
+  var labels = L.map(function (it) { return { code: it.code, sub: locs ? "LOCATION" : [it.model, it.opt].filter(Boolean).join(" ") }; });
+  try {
+    var ctl = new AbortController(), tm = setTimeout(function () { ctl.abort(); }, 4000);
+    var r = await fetch(HELPER + "/print", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ labels: labels }), signal: ctl.signal });
+    clearTimeout(tm);
+    var j = await r.json();
+    if (j.ok) { ERP.toast("🖨 라벨 " + j.count + "장 출력했어요 (" + j.printer + ")"); return true; }
+    ERP.toast("라벨 도우미 오류: " + (j.error || r.status) + " — 화면 인쇄로 열게요"); return false;
+  } catch (e) { return false; }
+}
+async function printLabels(L, locs) {
+  if (await helperPrint(L, locs)) return;
+  ERP.toast("라벨 도우미가 꺼져 있어서 화면 인쇄로 열어요 (도우미: 다운로드\\로우나_AI작업\\프로그램\\라벨도우미)");
+  printLabelsWindow(L, locs);
+}
+function printLabelsWindow(L, locs) {
   var cells = L.map(function (it) {
     return '<div class="lb"><div class="bc">' + barcodeSvg(it.code, 40) + '</div><div class="cd">' + esc(it.code) + '</div><div class="nm">' + esc((locs ? "보관 위치" : brandName(it.brand) + " " + (it.name || it.model || "")).slice(0, 22)) + "</div></div>";
   }).join("");
