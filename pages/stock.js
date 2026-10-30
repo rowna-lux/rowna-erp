@@ -24,8 +24,23 @@ function barcodeSvg(code, h) {
 }
 
 /* ---------- 스캔 처리 ---------- */
+/* 키보드가 한글 상태에서 스캔하면 'ㅣㅐㅊ-ㅁ1'처럼 들어옴 → 영문 자판으로 되돌림 */
+var KO = { "ㄱ":"r","ㄲ":"R","ㄴ":"s","ㄷ":"e","ㄸ":"E","ㄹ":"f","ㅁ":"a","ㅂ":"q","ㅃ":"Q","ㅅ":"t","ㅆ":"T","ㅇ":"d","ㅈ":"w","ㅉ":"W","ㅊ":"c","ㅋ":"z","ㅌ":"x","ㅍ":"v","ㅎ":"g",
+  "ㅏ":"k","ㅐ":"o","ㅑ":"i","ㅒ":"O","ㅓ":"j","ㅔ":"p","ㅕ":"u","ㅖ":"P","ㅗ":"h","ㅘ":"hk","ㅙ":"ho","ㅚ":"hl","ㅛ":"y","ㅜ":"n","ㅝ":"nj","ㅞ":"np","ㅟ":"nl","ㅠ":"b","ㅡ":"m","ㅢ":"ml","ㅣ":"l",
+  "ㄳ":"rt","ㄵ":"sw","ㄶ":"sg","ㄺ":"fr","ㄻ":"fa","ㄼ":"fq","ㄽ":"ft","ㄾ":"fx","ㄿ":"fv","ㅀ":"fg","ㅄ":"qt" };
+var CHO = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ", JUNG = "ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ", JONG = ["", "ㄱ","ㄲ","ㄳ","ㄴ","ㄵ","ㄶ","ㄷ","ㄹ","ㄺ","ㄻ","ㄼ","ㄽ","ㄾ","ㄿ","ㅀ","ㅁ","ㅂ","ㅄ","ㅅ","ㅆ","ㅇ","ㅈ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+function fixKo(s) {
+  if (!/[ㄱ-ㅣ가-힣]/.test(s)) return s;
+  var out = "";
+  for (var i = 0; i < s.length; i++) {
+    var ch = s[i], n = ch.charCodeAt(0) - 0xAC00;
+    if (n >= 0 && n < 11172) { out += KO[CHO[Math.floor(n / 588)]] + KO[JUNG[Math.floor((n % 588) / 28)]] + (n % 28 ? KO[JONG[n % 28]] : ""); }
+    else out += KO[ch] || ch;
+  }
+  return out.toUpperCase();
+}
 function onScan(raw) {
-  var code = String(raw || "").trim(); if (!code) return;
+  var code = fixKo(String(raw || "").trim()); if (!code) return;
   var d = D();
   if (isLoc(code)) { v.stLoc = code.toUpperCase().replace(/^LOC-/, ""); v.stMsg = "📍 위치 " + v.stLoc + " — 이제 찍는 상품은 이 위치로 기록돼요"; ERP.render(); return; }
   var it = d.items[code];
