@@ -17,10 +17,13 @@ function parseAttrs(html) {
   doc.querySelectorAll("#attribute-table tr").forEach(function (tr) {
     var th = tr.querySelector("th[scope=row]"), td = tr.querySelector("td"); if (!th || !td) return;
     var name = clean(th.textContent);
+    /* 줄 위치로 바로 찾는 선택자(글자로 찾으면 같은 이름이 화면 다른 곳에도 있을 때 '항목 없음'이 나던 문제) */
+    var rowSel = null; try { var tb = tr.parentElement; if (tb && tb.tagName === "TBODY") { var rs = "#attribute-table > tbody > tr:nth-child(" + (Array.prototype.indexOf.call(tb.children, tr) + 1) + ")"; if (doc.querySelector(rs) === tr) rowSel = rs; } } catch (e) {}
     var boxes = td.querySelectorAll("label input[type=checkbox]");
-    if (boxes.length) { out.push({ name: name, type: "multi", options: Array.prototype.map.call(boxes, function (b) { return clean(b.parentElement.textContent); }), selected: Array.prototype.filter.call(boxes, function (b) { return /ng-not-empty/.test(b.className) || b.hasAttribute("checked"); }).map(function (b) { return clean(b.parentElement.textContent); }) }); return; }
+    var optSel = {}; if (rowSel) Array.prototype.forEach.call(boxes, function (b) { var l = b.parentElement, sib = Array.prototype.filter.call(l.parentElement.children, function (x) { return x.tagName === "LABEL"; }), q = rowSel + " label:nth-of-type(" + (sib.indexOf(l) + 1) + ")"; try { if (doc.querySelector(q) === l) optSel[clean(l.textContent)] = q; } catch (e) {} });
+    if (boxes.length) { out.push({ name: name, rowSel: rowSel, optSel: optSel, type: "multi", options: Array.prototype.map.call(boxes, function (b) { return clean(b.parentElement.textContent); }), selected: Array.prototype.filter.call(boxes, function (b) { return /ng-not-empty/.test(b.className) || b.hasAttribute("checked"); }).map(function (b) { return clean(b.parentElement.textContent); }) }); return; }
     var opts = td.querySelectorAll(".selectize-dropdown-content .option[data-value]");
-    if (opts.length) { var cur = td.querySelector(".selectize-dropdown-content .option.selected") || td.querySelector(".selectize-input .item, .selectize-input .option"), ct = cur ? clean(cur.textContent) : ""; out.push({ name: name, type: "single", options: Array.prototype.filter.call(opts, function (o) { return o.getAttribute("data-value"); }).map(function (o) { return { id: o.getAttribute("data-value"), text: clean(o.textContent) }; }), selected: ct && ct !== "선택" ? [ct] : [] }); }
+    if (opts.length) { var cur = td.querySelector(".selectize-dropdown-content .option.selected") || td.querySelector(".selectize-input .item, .selectize-input .option"), ct = cur ? clean(cur.textContent) : ""; out.push({ name: name, rowSel: rowSel, type: "single", options: Array.prototype.filter.call(opts, function (o) { return o.getAttribute("data-value"); }).map(function (o) { return { id: o.getAttribute("data-value"), text: clean(o.textContent) }; }), selected: ct && ct !== "선택" ? [ct] : [] }); }
   });
   return out;
 }
@@ -143,7 +146,9 @@ async function writePage(origin, attrs, pick, tags, skipConv) {   /* skipConv: �
   var C0 = skipConv ? -1 : 2;
   Object.keys(pick).forEach(function (k) { var a = attrs.filter(function (x) { return x.name === k; })[0];
     pick[k].forEach(function (v) {
-      if (a.type === "multi") { if (HV2) ops.push({ op: "check", near: k, value: v }); else [v, v + " 추천", v + "추천"].forEach(function (vv) { opt.push(ops.length); ops.push({ op: "check", near: k, value: vv }); }); }   /* 도우미 2.4부터 '값 추천'도 한 번에 찾음 — 조작 1번 */
+      if (a.type === "multi" && a.optSel && a.optSel[v]) ops.push({ op: "click", sel: a.optSel[v] });   /* 줄 위치로 바로 클릭(빈 칸만 채우므로 체크 해제될 일 없음) */
+      else if (a.type === "single" && a.rowSel) { var o1 = a.options.filter(function (x) { return x.text === v; })[0]; ops.push({ op: "click", sel: a.rowSel + " .selectize-input" }); ops.push({ op: "click", sel: a.rowSel + ' .selectize-dropdown-content .option[data-value="' + o1.id + '"]' }); }
+      else if (a.type === "multi") { if (HV2) ops.push({ op: "check", near: k, value: v }); else [v, v + " 추천", v + "추천"].forEach(function (vv) { opt.push(ops.length); ops.push({ op: "check", near: k, value: vv }); }); }   /* 도우미 2.4부터 '값 추천'도 한 번에 찾음 — 조작 1번 */
       else { var o = a.options.filter(function (x) { return x.text === v; })[0]; ops.push({ op: "click", within: k, sel: ".selectize-input" }); ops.push({ op: "click", within: k, sel: '.selectize-dropdown-content .option[data-value="' + o.id + '"]' }); }
     }); });
   var ta = -1;
