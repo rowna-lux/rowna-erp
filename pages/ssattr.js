@@ -229,6 +229,7 @@ ERP.acts.ssattrrun = async function (btn) {
   ERP.toast("상품속성 자동입력 시작: 남은 " + list.length + "개 중 " + (lim === Infinity ? "전부" : lim + "개"));
   for (var i = 0; i < list.length && n < lim && !stopReq; i++) {
     var row = await one(list[i], s, {});
+    if (row.status === "실패" && /확장이 새로고침/.test(row.err || "")) { ERP.toast("도우미가 다시 켜져서 ERP를 새로고침해요."); setTimeout(function () { location.reload(); }, 1500); return { n: n, left: list.length - i, stopped: true }; }   /* 도우미 재시작은 상품 실패가 아님 — 기록하지 않고 새로고침 */
     if (row.status === "실패" && !/시간 초과/.test(row.err || "") && !(await loginOk())) { ERP.toast("⚠ 스마트스토어 로그인이 풀려서 멈췄어요. 로그인하면 자동으로 이어서 해요."); return { n: n, left: list.length - i, loggedOut: true }; }   /* 로그인 풀림은 실패로 기록하지 않음 */
     log(s, row); n++; ERP.render();
     fails = row.status === "실패" ? fails + (/시간 초과/.test(row.err || "") ? 5 : 1) : 0;   /* 시간 초과가 한 번 나면 뒤 상품도 줄줄이 막혀서(기록상 재시작하면 풀림) 바로 1분 쉬고 다시 시작 */
