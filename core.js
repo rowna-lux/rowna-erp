@@ -18,7 +18,7 @@ var COLS = ERP.COLS = {
   price_items: ["id","status","tier","sku","buy_link","vendor","brand","category","name","buy_price","card_rate","margin","fee_rate","fixed_price","store_price","memo","extra"],
   kream_wholesale: ["id","supplier","list_date","brand","sku","name","kream_url","size","qty","wholesale_price","kream_price","kream_recent","kream_checked_at","decision","memo","extra"]
 };
-var WRITE_ROLES = { staff: ["purchases","returns","documents","kream_wholesale","price_items","sourcing_items"], ai: ["purchases","returns","documents","kream_wholesale","price_items","sourcing_items"] };
+var WRITE_ROLES = { staff: ["purchases","returns","documents","kream_wholesale","price_items","sourcing_items","stock"], ai: ["purchases","returns","documents","kream_wholesale","price_items","sourcing_items","stock"] };
 ERP.view = { tab: "home", month: C.ym(today()), year: today().slice(0, 4) };
 try { var sv = JSON.parse(localStorage.getItem("rowna-erp-view") || "null"); if (sv && sv.tab) ERP.view.tab = sv.tab; } catch (e) {}
 
