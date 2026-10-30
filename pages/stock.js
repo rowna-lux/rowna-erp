@@ -8,9 +8,9 @@ var BRANDS = [["CH", "샤넬"], ["HM", "에르메스"], ["AI", "알파인더스�
 function allBrands() {
   /* 직접 추가한 브랜드: 목록(brands) + 상품에 같이 저장한 이름(brandLabel) — 목록이 날아가도 상품에서 되살림 */
   var extra = (D().brands || []).slice();
-  Object.values(D().items || {}).forEach(function (it) { if (it.brandLabel && it.brand) extra.push([it.brand, it.brandLabel]); });
+  Object.values(D().items || {}).forEach(function (it) { if (it.brandLabel && it.brand) extra.push([it.brand, it.brandLabel, it.brandEn || ""]); });
   var L = BRANDS.slice();
-  extra.forEach(function (b) { if (b && b[0] && b[1] && !L.some(function (x) { return x[0] === b[0]; })) L.push([b[0], b[1]]); });
+  extra.forEach(function (b) { if (b && b[0] && b[1] && !L.some(function (x) { return x[0] === b[0]; })) L.push([b[0], b[1], b[2] || ""]); });
   return L.sort(function (a, b) { if (a[0] === "ET") return 1; if (b[0] === "ET") return -1; return a[1].localeCompare(b[1], "ko"); });
 }
 var v = ERP.view; v.stMode = v.stMode || "실사"; v.stQ = v.stQ || ""; v.stAge = v.stAge || ""; v.stLoc = v.stLoc || ""; v.stMsg = v.stMsg || "";
@@ -212,7 +212,13 @@ function open(it, code, opt) {
     (it.own && isNew ? '<div class="fd full"><label>바코드</label><div style="padding:8px 0">저장하면 <b>RW-' + esc(it.brand) + '-번호</b>로 자동 발급돼요</div></div>' : fd("바코드", "code", "text", it.code, "full", isNew ? "" : " readonly")) +
     fd("품번 (넣고 Enter → 브랜드·상품명 자동)", "model", "text", it.model) + fd("사이즈·컬러 (Enter → 저장)", "opt", "text", it.opt) +
     '<div class="fd full" id="st-found" role="status" style="font-size:13px;color:#666;min-height:18px"></div>' +
-    ERP.sel("브랜드", "brand", allBrands(), it.brand) + (ERP.canWrite("stock") ? '<div class="fd" style="justify-content:flex-end"><button type="button" class="btn sm" id="st-addbrand">+ 브랜드 추가</button></div>' : "") + fd("상품명 (짧게, 라벨에 찍혀요)", "name", "text", it.name) +
+    ERP.sel("브랜드", "brand", allBrands(), it.brand) + (ERP.canWrite("stock") ? '<div class="fd" style="justify-content:flex-end"><button type="button" class="btn sm" id="st-addbrand">+ 브랜드 추가</button></div>' +
+      '<div class="fd full" id="st-brandbox" hidden style="border:1px dashed currentColor;border-radius:10px;padding:10px 12px"><b>새 브랜드</b>' +
+      '<div style="display:grid;grid-template-columns:1.3fr 1.3fr .7fr auto;gap:8px;margin-top:8px;align-items:end">' +
+      '<label style="font-size:12px">한글 이름<input id="nb-kr" placeholder="헬렌카민스키"></label>' +
+      '<label style="font-size:12px">영문 이름 (크림 자동인식용)<input id="nb-en" placeholder="Helen Kaminski"></label>' +
+      '<label style="font-size:12px">약자 2글자<input id="nb-cd" maxlength="2" placeholder="HE" style="text-transform:uppercase"></label>' +
+      '<button type="button" class="btn sm pri" id="nb-add">추가</button></div><div id="nb-msg" role="status" style="margin-top:6px;font-size:13px"></div></div>' : "") + fd("상품명 (짧게, 라벨에 찍혀요)", "name", "text", it.name) +
     fd("시리얼·보증카드 번호", "serial", "text", it.serial) + fd("위치", "loc", "text", it.loc) +
     (isNew ? "" : lotTable(it)) +
     (isNew ? '<div class="fd full" style="font-weight:700;margin-top:6px">입고 정보 (같은 입고일·매입가로 들어온 개수만큼 1개씩 기록돼요)</div><div class="fd full" style="display:contents">'
@@ -276,19 +282,35 @@ ERP.forms.stock = {
         if (oi) oi.focus();
       }); }
     if (oi) oi.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); var sv = document.getElementById("d-save"); if (sv) sv.click(); } });
-    var ab = body.querySelector("#st-addbrand");
-    if (ab) ab.onclick = function () {
-      var nm = (window.prompt("추가할 브랜드 이름 (한글, 예: 메종마르지엘라)") || "").trim(); if (!nm) return;
-      var L = allBrands(), ex = L.find(function (x) { return x[1].replace(/\s/g, "") === nm.replace(/\s/g, ""); });
-      var bs = body.querySelector('[name="brand"]');
-      if (ex) { bs.value = ex[0]; ERP.toast("이미 있는 브랜드예요: " + ex[1]); return; }
-      var cd = (window.prompt("자체 바코드에 들어갈 영문 약자 2글자 (예: 메종마르지엘라 → MA)\n자체 바코드는 RW-약자-번호로 만들어져요") || "").trim().toUpperCase();
-      if (!/^[A-Z]{2}$/.test(cd)) { ERP.toast("약자는 영문 2글자로 넣어 주세요."); return; }
-      var dup = L.find(function (x) { return x[0] === cd; }); if (dup) { ERP.toast(cd + "는 이미 " + dup[1] + "에 쓰고 있어요. 다른 약자를 넣어 주세요."); return; }
-      var d = D(); d.brands = (d.brands || []).concat([[cd, nm]]); save(true);
-      bs.innerHTML = allBrands().map(function (x) { return '<option value="' + esc(x[0]) + '">' + esc(x[1]) + "</option>"; }).join(""); bs.value = cd;
-      ERP.toast("브랜드를 추가했어요: " + nm + " (" + cd + ")");
-    };
+    var ab = body.querySelector("#st-addbrand"), bx = body.querySelector("#st-brandbox");
+    if (ab && bx) {
+      var bnm = bx.querySelector("#nb-kr"), ben = bx.querySelector("#nb-en"), bcd = bx.querySelector("#nb-cd"), bmsg = bx.querySelector("#nb-msg");
+      var suggest = function () {
+        var en = (ben.value || "").toUpperCase().replace(/[^A-Z ]/g, " ").trim(), w = en.split(/\s+/).filter(Boolean), c = [];
+        if (w.length > 1) c.push(w[0][0] + w[1][0]); if (w[0]) { c.push(w[0].slice(0, 2)); for (var k = 2; k < w[0].length; k++) c.push(w[0][0] + w[0][k]); }
+        var used = allBrands().map(function (x) { return x[0]; });
+        var pick = c.find(function (x) { return /^[A-Z]{2}$/.test(x) && used.indexOf(x) === -1; });
+        if (!pick) { var A = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"; outer: for (var a = 0; a < 26; a++) for (var b = 0; b < 26; b++) { var t = A[a] + A[b]; if (used.indexOf(t) === -1) { pick = t; break outer; } } }
+        if (!bcd.dataset.touched) bcd.value = pick || "";
+      };
+      ab.onclick = function () { bx.hidden = !bx.hidden; if (!bx.hidden) { bnm.focus(); suggest(); } };
+      ben.addEventListener("input", suggest); bcd.addEventListener("input", function () { bcd.dataset.touched = "1"; });
+      bx.querySelector("#nb-add").onclick = async function () {
+        var nm = bnm.value.trim(), en = ben.value.trim(), cd = bcd.value.trim().toUpperCase(), L = allBrands(), bs = body.querySelector('[name="brand"]');
+        bmsg.textContent = "";
+        if (!nm) { bmsg.textContent = "브랜드 이름(한글)을 넣어 주세요."; bnm.focus(); return; }
+        var ex = L.find(function (x) { return x[1].replace(/\s/g, "") === nm.replace(/\s/g, ""); });
+        if (ex) { bs.value = ex[0]; bmsg.textContent = "이미 있는 브랜드라서 골라 놨어요: " + ex[1]; return; }
+        if (!/^[A-Z]{2}$/.test(cd)) { bmsg.textContent = "약자는 영문 2글자로 넣어 주세요 (예: HE)."; bcd.focus(); return; }
+        var dup = L.find(function (x) { return x[0] === cd; }); if (dup) { bmsg.textContent = cd + "는 이미 " + dup[1] + "에 쓰고 있어요. 다른 약자를 넣어 주세요."; bcd.focus(); return; }
+        var d = D(); d.brands = (d.brands || []).filter(function (x) { return x[0] !== cd; }).concat([[cd, nm, en]]);
+        bs.innerHTML = allBrands().map(function (x) { return '<option value="' + esc(x[0]) + '">' + esc(x[1]) + "</option>"; }).join(""); bs.value = cd;
+        bmsg.textContent = "저장 중…";
+        var err = await save(true);
+        bmsg.textContent = err ? "브랜드 저장 실패: " + err : "✔ 추가하고 저장했어요: " + nm + " (" + cd + ") — 이제 이 상품도 저장하세요";
+        if (!err) { bx.hidden = true; ERP.toast("브랜드 추가: " + nm + " (" + cd + ")"); }
+      };
+    }
     var box = body.querySelector("#st-addbox"), aq = body.querySelector('[name="addQty"]');
     if (box && aq) box.addEventListener("toggle", function () { if (box.open && !(Number(aq.value) > 0)) aq.value = 1; if (!box.open) aq.value = 0; });
     var rp = body.querySelector("#st-reprint");
@@ -313,7 +335,7 @@ ERP.forms.stock = {
     var add = Math.max(0, Math.floor(Number(o.addQty) || 0)); if (add > 500) throw new Error("한 번에 500개까지만 추가할 수 있어요.");
     for (var i = 0; i < add; i++) lots.push(mkLot({ vendor: o.vendor, date: o.buyDate, price: o.buyPrice, loc: loc }));
     var custom = !BRANDS.some(function (x) { return x[0] === o.brand; });
-    var it = { code: o.code, own: !!rec.own, brand: o.brand, brandLabel: custom ? brandName(o.brand) : undefined, name: String(o.name || "").trim(), model: String(o.model || "").trim(), serial: String(o.serial || "").trim(), opt: String(o.opt || "").trim(), loc: loc, lots: lots, qty: lots.filter(function (x) { return !x.out; }).length, photo: rec._photo || rec.photo || "", memo: o.memo, at: new Date().toISOString() };
+    var it = { code: o.code, own: !!rec.own, brand: o.brand, brandLabel: custom ? brandName(o.brand) : undefined, brandEn: custom ? ((allBrands().find(function (x) { return x[0] === o.brand; }) || [])[2] || undefined) : undefined, name: String(o.name || "").trim(), model: String(o.model || "").trim(), serial: String(o.serial || "").trim(), opt: String(o.opt || "").trim(), loc: loc, lots: lots, qty: lots.filter(function (x) { return !x.out; }).length, photo: rec._photo || rec.photo || "", memo: o.memo, at: new Date().toISOString() };
     d.items[it.code] = it;
     if (st.isNew && v.stMode === "실사") { d.countAt = Date.now(); if (!d.count) d.count = { at: new Date().toISOString(), scans: {} }; } if (st.isNew && d.count && v.stMode === "실사") d.count.scans[it.code] = (d.count.scans[it.code] || 0) + 1;
     var err = await save(true);
@@ -330,7 +352,7 @@ function brandCode(t) {
   t = String(t || "").toLowerCase().replace(/\s+/g, ""); if (!t) return "";
   var KO2 = { MC: "몽클레르", AI: "알파", VW: "비비안", MK: "키츠네" };
   var EN = { MA: "margiela", CH: "chanel", HM: "hermes", LV: "louis", DI: "dior", GC: "gucci", PR: "prada", BV: "bottega", CL: "celine", YS: "saintlaurent", TB: "thom", MM: "miu", FE: "fendi", BA: "balenciaga", LO: "loewe", BB: "burberry", MC: "moncler", AI: "alpha", CO: "chlo", HK: "hoka", AM: "amiparis", MK: "kitsune", PB: "paraboot", VW: "vivienne" };
-  var BL = allBrands(); for (var i = 0; i < BL.length; i++) { var c = BL[i][0]; if (c === "ET") continue; if (t.indexOf(BL[i][1].toLowerCase().replace(/\s+/g, "")) !== -1 || (EN[c] && t.indexOf(EN[c]) !== -1) || (KO2[c] && t.indexOf(KO2[c]) !== -1)) return c; }
+  var BL = allBrands(); for (var i = 0; i < BL.length; i++) { var c = BL[i][0]; if (c === "ET") continue; if (t.indexOf(BL[i][1].toLowerCase().replace(/\s+/g, "")) !== -1 || (EN[c] && t.indexOf(EN[c]) !== -1) || (BL[i][2] && t.indexOf(String(BL[i][2]).toLowerCase().replace(/\s+/g, "")) !== -1) || (KO2[c] && t.indexOf(KO2[c]) !== -1)) return c; }
   return "ET";
 }
 function lookup(model) {
