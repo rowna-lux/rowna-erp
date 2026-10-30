@@ -171,7 +171,7 @@ function open(it, code, opt) {
     (isNew ? "</div>" : "</div></details>") +
     fd("메모", "memo", "text", it.memo, "full") +
     '<div class="fd full"><label for="st-photo">사진 (라벨이 떨어져도 찾을 수 있게)</label><input id="st-photo" type="file" accept="image/*" capture="environment"><div id="st-pv" style="margin-top:8px">' + (it.photo ? '<img src="' + it.photo + '" alt="상품 사진" style="width:120px;border-radius:8px">' : "") + "</div></div>" +
-    (isNew ? "" : '<div class="fd full"><label>바코드 미리보기</label><div style="background:#fff;padding:8px;width:240px">' + barcodeSvg(it.code, 40) + "</div></div>") + "</div>";
+    (isNew ? "" : '<div class="fd full"><label>바코드 미리보기</label><div style="background:#fff;padding:8px;width:240px">' + barcodeSvg(it.code, 40) + '</div><button type="button" class="btn sm" id="st-reprint" style="margin-top:8px">🖨 이 라벨 다시 출력 (같은 바코드)</button></div>') + "</div>";
   if (opt.add) it._focusPrice = true;
   ERP.openDrawer(isNew ? (it.own ? "자체 바코드 발급" : "새 바코드 상품 등록") : (opt.add ? "같은 상품 1개 더 — 매입가 확인 후 저장" : "재고 상품 수정"), f, "stock", it, isNew, { saveLabel: isNew && it.own ? "발급하고 저장" : "저장" });
 }
@@ -239,6 +239,8 @@ ERP.forms.stock = {
     };
     var box = body.querySelector("#st-addbox"), aq = body.querySelector('[name="addQty"]');
     if (box && aq) box.addEventListener("toggle", function () { if (box.open && !(Number(aq.value) > 0)) aq.value = 1; if (!box.open) aq.value = 0; });
+    var rp = body.querySelector("#st-reprint");
+    if (rp) rp.onclick = function () { var x = D().items[rec.code] || rec; printLabels([x]); };
     var ph = body.querySelector("#st-photo");
     ph.onchange = async function () { if (!ph.files[0]) return; rec._photo = await shrink(ph.files[0]); body.querySelector("#st-pv").innerHTML = '<img src="' + rec._photo + '" alt="상품 사진" style="width:120px;border-radius:8px">'; };
   },
