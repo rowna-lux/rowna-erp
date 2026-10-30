@@ -22,16 +22,56 @@ function D() {
   if (!d || !d.items) { d = { items: {}, seq: {}, count: null, locs: "A-01~A-05" }; S.SET[KEY] = d; }
   LAST = d; return d;
 }
-var saveT = null;
+var saveT = null, saveQ = Promise.resolve(), lastSavedAt = "";
+/* ---------- 데이터 지키기 ----------
+   1) 저장할 때마다 서버의 최신 값을 먼저 읽어 와서 '상품 단위로 합친 뒤' 저장 → 다른 PC·다른 탭이 저장해도 서로 지우지 않음
+   2) 삭제는 기록(deleted)으로 남겨서 합칠 때 되살아나지 않게
+   3) 저장할 때마다 이 브라우저에 최근 20개 백업, 하루 1번 서버에도 날짜별 백업(권한이 있으면) */
+function newer(a, b) { return String(a || "") >= String(b || ""); }
+function mergeInv(srv, loc) {
+  srv = srv && srv.items ? srv : { items: {} }; loc = loc && loc.items ? loc : { items: {} };
+  var out = Object.assign({}, srv, loc), del = Object.assign({}, srv.deleted || {});
+  Object.keys(loc.deleted || {}).forEach(function (k) { if (!del[k] || newer(loc.deleted[k], del[k])) del[k] = loc.deleted[k]; });
+  var items = {};
+  [srv.items, loc.items].forEach(function (src) { Object.keys(src || {}).forEach(function (k) { var x = src[k]; if (!x) return; if (!items[k] || newer(x.at, items[k].at)) items[k] = x; }); });
+  Object.keys(del).forEach(function (k) { if (items[k] && newer(del[k], items[k].at)) delete items[k]; });
+  out.items = items; out.deleted = del;
+  var b = {}; (srv.brands || []).concat(loc.brands || []).forEach(function (x) { if (x && x[0]) b[x[0]] = x; }); out.brands = Object.values(b);
+  var sq = Object.assign({}, srv.seq || {}); Object.keys(loc.seq || {}).forEach(function (k) { sq[k] = Math.max(Number(sq[k]) || 0, Number(loc.seq[k]) || 0); }); out.seq = sq;
+  if ((Number(srv.countAt) || 0) > (Number(loc.countAt) || 0)) { out.count = srv.count || null; out.countAt = srv.countAt; }
+  out._rev = Math.max(Number(srv._rev) || 0, Number(loc._rev) || 0);
+  return out;
+}
+function localBackup(val) {
+  try { var k = "rowna-stock-backup", L = JSON.parse(localStorage.getItem(k) || "[]"); L.unshift({ at: new Date().toISOString(), n: Object.keys(val.items || {}).length, value: val }); localStorage.setItem(k, JSON.stringify(L.slice(0, 20))); } catch (e) {}
+}
+async function serverBackup(val) {
+  var day = U.today(), k = "stock_bak_done";
+  try { if (localStorage.getItem(k) === day) return; } catch (e) {}
+  var r = await S.sb.from("app_settings").upsert({ key: KEY + "_bak_" + day, value: val }).select("key");
+  if (!r.error && r.data && r.data.length) { try { localStorage.setItem(k, day); } catch (e) {} }
+}
 function save(now) {
   clearTimeout(saveT);
-  /* 저장 후 실제로 DB에 들어갔는지 다시 확인 — 안 들어갔으면 오류를 그대로 보여줌 */
-  var run = async function () {
-    var dd = D(); dd._rev = Math.max(Number(dd._rev) || 0, Date.now());
-    var r = await S.sb.from("app_settings").upsert({ key: KEY, value: D() }).select("key");
-    var msg = r.error ? (ERP.errMsg(r.error) + " [" + (r.error.code || "") + " " + (r.error.message || "") + "]") : (!r.data || !r.data.length ? "DB에 저장되지 않았어요 (권한 정책에 막힌 것 같아요)" : "");
-    if (msg) { console.error("[재고저장]", r.error || "0 rows", r.status); ERP.toast("재고 저장 실패: " + msg); }
-    return msg;
+  var run = function () {
+    saveQ = saveQ.then(async function () {
+      var loc = D(); loc._rev = Math.max(Number(loc._rev) || 0, Date.now());
+      var g = await S.sb.from("app_settings").select("value").eq("key", KEY).maybeSingle();
+      if (g.error) { var m0 = "서버 값을 읽지 못해서 저장을 멈췄어요 (덮어쓰기 방지): " + ERP.errMsg(g.error); ERP.toast("재고 저장 실패: " + m0); return m0; }
+      var merged = mergeInv(g.data && g.data.value, loc);
+      merged._rev = Math.max(merged._rev, Date.now());
+      var r = await S.sb.from("app_settings").upsert({ key: KEY, value: merged }).select("key");
+      var msg = r.error ? (ERP.errMsg(r.error) + " [" + (r.error.code || "") + " " + (r.error.message || "") + "]") : (!r.data || !r.data.length ? "DB에 저장되지 않았어요 (권한 정책에 막힌 것 같아요)" : "");
+      if (msg) { console.error("[재고저장]", r.error || "0 rows", r.status); ERP.toast("재고 저장 실패: " + msg); return msg; }
+      /* 화면 데이터를 합쳐진 값으로 바꿈 (다른 PC에서 넣은 상품도 같이 보이게) */
+      Object.keys(merged).forEach(function (k) { loc[k] = merged[k]; }); Object.keys(loc).forEach(function (k) { if (!(k in merged)) delete loc[k]; });
+      S.SET[KEY] = loc; LAST = loc;
+      lastSavedAt = new Date().toTimeString().slice(0, 5);
+      localBackup(merged); serverBackup(merged).catch(function () {});
+      var el = document.getElementById("st-saved"); if (el) el.textContent = "✔ 저장됨 " + lastSavedAt + " · 상품 " + Object.keys(merged.items).length + "개";
+      return "";
+    });
+    return saveQ;
   };
   if (now) return run(); saveT = setTimeout(run, 700);
 }
@@ -107,7 +147,7 @@ function onScan(raw) {
   if (!it) { v.stMsg = "새 바코드 " + code + " — 상품 정보를 등록해 주세요"; open(null, code); return; }
   if (v.stLoc) it.loc = v.stLoc;
   var m = v.stMode;
-  if (m === "실사") { if (!d.count) d.count = { at: new Date().toISOString(), scans: {} }; d.count.scans[code] = (d.count.scans[code] || 0) + 1; v.stMsg = "✔ " + label(it) + " — 실사 " + d.count.scans[code] + "개째";
+  if (m === "실사") { d.countAt = Date.now(); if (!d.count) d.count = { at: new Date().toISOString(), scans: {} }; d.count.scans[code] = (d.count.scans[code] || 0) + 1; v.stMsg = "✔ " + label(it) + " — 실사 " + d.count.scans[code] + "개째";
     /* 찍은 개수가 장부 재고보다 많아지면 = 새로 들어온 1개 → 매입가를 넣을 수 있게 창을 띄움 */
     if (d.count.scans[code] > active(it).length) { v.stMsg = "＋ " + label(it) + " — 재고보다 1개 더 찍혔어요. 이 1개의 매입가를 확인하고 저장하세요"; it.at = new Date().toISOString(); save(); open(it, null, { add: 1 }); return; } }
   else if (m === "입고") { v.stMsg = "＋ 입고 " + label(it) + " — 이 1개의 매입가를 확인하고 저장하세요"; open(it, null, { add: 1 }); return; }
@@ -127,11 +167,11 @@ function render() {
   var tot = 0; items().forEach(function (it) { tot += Number(it.qty) || 0; });
   var h = '<div class="head"><div><h1>재고실사</h1><p>바코드를 찍으면 재고가 맞춰져요 · 위치 바코드(LOC-)를 먼저 찍으면 위치도 기록돼요</p></div><div class="tools">' +
     (w ? '<button class="btn pri" data-act="stnew">+ 자체 바코드 발급</button>' : "") +
-    '<button class="btn" data-act="stlabel">상품 라벨 출력</button><button class="btn" data-act="stloclabel">위치 라벨 출력</button><button class="btn" data-act="stxls">엑셀 다운로드</button><button class="btn" data-act="stsabang">사방넷 대조</button></div></div>';
+    '<button class="btn" data-act="stlabel">상품 라벨 출력</button><button class="btn" data-act="stloclabel">위치 라벨 출력</button><button class="btn" data-act="stxls">엑셀 다운로드</button><button class="btn" data-act="stsabang">사방넷 대조</button><button class="btn" data-act="strestore">백업에서 되살리기</button></div></div>';
   h += '<div class="panel" style="padding:16px;margin-bottom:12px"><div class="tools filters" style="margin-bottom:10px">' + ERP.chips("data-stmode", v.stMode, [["실사", "실사(개수 세기)"], ["입고", "입고 +1"], ["출고", "출고 −1"], ["조회", "조회만"]]) +
     '<span class="pill ' + (v.stLoc ? "p-acc" : "p-mute") + '">위치: ' + esc(v.stLoc || "없음") + "</span>" + (v.stLoc ? '<button class="btn sm" data-act="stlocclear">위치 해제</button>' : "") + "</div>" +
     '<input class="ctl" id="st-scan" autocomplete="off" placeholder="여기를 누르고 바코드를 찍으세요 (직접 입력 후 Enter도 가능)" style="width:100%;font-size:20px;padding:14px" aria-label="바코드 입력">' +
-    '<div id="st-msg" role="status" style="margin-top:10px;font-size:15px;min-height:22px">' + (v.stLast ? '<b>✔ 방금 읽은 바코드: ' + esc(v.stLast) + "</b><br>" : "") + esc(v.stMsg) + "</div></div>";
+    '<div id="st-msg" role="status" style="margin-top:10px;font-size:15px;min-height:22px">' + (v.stLast ? '<b>✔ 방금 읽은 바코드: ' + esc(v.stLast) + "</b><br>" : "") + esc(v.stMsg) + '</div><div id="st-saved" class="muted" style="margin-top:6px;font-size:12.5px">' + (lastSavedAt ? "✔ 저장됨 " + lastSavedAt + " · 상품 " + items().length + "개" : "상품 " + items().length + "개 · 저장할 때마다 서버 최신 값과 합쳐서 저장해요") + "</div></div>";
   if (cnt) {
     var scanned = 0; Object.values(cnt.scans).forEach(function (n) { scanned += n; });
     h += '<div class="panel" style="padding:14px;margin-bottom:12px;border-left:4px solid #851b00"><b>실사 진행 중</b> · ' + esc(cnt.at.slice(0, 16).replace("T", " ")) + " 시작 · 찍은 수량 " + scanned + "개 " +
@@ -157,7 +197,7 @@ function bind(root) {
   var inp = root.querySelector("#st-scan");
   if (inp) { if (!ERP.drawer()) inp.focus(); inp.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); var x = inp.value; inp.value = ""; onScan(x); } }); }
   root.querySelectorAll("[data-stage]").forEach(function (b) { b.onclick = function () { v.stAge = b.dataset.stage; ERP.render(); }; });
-  root.querySelectorAll("[data-stmode]").forEach(function (b) { b.onclick = function () { v.stMode = b.dataset.stmode; if (v.stMode === "실사" && !D().count && ERP.canWrite("stock")) { D().count = { at: new Date().toISOString(), scans: {} }; save(); } ERP.render(); }; });
+  root.querySelectorAll("[data-stmode]").forEach(function (b) { b.onclick = function () { v.stMode = b.dataset.stmode; if (v.stMode === "실사" && !D().count && (D().countAt = Date.now()) && ERP.canWrite("stock")) { D().count = { at: new Date().toISOString(), scans: {} }; save(); } ERP.render(); }; });
   root.querySelectorAll("[data-stedit]").forEach(function (tr) { var go = function (e) { if (e && e.target.closest("input")) return; open(D().items[tr.dataset.stedit]); }; tr.addEventListener("click", go); tr.addEventListener("keydown", function (e) { if (e.key === "Enter") go(); }); });
   var all = root.querySelector("[data-stpickall]"); if (all) all.onchange = function () { root.querySelectorAll("[data-stpick]").forEach(function (c) { c.checked = all.checked; }); };
 }
@@ -275,14 +315,14 @@ ERP.forms.stock = {
     var custom = !BRANDS.some(function (x) { return x[0] === o.brand; });
     var it = { code: o.code, own: !!rec.own, brand: o.brand, brandLabel: custom ? brandName(o.brand) : undefined, name: String(o.name || "").trim(), model: String(o.model || "").trim(), serial: String(o.serial || "").trim(), opt: String(o.opt || "").trim(), loc: loc, lots: lots, qty: lots.filter(function (x) { return !x.out; }).length, photo: rec._photo || rec.photo || "", memo: o.memo, at: new Date().toISOString() };
     d.items[it.code] = it;
-    if (st.isNew && v.stMode === "실사") { if (!d.count) d.count = { at: new Date().toISOString(), scans: {} }; } if (st.isNew && d.count && v.stMode === "실사") d.count.scans[it.code] = (d.count.scans[it.code] || 0) + 1;
+    if (st.isNew && v.stMode === "실사") { d.countAt = Date.now(); if (!d.count) d.count = { at: new Date().toISOString(), scans: {} }; } if (st.isNew && d.count && v.stMode === "실사") d.count.scans[it.code] = (d.count.scans[it.code] || 0) + 1;
     var err = await save(true);
     if (err) throw new Error("저장이 안 됐어요 — 이 화면을 캡처해서 알려 주세요: " + err);
     v.stMsg = (st.isNew ? "등록했어요: " : "수정했어요: ") + it.code + " " + label(it);
     if (st.isNew && it.own) setTimeout(function () { printLabels([it]); }, 300);
     return true;
   },
-  remove: async function (rec) { delete D().items[rec.code]; await save(true); return true; }
+  remove: async function (rec) { var d = D(); delete d.items[rec.code]; d.deleted = d.deleted || {}; d.deleted[rec.code] = new Date().toISOString(); var err = await save(true); if (err) throw new Error(err); return true; }
 };
 
 /* ---------- 품번으로 ERP 기록(매입·소싱·매출·재고)에서 브랜드·상품명 찾기 ---------- */
@@ -368,8 +408,20 @@ ERP.acts.stfinish = function () {
     (diffs.length ? '<div class="table-wrap"><table><thead><tr><th>바코드</th><th>상품</th><th class="r">장부</th><th class="r">실사</th><th class="r">차이</th></tr></thead><tbody>' + rows + "</tbody></table></div>" : "");
   ERP.openDrawer("실사 마감", html, "stockfin", c, true, { saveLabel: "실사 수량으로 재고 반영" });
 };
-ERP.forms.stockfin = { open: function () {}, commit: async function () { var d = D(), c = d.count; items().forEach(function (it) { setCount(it, c.scans[it.code] || 0); }); d.lastCount = c.at; d.count = null; v.stMode = "조회"; await save(true); v.stMsg = "실사 결과를 재고에 반영했어요."; return true; } };
-ERP.acts.stcancel = function () { D().count = null; v.stMode = "조회"; save(); v.stMsg = "실사를 취소했어요 (재고는 그대로)."; ERP.render(); };
+ERP.forms.stockfin = { open: function () {}, commit: async function () { var d = D(), c = d.count; var nowIso = new Date().toISOString(); items().forEach(function (it) { var q0 = active(it).length; setCount(it, c.scans[it.code] || 0); if (active(it).length !== q0) it.at = nowIso; }); d.countAt = Date.now(); d.lastCount = c.at; d.count = null; v.stMode = "조회"; await save(true); v.stMsg = "실사 결과를 재고에 반영했어요."; return true; } };
+ERP.acts.strestore = function () {
+  var L = []; try { L = JSON.parse(localStorage.getItem("rowna-stock-backup") || "[]"); } catch (e) {}
+  if (!L.length) { ERP.toast("이 브라우저에 저장된 백업이 아직 없어요."); return; }
+  var cur = D(), list = L.map(function (b, i) { var miss = Object.keys(b.value.items || {}).filter(function (k) { return !cur.items[k] && !(cur.deleted || {})[k]; }).length; return (i + 1) + ") " + b.at.slice(0, 16).replace("T", " ") + " · 상품 " + b.n + "개" + (miss ? " · 지금 없는 상품 " + miss + "개" : ""); }).join("\n");
+  var pick = window.prompt("되살릴 백업 번호를 넣어 주세요. 지금 목록에 없는 상품만 추가돼요 (있는 상품은 그대로).\n\n" + list, "1"); if (pick == null) return;
+  var b = L[(parseInt(pick, 10) || 0) - 1]; if (!b) { ERP.toast("번호를 다시 확인해 주세요."); return; }
+  var now = new Date().toISOString(), n = 0;
+  Object.keys(b.value.items || {}).forEach(function (k) { if (!cur.items[k]) { cur.items[k] = Object.assign({}, b.value.items[k], { at: now }); if (cur.deleted) delete cur.deleted[k]; n++; } });
+  (b.value.brands || []).forEach(function (x) { cur.brands = cur.brands || []; if (!cur.brands.some(function (y) { return y[0] === x[0]; })) cur.brands.push(x); });
+  if (!n) { ERP.toast("되살릴 상품이 없어요 — 지금 목록에 다 있어요."); return; }
+  save(true).then(function (err) { if (!err) { v.stMsg = "백업에서 상품 " + n + "개를 되살렸어요."; ERP.render(); } });
+};
+ERP.acts.stcancel = function () { D().count = null; D().countAt = Date.now(); v.stMode = "조회"; save(); v.stMsg = "실사를 취소했어요 (재고는 그대로)."; ERP.render(); };
 ERP.acts.stxls = function () {
   var A = [["바코드", "자체발급", "브랜드", "상품명", "품번", "시리얼", "사이즈·컬러", "위치", "재고", "평균매입가", "최저매입가", "최고매입가", "메모", "수정일"]];
   items().forEach(function (it) { A.push([it.code, it.own ? "Y" : "", brandName(it.brand), it.name, it.model, it.serial, it.opt, it.loc, Number(it.qty) || 0, (buySummary(it).avg != null ? buySummary(it).avg : ""), (buySummary(it).min != null ? buySummary(it).min : ""), (buySummary(it).max != null ? buySummary(it).max : ""), it.memo, (it.at || "").slice(0, 10)]); });
