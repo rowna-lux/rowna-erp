@@ -3,7 +3,7 @@
 "use strict";
 var ERP = window.ERP, U = ERP.U, S = ERP.S, esc = U.esc, norm = U.norm;
 var KEY = "stock_inventory";
-var BRANDS = [["CH", "샤넬"], ["HM", "에르메스"], ["LV", "루이비통"], ["DI", "디올"], ["GC", "구찌"], ["PR", "프라다"], ["BV", "보테가베네타"], ["CL", "셀린느"], ["YS", "생로랑"], ["TB", "톰브라운"], ["MM", "미우미우"], ["FE", "펜디"], ["BA", "발렌시아가"], ["LO", "로에베"], ["BB", "버버리"], ["MC", "몽클레르"], ["ET", "기타"]];
+var BRANDS = [["CH", "샤넬"], ["HM", "에르메스"], ["AI", "알파인더스트리"], ["MC", "몽클레어"], ["CL", "셀린느"], ["CO", "끌로에"], ["MM", "미우미우"], ["HK", "호카"], ["AM", "아미"], ["MK", "메종키츠네"], ["PB", "파라부트"], ["TB", "톰브라운"], ["VW", "비비안웨스트우드"], ["LV", "루이비통"], ["DI", "디올"], ["GC", "구찌"], ["PR", "프라다"], ["BV", "보테가베네타"], ["YS", "생로랑"], ["FE", "펜디"], ["BA", "발렌시아가"], ["LO", "로에베"], ["BB", "버버리"], ["ET", "기타"]];
 var v = ERP.view; v.stMode = v.stMode || "실사"; v.stQ = v.stQ || ""; v.stLoc = v.stLoc || ""; v.stMsg = v.stMsg || "";
 function D() { var d = S.SET[KEY]; if (!d || !d.items) { d = { items: {}, seq: {}, count: null, locs: "A-01~A-05" }; S.SET[KEY] = d; } return d; }
 var saveT = null;
@@ -152,8 +152,9 @@ ERP.forms.stock = {
 /* ---------- 품번으로 ERP 기록(매입·소싱·매출·재고)에서 브랜드·상품명 찾기 ---------- */
 function brandCode(t) {
   t = String(t || "").toLowerCase(); if (!t) return "";
-  var EN = { CH: "chanel", HM: "hermes", LV: "louis", DI: "dior", GC: "gucci", PR: "prada", BV: "bottega", CL: "celine", YS: "saint laurent", TB: "thom", MM: "miu", FE: "fendi", BA: "balenciaga", LO: "loewe", BB: "burberry", MC: "moncler" };
-  for (var i = 0; i < BRANDS.length; i++) { var c = BRANDS[i][0]; if (c === "ET") continue; if (t.indexOf(BRANDS[i][1]) !== -1 || (EN[c] && t.indexOf(EN[c]) !== -1)) return c; }
+  var KO2 = { MC: "몽클레르", AI: "알파", VW: "비비안", MK: "키츠네" };
+  var EN = { CH: "chanel", HM: "hermes", LV: "louis", DI: "dior", GC: "gucci", PR: "prada", BV: "bottega", CL: "celine", YS: "saint laurent", TB: "thom", MM: "miu", FE: "fendi", BA: "balenciaga", LO: "loewe", BB: "burberry", MC: "moncler", AI: "alpha", CO: "chlo", HK: "hoka", AM: "ami ", MK: "kitsune", PB: "paraboot", VW: "vivienne" };
+  for (var i = 0; i < BRANDS.length; i++) { var c = BRANDS[i][0]; if (c === "ET") continue; if (t.indexOf(BRANDS[i][1]) !== -1 || (EN[c] && t.indexOf(EN[c]) !== -1) || (KO2[c] && t.indexOf(KO2[c]) !== -1)) return c; }
   return "ET";
 }
 function lookup(model) {
