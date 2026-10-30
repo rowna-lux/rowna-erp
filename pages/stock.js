@@ -206,7 +206,23 @@ ERP.forms.stock = {
     if (bp) bp.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); var sv = document.getElementById("d-save"); if (sv) sv.click(); } });
     if (mi) { if (!rec.model && !rec.own && !rec._focusPrice) setTimeout(function () { mi.focus(); }, 50);
       mi.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); run(); if (oi) oi.focus(); } });
-      mi.addEventListener("change", run); }
+      mi.addEventListener("change", run);
+      /* 크림 즐겨찾기 버튼(크림→ERP)으로 복사한 내용을 품번 칸에 붙여넣으면 칸별로 나눠 채움 */
+      mi.addEventListener("paste", function (e) {
+        var t = (e.clipboardData || window.clipboardData).getData("text") || "";
+        if (t.indexOf("KREAM\t") !== 0) return;
+        e.preventDefault();
+        var f = t.split("\t"), sku = (f[1] || "").trim(), kr = (f[2] || "").trim(), en = (f[3] || "").trim(), col = (f[4] || "").trim();
+        mi.value = sku;
+        var code = brandCode(en + " " + kr), bs = body.querySelector('[name="brand"]'), nm = body.querySelector('[name="name"]');
+        if (bs && code) bs.value = code;
+        var bn = code && code !== "ET" ? brandName(code).replace(/\s+/g, "") : "", words = kr.split(/\s+/), cut = 0, acc = "";
+        if (bn) for (var i = 0; i < words.length; i++) { acc += words[i]; if (acc === bn) { cut = i + 1; break; } if (bn.indexOf(acc) !== 0) break; }
+        if (nm) nm.value = words.slice(cut).join(" ") || kr;
+        if (oi && !oi.value && col) oi.value = col;
+        fo.textContent = "✔ 크림에서 가져왔어요: " + (code && code !== "ET" ? brandName(code) : en) + " · " + kr + " · " + sku + (col ? " · " + col : "") + (code === "ET" ? " — 브랜드가 목록에 없어요. + 브랜드 추가로 넣어 주세요" : "");
+        if (oi) oi.focus();
+      }); }
     if (oi) oi.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); var sv = document.getElementById("d-save"); if (sv) sv.click(); } });
     var ab = body.querySelector("#st-addbrand");
     if (ab) ab.onclick = function () {
