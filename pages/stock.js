@@ -40,7 +40,7 @@ function fixKo(s) {
   return out.toUpperCase();
 }
 function onScan(raw) {
-  var code = fixKo(String(raw || "").trim()); if (!code) return;
+  var code = fixKo(String(raw || "").trim()); if (!code) return; v.stLast = code;
   var d = D();
   if (isLoc(code)) { v.stLoc = code.toUpperCase().replace(/^LOC-/, ""); v.stMsg = "📍 위치 " + v.stLoc + " — 이제 찍는 상품은 이 위치로 기록돼요"; ERP.render(); return; }
   var it = d.items[code];
@@ -67,7 +67,7 @@ function render() {
   h += '<div class="panel" style="padding:16px;margin-bottom:12px"><div class="tools filters" style="margin-bottom:10px">' + ERP.chips("data-stmode", v.stMode, [["실사", "실사(개수 세기)"], ["입고", "입고 +1"], ["출고", "출고 −1"], ["조회", "조회만"]]) +
     '<span class="pill ' + (v.stLoc ? "p-acc" : "p-mute") + '">위치: ' + esc(v.stLoc || "없음") + "</span>" + (v.stLoc ? '<button class="btn sm" data-act="stlocclear">위치 해제</button>' : "") + "</div>" +
     '<input class="ctl" id="st-scan" autocomplete="off" placeholder="여기를 누르고 바코드를 찍으세요 (직접 입력 후 Enter도 가능)" style="width:100%;font-size:20px;padding:14px" aria-label="바코드 입력">' +
-    '<div id="st-msg" role="status" style="margin-top:10px;font-size:15px;min-height:22px">' + esc(v.stMsg) + "</div></div>";
+    '<div id="st-msg" role="status" style="margin-top:10px;font-size:15px;min-height:22px">' + (v.stLast ? '<b>✔ 방금 읽은 바코드: ' + esc(v.stLast) + "</b><br>" : "") + esc(v.stMsg) + "</div></div>";
   if (cnt) {
     var scanned = 0; Object.values(cnt.scans).forEach(function (n) { scanned += n; });
     h += '<div class="panel" style="padding:14px;margin-bottom:12px;border-left:4px solid #851b00"><b>실사 진행 중</b> · ' + esc(cnt.at.slice(0, 16).replace("T", " ")) + " 시작 · 찍은 수량 " + scanned + "개 " +
