@@ -78,8 +78,11 @@ function onScan(raw) {
   if (!it) { v.stMsg = "새 바코드 " + code + " — 상품 정보를 등록해 주세요"; open(null, code); return; }
   if (v.stLoc) it.loc = v.stLoc;
   var m = v.stMode;
-  if (m === "실사") { if (!d.count) d.count = { at: new Date().toISOString(), scans: {} }; d.count.scans[code] = (d.count.scans[code] || 0) + 1; v.stMsg = "✔ " + label(it) + " — 실사 " + d.count.scans[code] + "개째"; }
-  else if (m === "입고") { var t = lastLot(it); addLots(it, 1, { vendor: t.vendor, date: t.date, price: t.price, loc: v.stLoc || it.loc }); v.stMsg = "＋ 입고 " + label(it) + " → 재고 " + it.qty + " (매입정보는 직전 입고와 같게 들어갔어요 — 다르면 줄을 눌러 고쳐 주세요)"; }
+  if (m === "실사") { if (!d.count) d.count = { at: new Date().toISOString(), scans: {} }; d.count.scans[code] = (d.count.scans[code] || 0) + 1; v.stMsg = "✔ " + label(it) + " — 실사 " + d.count.scans[code] + "개째";
+    /* 찍은 개수가 장부 재고보다 많아지면 = 새로 들어온 1개 → 매입가를 넣을 수 있게 창을 띄움 */
+    if (d.count.scans[code] > lotsOf(it).length) { v.stMsg = "＋ " + label(it) + " — 재고보다 1개 더 찍혔어요. 이 1개의 매입가를 확인하고 저장하세요"; it.at = new Date().toISOString(); save(); open(it, null, { add: 1 }); return; } }
+  else if (m === "입고") { v.stMsg = "＋ 입고 " + label(it) + " — 이 1개의 매입가를 확인하고 저장하세요"; open(it, null, { add: 1 }); return; }
+  else if (m === "입고_old") { var t = lastLot(it); addLots(it, 1, { vendor: t.vendor, date: t.date, price: t.price, loc: v.stLoc || it.loc }); v.stMsg = "＋ 입고 " + label(it) + " → 재고 " + it.qty + " (매입정보는 직전 입고와 같게 들어갔어요 — 다르면 줄을 눌러 고쳐 주세요)"; }
   else if (m === "출고") { takeLots(it, 1); v.stMsg = "－ 출고 " + label(it) + " → 재고 " + it.qty + " (먼저 들어온 것부터 빠져요)"; }
   else { v.stMsg = "🔎 " + label(it) + " · 재고 " + (it.qty || 0) + " · 위치 " + (it.loc || "-"); }
   it.at = new Date().toISOString(); save(); ERP.render();
@@ -125,7 +128,8 @@ function bind(root) {
 function picked() { var L = Array.from(document.querySelectorAll("[data-stpick]:checked")).map(function (c) { return D().items[c.dataset.stpick]; }).filter(Boolean); return L; }
 
 /* ---------- 등록·수정 ---------- */
-function open(it, code) {
+function open(it, code, opt) {
+  opt = opt || {};
   var isNew = !it || !it.code, fd = ERP.fd;
   it = it ? Object.assign({}, it) : { code: code || "", own: !code, brand: code ? "ET" : "CH", name: "", model: "", serial: "", opt: "", loc: v.stLoc || "", qty: 0, photo: "", memo: "" };
   var f = '<div class="fg">' +
@@ -136,13 +140,14 @@ function open(it, code) {
     fd("시리얼·보증카드 번호", "serial", "text", it.serial) + fd("위치", "loc", "text", it.loc) +
     (isNew ? "" : lotTable(it)) +
     '<div class="fd full" style="font-weight:700;margin-top:6px">' + (isNew ? "매입 정보 (같은 조건으로 산 개수만큼 등록돼요)" : "입고 추가 (새로 들어온 것만 — 0이면 추가 안 함)") + "</div>" +
-    fd(isNew ? "수량" : "추가 수량", "addQty", "number", isNew ? (v.stMode === "출고" ? 0 : 1) : 0) +
+    fd(isNew ? "수량" : "추가 수량", "addQty", "number", isNew ? (v.stMode === "출고" ? 0 : 1) : (opt.add || 0)) +
     fd("매입처", "vendor", "text", isNew ? "" : (lastLot(it).vendor || ""), "", ' list="st-vendors" autocomplete="off"') + '<datalist id="st-vendors">' + vendors().map(function (x) { return '<option value="' + esc(x) + '">'; }).join("") + "</datalist>" +
-    fd("매입날짜", "buyDate", "date", U.today()) + fd("매입금액 (1개, 원)", "buyPrice", "number", "") +
+    fd("매입날짜", "buyDate", "date", U.today()) + fd("매입금액 (1개, 원)", "buyPrice", "number", !isNew && opt.add ? (lastLot(it).price === "" || lastLot(it).price == null ? "" : lastLot(it).price) : "") +
     fd("메모", "memo", "text", it.memo, "full") +
     '<div class="fd full"><label for="st-photo">사진 (라벨이 떨어져도 찾을 수 있게)</label><input id="st-photo" type="file" accept="image/*" capture="environment"><div id="st-pv" style="margin-top:8px">' + (it.photo ? '<img src="' + it.photo + '" alt="상품 사진" style="width:120px;border-radius:8px">' : "") + "</div></div>" +
     (isNew ? "" : '<div class="fd full"><label>바코드 미리보기</label><div style="background:#fff;padding:8px;width:240px">' + barcodeSvg(it.code, 40) + "</div></div>") + "</div>";
-  ERP.openDrawer(isNew ? (it.own ? "자체 바코드 발급" : "새 바코드 상품 등록") : "재고 상품 수정", f, "stock", it, isNew, { saveLabel: isNew && it.own ? "발급하고 저장" : "저장" });
+  if (opt.add) it._focusPrice = true;
+  ERP.openDrawer(isNew ? (it.own ? "자체 바코드 발급" : "새 바코드 상품 등록") : (opt.add ? "같은 상품 1개 더 — 매입가 확인 후 저장" : "재고 상품 수정"), f, "stock", it, isNew, { saveLabel: isNew && it.own ? "발급하고 저장" : "저장" });
 }
 function lotTable(it) {
   var L = fifo(lotsOf(it));
@@ -171,7 +176,9 @@ ERP.forms.stock = {
       if (nm && !nm.value) nm.value = r.name;
       fo.textContent = "✔ 찾았어요 (" + r.src + "): " + (r.brandText || "") + " " + r.name;
     };
-    if (mi) { if (!rec.model && !rec.own) setTimeout(function () { mi.focus(); }, 50);
+    if (rec._focusPrice) { var bp = body.querySelector('[name="buyPrice"]'); if (bp) setTimeout(function () { bp.focus(); bp.select(); }, 60); }
+    if (bp) bp.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); var sv = document.getElementById("d-save"); if (sv) sv.click(); } });
+    if (mi) { if (!rec.model && !rec.own && !rec._focusPrice) setTimeout(function () { mi.focus(); }, 50);
       mi.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); run(); if (oi) oi.focus(); } });
       mi.addEventListener("change", run); }
     if (oi) oi.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); var sv = document.getElementById("d-save"); if (sv) sv.click(); } });
@@ -221,10 +228,10 @@ ERP.forms.stock = {
 
 /* ---------- 품번으로 ERP 기록(매입·소싱·매출·재고)에서 브랜드·상품명 찾기 ---------- */
 function brandCode(t) {
-  t = String(t || "").toLowerCase(); if (!t) return "";
+  t = String(t || "").toLowerCase().replace(/\s+/g, ""); if (!t) return "";
   var KO2 = { MC: "몽클레르", AI: "알파", VW: "비비안", MK: "키츠네" };
-  var EN = { MA: "margiela", CH: "chanel", HM: "hermes", LV: "louis", DI: "dior", GC: "gucci", PR: "prada", BV: "bottega", CL: "celine", YS: "saint laurent", TB: "thom", MM: "miu", FE: "fendi", BA: "balenciaga", LO: "loewe", BB: "burberry", MC: "moncler", AI: "alpha", CO: "chlo", HK: "hoka", AM: "ami ", MK: "kitsune", PB: "paraboot", VW: "vivienne" };
-  var BL = allBrands(); for (var i = 0; i < BL.length; i++) { var c = BL[i][0]; if (c === "ET") continue; if (t.indexOf(BL[i][1].toLowerCase()) !== -1 || (EN[c] && t.indexOf(EN[c]) !== -1) || (KO2[c] && t.indexOf(KO2[c]) !== -1)) return c; }
+  var EN = { MA: "margiela", CH: "chanel", HM: "hermes", LV: "louis", DI: "dior", GC: "gucci", PR: "prada", BV: "bottega", CL: "celine", YS: "saintlaurent", TB: "thom", MM: "miu", FE: "fendi", BA: "balenciaga", LO: "loewe", BB: "burberry", MC: "moncler", AI: "alpha", CO: "chlo", HK: "hoka", AM: "amiparis", MK: "kitsune", PB: "paraboot", VW: "vivienne" };
+  var BL = allBrands(); for (var i = 0; i < BL.length; i++) { var c = BL[i][0]; if (c === "ET") continue; if (t.indexOf(BL[i][1].toLowerCase().replace(/\s+/g, "")) !== -1 || (EN[c] && t.indexOf(EN[c]) !== -1) || (KO2[c] && t.indexOf(KO2[c]) !== -1)) return c; }
   return "ET";
 }
 function lookup(model) {
