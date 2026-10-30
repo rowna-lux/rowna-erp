@@ -19,6 +19,7 @@ function save(now) {
 }
 function items() { return Object.values(D().items); }
 function brandName(c) { var b = allBrands().find(function (x) { return x[0] === c; }); return b ? b[1] : (c || ""); }
+function vendors() { var o = { "오케이몰(렉스몬드)": 1 }; items().forEach(function (it) { if (it.vendor) o[it.vendor] = 1; }); return Object.keys(o).sort(function (a, b) { return a.localeCompare(b, "ko"); }); }
 function isLoc(code) { return /^LOC-/i.test(code); }
 
 /* ---------- 바코드 SVG (Code128) ---------- */
@@ -82,10 +83,10 @@ function render() {
   h += '<div class="tools filters"><input class="ctl" data-search="stQ" value="' + esc(v.stQ) + '" placeholder="검색: 코드·브랜드·상품명·품번·시리얼·위치" style="min-width:320px"></div>';
   var body = L.map(function (it) {
     var c = cnt ? (cnt.scans[it.code] || 0) : null, diff = cnt ? c - (Number(it.qty) || 0) : 0;
-    return '<tr class="click" data-stedit="' + esc(it.code) + '" tabindex="0"><td><input type="checkbox" data-stpick="' + esc(it.code) + '" aria-label="라벨 선택"></td><td>' + (it.photo ? '<img src="' + it.photo + '" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:6px">' : "") + '</td><td class="num">' + esc(it.code) + (it.own ? ' <span class="pill p-acc">자체</span>' : "") + "</td><td>" + esc(brandName(it.brand)) + '</td><td class="name">' + esc(it.name || "") + (it.opt ? "<small>" + esc(it.opt) + "</small>" : "") + '</td><td class="num">' + esc(it.model || "") + (it.serial ? "<small>S/N " + esc(it.serial) + "</small>" : "") + "</td><td>" + esc(it.loc || "") + '</td><td class="r num">' + (Number(it.qty) || 0) + "</td>" +
+    return '<tr class="click" data-stedit="' + esc(it.code) + '" tabindex="0"><td><input type="checkbox" data-stpick="' + esc(it.code) + '" aria-label="라벨 선택"></td><td>' + (it.photo ? '<img src="' + it.photo + '" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:6px">' : "") + '</td><td class="num">' + esc(it.code) + (it.own ? ' <span class="pill p-acc">자체</span>' : "") + "</td><td>" + esc(brandName(it.brand)) + '</td><td class="name">' + esc(it.name || "") + (it.opt ? "<small>" + esc(it.opt) + "</small>" : "") + '</td><td class="num">' + esc(it.model || "") + (it.serial ? "<small>S/N " + esc(it.serial) + "</small>" : "") + "</td><td>" + esc(it.loc || "") + '</td><td class="r num">' + (it.buyPrice !== "" && it.buyPrice != null ? Number(it.buyPrice).toLocaleString("ko-KR") : "") + ((it.vendor || it.buyDate) ? "<small>" + esc([it.vendor, it.buyDate].filter(Boolean).join(" · ")) + "</small>" : "") + '</td><td class="r num">' + (Number(it.qty) || 0) + "</td>" +
       (cnt ? '<td class="r num">' + c + '</td><td class="r num ' + (diff ? "neg" : "") + '">' + (diff > 0 ? "+" : "") + diff + "</td>" : "") + "</tr>";
   }).join("");
-  h += L.length ? '<div class="table-wrap"><table><thead><tr><th><input type="checkbox" data-stpickall aria-label="전체 선택"></th><th>사진</th><th>바코드</th><th>브랜드</th><th>상품명</th><th>품번</th><th>위치</th><th class="r">재고</th>' + (cnt ? '<th class="r">실사</th><th class="r">차이</th>' : "") + "</tr></thead><tbody>" + body + "</tbody></table></div>"
+  h += L.length ? '<div class="table-wrap"><table><thead><tr><th><input type="checkbox" data-stpickall aria-label="전체 선택"></th><th>사진</th><th>바코드</th><th>브랜드</th><th>상품명</th><th>품번</th><th>위치</th><th class="r">매입</th><th class="r">재고</th>' + (cnt ? '<th class="r">실사</th><th class="r">차이</th>' : "") + "</tr></thead><tbody>" + body + "</tbody></table></div>"
     : '<div class="panel empty"><b>아직 등록된 재고가 없어요</b>위 칸을 누르고 브랜드 택 바코드를 찍거나, 자체 바코드를 발급하세요.</div>';
   return h;
 }
@@ -101,13 +102,15 @@ function picked() { var L = Array.from(document.querySelectorAll("[data-stpick]:
 /* ---------- 등록·수정 ---------- */
 function open(it, code) {
   var isNew = !it || !it.code, fd = ERP.fd;
-  it = it ? Object.assign({}, it) : { code: code || "", own: !code, brand: code ? "ET" : "CH", name: "", model: "", serial: "", opt: "", loc: v.stLoc || "", qty: v.stMode === "출고" ? 0 : 1, photo: "", memo: "" };
+  it = it ? Object.assign({}, it) : { code: code || "", own: !code, brand: code ? "ET" : "CH", name: "", model: "", serial: "", opt: "", loc: v.stLoc || "", qty: v.stMode === "출고" ? 0 : 1, photo: "", memo: "", vendor: "", buyDate: U.today(), buyPrice: "" };
   var f = '<div class="fg">' +
     (it.own && isNew ? '<div class="fd full"><label>바코드</label><div style="padding:8px 0">저장하면 <b>RW-' + esc(it.brand) + '-번호</b>로 자동 발급돼요</div></div>' : fd("바코드", "code", "text", it.code, "full", isNew ? "" : " readonly")) +
     fd("품번 (넣고 Enter → 브랜드·상품명 자동)", "model", "text", it.model) + fd("사이즈·컬러 (Enter → 저장)", "opt", "text", it.opt) +
     '<div class="fd full" id="st-found" role="status" style="font-size:13px;color:#666;min-height:18px"></div>' +
     ERP.sel("브랜드", "brand", allBrands(), it.brand) + (ERP.canWrite("stock") ? '<div class="fd" style="justify-content:flex-end"><button type="button" class="btn sm" id="st-addbrand">+ 브랜드 추가</button></div>' : "") + fd("상품명 (짧게, 라벨에 찍혀요)", "name", "text", it.name) +
-    fd("시리얼·보증카드 번호", "serial", "text", it.serial) + fd("위치", "loc", "text", it.loc) + fd("재고 수량", "qty", "number", it.qty) + fd("메모", "memo", "text", it.memo, "full") +
+    fd("시리얼·보증카드 번호", "serial", "text", it.serial) + fd("위치", "loc", "text", it.loc) + fd("재고 수량", "qty", "number", it.qty) + fd("매입처", "vendor", "text", it.vendor || "", "", ' list="st-vendors" autocomplete="off"') + '<datalist id="st-vendors">' + vendors().map(function (x) { return '<option value="' + esc(x) + '">'; }).join("") + "</datalist>" +
+    fd("매입날짜", "buyDate", "date", it.buyDate || "") + fd("매입금액 (1개, 원)", "buyPrice", "number", it.buyPrice === 0 ? 0 : (it.buyPrice || "")) +
+    fd("메모", "memo", "text", it.memo, "full") +
     '<div class="fd full"><label for="st-photo">사진 (라벨이 떨어져도 찾을 수 있게)</label><input id="st-photo" type="file" accept="image/*" capture="environment"><div id="st-pv" style="margin-top:8px">' + (it.photo ? '<img src="' + it.photo + '" alt="상품 사진" style="width:120px;border-radius:8px">' : "") + "</div></div>" +
     (isNew ? "" : '<div class="fd full"><label>바코드 미리보기</label><div style="background:#fff;padding:8px;width:240px">' + barcodeSvg(it.code, 40) + "</div></div>") + "</div>";
   ERP.openDrawer(isNew ? (it.own ? "자체 바코드 발급" : "새 바코드 상품 등록") : "재고 상품 수정", f, "stock", it, isNew, { saveLabel: isNew && it.own ? "발급하고 저장" : "저장" });
@@ -156,7 +159,7 @@ ERP.forms.stock = {
     if (rec.own && st.isNew) { var b = o.brand || "ET"; d.seq[b] = (d.seq[b] || 0) + 1; o.code = "RW-" + b + "-" + String(d.seq[b]).padStart(4, "0"); while (d.items[o.code]) { d.seq[b]++; o.code = "RW-" + b + "-" + String(d.seq[b]).padStart(4, "0"); } }
     o.code = String(o.code || "").trim(); if (!o.code) throw new Error("바코드를 입력해 주세요.");
     if (st.isNew && d.items[o.code]) throw new Error("이미 등록된 바코드예요: " + o.code);
-    var it = { code: o.code, own: !!rec.own, brand: o.brand, name: o.name, model: o.model, serial: o.serial, opt: o.opt, loc: String(o.loc || "").toUpperCase(), qty: Math.max(0, Number(o.qty) || 0), photo: rec._photo || rec.photo || "", memo: o.memo, at: new Date().toISOString() };
+    var it = { code: o.code, own: !!rec.own, brand: o.brand, name: o.name, model: o.model, serial: o.serial, opt: o.opt, loc: String(o.loc || "").toUpperCase(), qty: Math.max(0, Number(o.qty) || 0), photo: rec._photo || rec.photo || "", memo: o.memo, vendor: String(o.vendor || "").trim(), buyDate: o.buyDate || "", buyPrice: o.buyPrice === "" || o.buyPrice == null ? "" : Math.max(0, Number(o.buyPrice) || 0), at: new Date().toISOString() };
     d.items[it.code] = it;
     if (st.isNew && v.stMode === "실사") { if (!d.count) d.count = { at: new Date().toISOString(), scans: {} }; } if (st.isNew && d.count && v.stMode === "실사") d.count.scans[it.code] = (d.count.scans[it.code] || 0) + 1;
     await save(true);
@@ -235,8 +238,8 @@ ERP.acts.stfinish = function () {
 ERP.forms.stockfin = { open: function () {}, commit: async function () { var d = D(), c = d.count; items().forEach(function (it) { it.qty = c.scans[it.code] || 0; }); d.lastCount = c.at; d.count = null; v.stMode = "조회"; await save(true); v.stMsg = "실사 결과를 재고에 반영했어요."; return true; } };
 ERP.acts.stcancel = function () { D().count = null; v.stMode = "조회"; save(); v.stMsg = "실사를 취소했어요 (재고는 그대로)."; ERP.render(); };
 ERP.acts.stxls = function () {
-  var A = [["바코드", "자체발급", "브랜드", "상품명", "품번", "시리얼", "사이즈·컬러", "위치", "재고", "메모", "수정일"]];
-  items().forEach(function (it) { A.push([it.code, it.own ? "Y" : "", brandName(it.brand), it.name, it.model, it.serial, it.opt, it.loc, Number(it.qty) || 0, it.memo, (it.at || "").slice(0, 10)]); });
+  var A = [["바코드", "자체발급", "브랜드", "상품명", "품번", "시리얼", "사이즈·컬러", "위치", "재고", "매입처", "매입날짜", "매입금액", "메모", "수정일"]];
+  items().forEach(function (it) { A.push([it.code, it.own ? "Y" : "", brandName(it.brand), it.name, it.model, it.serial, it.opt, it.loc, Number(it.qty) || 0, it.vendor || "", it.buyDate || "", it.buyPrice === "" || it.buyPrice == null ? "" : Number(it.buyPrice), it.memo, (it.at || "").slice(0, 10)]); });
   var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(A), "실물재고"); XLSX.writeFile(wb, "로우나_실물재고_" + U.today() + ".xlsx");
 };
 ERP.acts.stsabang = function () {
