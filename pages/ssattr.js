@@ -132,13 +132,15 @@ async function convertOnly(origin) {
     return !res[2] || !res[2].ok ? "변환 버튼 없음(이미 변환)" : res[6] && res[6].ok && res[13] && res[13].ok ? "변환 완료" : "변환 실패(" + [3, 4, 5, 6].map(function (i) { return res[i] && !res[i].ok && !res[i].skipped ? i + ":" + (res[i].error || "실패") : ""; }).filter(Boolean).join(",") + ")";
   } catch (e) { return "변환 실패(" + e.message + ")"; }
 }
-async function writePage(origin, attrs, pick, tags) {
+async function writePage(origin, attrs, pick, tags, skipConv) {   /* skipConv: 변환을 따로 이미 했으면 변환 단계(조작 7번·약 20초)를 빼서 빠르게 */
   var opt = [];   /* '추천' 표시 유무에 따라 하나만 맞으면 되는 체크들 */
   var ops = [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "wait", ms: 800 },
     /* 2~7: 상세설명 스마트에디터 ONE 변환 → 뜬 창에서 [등록] (이미 변환된 상품은 버튼이 없어 자동으로 건너뜀) */
     { op: "click", text: "으로 변환하기 (1회성)" }, { op: "switchNew", ms: 12000, urlHas: "editor", need: 2 },
     { op: "waitText", text: "등록", ms: 25000, frames: true, need: 3, gap: 6000 }, { op: "click", sel: "button.progress-button", frames: true, need: 4, gap: 2500 },
     { op: "closed", ms: 20000, need: 5 }, { op: "switchBack" }, { op: "wait", ms: 3000 }];
+  if (skipConv) ops.splice(2, 7);
+  var C0 = skipConv ? -1 : 2;
   Object.keys(pick).forEach(function (k) { var a = attrs.filter(function (x) { return x.name === k; })[0];
     pick[k].forEach(function (v) {
       if (a.type === "multi") { if (HV2) ops.push({ op: "check", near: k, value: v }); else [v, v + " 추천", v + "추천"].forEach(function (vv) { opt.push(ops.length); ops.push({ op: "check", near: k, value: vv }); }); }   /* 도우미 2.4부터 '값 추천'도 한 번에 찾음 — 조작 1번 */
@@ -161,10 +163,10 @@ async function writePage(origin, attrs, pick, tags) {
   var res = r.results, before = ops.findIndex(function (o) { return o.op === "html" && o.sel === "#attribute-table"; }), after = parseAttrs((res[before] || {}).html || "");
   var applied = Object.keys(pick).every(function (k) { var a = after.filter(function (x) { return x.name === k; })[0]; return a && pick[k].every(function (v) { return a.selected.indexOf(v) >= 0; }); });
   var t1 = "", t2 = (res[res.length - 1] || {}).text || "";
-  var conv = !res[2].ok ? "변환 버튼 없음(이미 변환)" : res[6] && res[6].ok ? "변환 완료" : "변환 실패(" + [3, 4, 5, 6].map(function (i) { return res[i] && !res[i].ok && !res[i].skipped ? i + ":" + (res[i].error || "실패") : ""; }).filter(Boolean).join(",") + ")";
+  var conv = skipConv ? null : !res[2].ok ? "변환 버튼 없음(이미 변환)" : res[6] && res[6].ok ? "변환 완료" : "변환 실패(" + [3, 4, 5, 6].map(function (i) { return res[i] && !res[i].ok && !res[i].skipped ? i + ":" + (res[i].error || "실패") : ""; }).filter(Boolean).join(",") + ")";
   var ti = -1; ops.forEach(function (o, i) { if (o.tagChips) ti = i; });
   var tr = ta >= 0 ? (res[ta] || {}) : null;
-  return { tagReg: tr ? (tr.added || []).filter(function (x) { return (tr.reg || []).indexOf(x) >= 0; }) : null, tagInfo: tr ? { checked: tr.checked, removed: (tr.removed || []).length, rmFail: tr.rmFail || [] } : null, tagsNow: ti >= 0 && res[ti] ? parseChips(res[ti].html) : null, dialogs: r.dialogs || [], conv: conv, applied: applied, opsFailed: res.filter(function (x, i) { return x && !x.ok && !x.skipped && (i < 2 || i > 8) && opt.indexOf(i) < 0; }).map(function (x) { return x.error; }), saveMsg: ((t1 + "\n" + t2).match(/[^\n]*(수정되었|저장되었|완료되었|오류|실패|입력해 주세요|확인해 주세요)[^\n]*/g) || []).slice(0, 4) };
+  return { tagReg: tr ? (tr.added || []).filter(function (x) { return (tr.reg || []).indexOf(x) >= 0; }) : null, tagInfo: tr ? { checked: tr.checked, removed: (tr.removed || []).length, rmFail: tr.rmFail || [] } : null, tagsNow: ti >= 0 && res[ti] ? parseChips(res[ti].html) : null, dialogs: r.dialogs || [], conv: conv, applied: applied, opsFailed: res.filter(function (x, i) { return x && !x.ok && !x.skipped && (C0 < 0 || i < 2 || i > 8) && opt.indexOf(i) < 0; }).map(function (x) { return x.error; }), saveMsg: ((t1 + "\n" + t2).match(/[^\n]*(수정되었|저장되었|완료되었|오류|실패|입력해 주세요|확인해 주세요)[^\n]*/g) || []).slice(0, 4) };
 }
 var lastProg = Date.now();
 async function loginOk() {   /* 스마트스토어 로그인이 풀렸는지 확인(풀린 채로 돌면 모든 상품이 '실패'로 기록돼 건너뛰어지던 문제) */
@@ -195,7 +197,7 @@ async function one(t, s, opts) {
     if (opts.dry) { row.status = "미리보기(저장 안 함)"; return row; }
     var preConv = null;
     if (needConv) preConv = await convertOnly(origin);   /* 스마트에디터 변환은 따로 먼저(같이 하면 4분 넘어 시간 초과) */
-    var w = await writePage(origin, p.attrs, c.pick, HV25 ? cands : tp.reg); if (preConv) w.conv = preConv; if (w.tagReg) { row.tags = w.tagReg; row.tagInfo = w.tagInfo; } row.tagsNow = w.tagsNow; row.saveMsg = w.saveMsg; row.conv = w.conv; if (w.dialogs.length) row.saveMsg = w.dialogs.concat(row.saveMsg || []);
+    var w = await writePage(origin, p.attrs, c.pick, HV25 ? cands : tp.reg, !!preConv && preConv === "변환 완료"); if (preConv) w.conv = preConv; if (w.tagReg) { row.tags = w.tagReg; row.tagInfo = w.tagInfo; } row.tagsNow = w.tagsNow; row.saveMsg = w.saveMsg; row.conv = w.conv; if (w.dialogs.length) row.saveMsg = w.dialogs.concat(row.saveMsg || []);
     var convBad = needConv && w.conv !== "변환 완료";
     row.status = w.applied && !w.opsFailed.length && !convBad ? "저장 완료" : "일부 실패"; if (w.opsFailed.length) row.err = w.opsFailed.join(" / ");
   } catch (e) { row.status = "실패"; row.err = e.message; if (/멈춤|멈췄/.test(e.message)) stopReq = true; }
