@@ -3,7 +3,12 @@
 "use strict";
 var ERP = window.ERP, U = ERP.U, S = ERP.S, esc = U.esc, norm = U.norm;
 var KEY = "stock_inventory";
-var BRANDS = [["CH", "샤넬"], ["HM", "에르메스"], ["AI", "알파인더스트리"], ["MC", "몽클레어"], ["CL", "셀린느"], ["CO", "끌로에"], ["MM", "미우미우"], ["HK", "호카"], ["AM", "아미"], ["MK", "메종키츠네"], ["PB", "파라부트"], ["TB", "톰브라운"], ["VW", "비비안웨스트우드"], ["LV", "루이비통"], ["DI", "디올"], ["GC", "구찌"], ["PR", "프라다"], ["BV", "보테가베네타"], ["YS", "생로랑"], ["FE", "펜디"], ["BA", "발렌시아가"], ["LO", "로에베"], ["BB", "버버리"], ["ET", "기타"]];
+var BRANDS = [["CH", "샤넬"], ["HM", "에르메스"], ["AI", "알파인더스트리"], ["MC", "몽클레어"], ["CL", "셀린느"], ["CO", "끌로에"], ["MM", "미우미우"], ["HK", "호카"], ["AM", "아미"], ["MK", "메종키츠네"], ["PB", "파라부트"], ["TB", "톰브라운"], ["VW", "비비안웨스트우드"], ["LV", "루이비통"], ["DI", "디올"], ["GC", "구찌"], ["PR", "프라다"], ["BV", "보테가베네타"], ["YS", "생로랑"], ["FE", "펜디"], ["BA", "발렌시아가"], ["LO", "로에베"], ["BB", "버버리"], ["MA", "메종마르지엘라"], ["ET", "기타"]];
+/* 기본 브랜드 + 직접 추가한 브랜드(stock_inventory.brands)를 가나다순으로, 기타는 맨 끝 */
+function allBrands() {
+  var L = BRANDS.concat((D().brands || []).filter(function (b) { return b && b[0] && !BRANDS.some(function (x) { return x[0] === b[0]; }); }));
+  return L.sort(function (a, b) { if (a[0] === "ET") return 1; if (b[0] === "ET") return -1; return a[1].localeCompare(b[1], "ko"); });
+}
 var v = ERP.view; v.stMode = v.stMode || "실사"; v.stQ = v.stQ || ""; v.stLoc = v.stLoc || ""; v.stMsg = v.stMsg || "";
 function D() { var d = S.SET[KEY]; if (!d || !d.items) { d = { items: {}, seq: {}, count: null, locs: "A-01~A-05" }; S.SET[KEY] = d; } return d; }
 var saveT = null;
@@ -13,7 +18,7 @@ function save(now) {
   if (now) return run(); saveT = setTimeout(run, 700);
 }
 function items() { return Object.values(D().items); }
-function brandName(c) { var b = BRANDS.find(function (x) { return x[0] === c; }); return b ? b[1] : (c || ""); }
+function brandName(c) { var b = allBrands().find(function (x) { return x[0] === c; }); return b ? b[1] : (c || ""); }
 function isLoc(code) { return /^LOC-/i.test(code); }
 
 /* ---------- 바코드 SVG (Code128) ---------- */
@@ -101,7 +106,7 @@ function open(it, code) {
     (it.own && isNew ? '<div class="fd full"><label>바코드</label><div style="padding:8px 0">저장하면 <b>RW-' + esc(it.brand) + '-번호</b>로 자동 발급돼요</div></div>' : fd("바코드", "code", "text", it.code, "full", isNew ? "" : " readonly")) +
     fd("품번 (넣고 Enter → 브랜드·상품명 자동)", "model", "text", it.model) + fd("사이즈·컬러 (Enter → 저장)", "opt", "text", it.opt) +
     '<div class="fd full" id="st-found" role="status" style="font-size:13px;color:#666;min-height:18px"></div>' +
-    ERP.sel("브랜드", "brand", BRANDS, it.brand) + fd("상품명 (짧게, 라벨에 찍혀요)", "name", "text", it.name) +
+    ERP.sel("브랜드", "brand", allBrands(), it.brand) + (ERP.canWrite("stock") ? '<div class="fd" style="justify-content:flex-end"><button type="button" class="btn sm" id="st-addbrand">+ 브랜드 추가</button></div>' : "") + fd("상품명 (짧게, 라벨에 찍혀요)", "name", "text", it.name) +
     fd("시리얼·보증카드 번호", "serial", "text", it.serial) + fd("위치", "loc", "text", it.loc) + fd("재고 수량", "qty", "number", it.qty) + fd("메모", "memo", "text", it.memo, "full") +
     '<div class="fd full"><label for="st-photo">사진 (라벨이 떨어져도 찾을 수 있게)</label><input id="st-photo" type="file" accept="image/*" capture="environment"><div id="st-pv" style="margin-top:8px">' + (it.photo ? '<img src="' + it.photo + '" alt="상품 사진" style="width:120px;border-radius:8px">' : "") + "</div></div>" +
     (isNew ? "" : '<div class="fd full"><label>바코드 미리보기</label><div style="background:#fff;padding:8px;width:240px">' + barcodeSvg(it.code, 40) + "</div></div>") + "</div>";
@@ -130,6 +135,19 @@ ERP.forms.stock = {
       mi.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); run(); if (oi) oi.focus(); } });
       mi.addEventListener("change", run); }
     if (oi) oi.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); var sv = document.getElementById("d-save"); if (sv) sv.click(); } });
+    var ab = body.querySelector("#st-addbrand");
+    if (ab) ab.onclick = function () {
+      var nm = (window.prompt("추가할 브랜드 이름 (한글, 예: 메종마르지엘라)") || "").trim(); if (!nm) return;
+      var L = allBrands(), ex = L.find(function (x) { return x[1].replace(/\s/g, "") === nm.replace(/\s/g, ""); });
+      var bs = body.querySelector('[name="brand"]');
+      if (ex) { bs.value = ex[0]; ERP.toast("이미 있는 브랜드예요: " + ex[1]); return; }
+      var cd = (window.prompt("자체 바코드에 들어갈 영문 약자 2글자 (예: 메종마르지엘라 → MA)\n자체 바코드는 RW-약자-번호로 만들어져요") || "").trim().toUpperCase();
+      if (!/^[A-Z]{2}$/.test(cd)) { ERP.toast("약자는 영문 2글자로 넣어 주세요."); return; }
+      var dup = L.find(function (x) { return x[0] === cd; }); if (dup) { ERP.toast(cd + "는 이미 " + dup[1] + "에 쓰고 있어요. 다른 약자를 넣어 주세요."); return; }
+      var d = D(); d.brands = (d.brands || []).concat([[cd, nm]]); save(true);
+      bs.innerHTML = allBrands().map(function (x) { return '<option value="' + esc(x[0]) + '">' + esc(x[1]) + "</option>"; }).join(""); bs.value = cd;
+      ERP.toast("브랜드를 추가했어요: " + nm + " (" + cd + ")");
+    };
     var ph = body.querySelector("#st-photo");
     ph.onchange = async function () { if (!ph.files[0]) return; rec._photo = await shrink(ph.files[0]); body.querySelector("#st-pv").innerHTML = '<img src="' + rec._photo + '" alt="상품 사진" style="width:120px;border-radius:8px">'; };
   },
@@ -153,8 +171,8 @@ ERP.forms.stock = {
 function brandCode(t) {
   t = String(t || "").toLowerCase(); if (!t) return "";
   var KO2 = { MC: "몽클레르", AI: "알파", VW: "비비안", MK: "키츠네" };
-  var EN = { CH: "chanel", HM: "hermes", LV: "louis", DI: "dior", GC: "gucci", PR: "prada", BV: "bottega", CL: "celine", YS: "saint laurent", TB: "thom", MM: "miu", FE: "fendi", BA: "balenciaga", LO: "loewe", BB: "burberry", MC: "moncler", AI: "alpha", CO: "chlo", HK: "hoka", AM: "ami ", MK: "kitsune", PB: "paraboot", VW: "vivienne" };
-  for (var i = 0; i < BRANDS.length; i++) { var c = BRANDS[i][0]; if (c === "ET") continue; if (t.indexOf(BRANDS[i][1]) !== -1 || (EN[c] && t.indexOf(EN[c]) !== -1) || (KO2[c] && t.indexOf(KO2[c]) !== -1)) return c; }
+  var EN = { MA: "margiela", CH: "chanel", HM: "hermes", LV: "louis", DI: "dior", GC: "gucci", PR: "prada", BV: "bottega", CL: "celine", YS: "saint laurent", TB: "thom", MM: "miu", FE: "fendi", BA: "balenciaga", LO: "loewe", BB: "burberry", MC: "moncler", AI: "alpha", CO: "chlo", HK: "hoka", AM: "ami ", MK: "kitsune", PB: "paraboot", VW: "vivienne" };
+  var BL = allBrands(); for (var i = 0; i < BL.length; i++) { var c = BL[i][0]; if (c === "ET") continue; if (t.indexOf(BL[i][1].toLowerCase()) !== -1 || (EN[c] && t.indexOf(EN[c]) !== -1) || (KO2[c] && t.indexOf(KO2[c]) !== -1)) return c; }
   return "ET";
 }
 function lookup(model) {
