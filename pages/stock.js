@@ -59,7 +59,7 @@ function onScan(raw) {
   else { v.stMsg = "🔎 " + label(it) + " · 재고 " + (it.qty || 0) + " · 위치 " + (it.loc || "-"); }
   it.at = new Date().toISOString(); save(); ERP.render();
 }
-function label(it) { return brandName(it.brand) + " " + (it.name || it.model || it.code); }
+function label(it) { return brandName(it.brand) + " " + (it.name || it.model || it.code) + (it.name && it.model ? " · " + it.model : ""); }
 
 /* ---------- 화면 ---------- */
 function render() {
@@ -83,10 +83,10 @@ function render() {
   h += '<div class="tools filters"><input class="ctl" data-search="stQ" value="' + esc(v.stQ) + '" placeholder="검색: 코드·브랜드·상품명·품번·시리얼·위치" style="min-width:320px"></div>';
   var body = L.map(function (it) {
     var c = cnt ? (cnt.scans[it.code] || 0) : null, diff = cnt ? c - (Number(it.qty) || 0) : 0;
-    return '<tr class="click" data-stedit="' + esc(it.code) + '" tabindex="0"><td><input type="checkbox" data-stpick="' + esc(it.code) + '" aria-label="라벨 선택"></td><td>' + (it.photo ? '<img src="' + it.photo + '" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:6px">' : "") + '</td><td class="num">' + esc(it.code) + (it.own ? ' <span class="pill p-acc">자체</span>' : "") + "</td><td>" + esc(brandName(it.brand)) + '</td><td class="name">' + esc(it.name || "") + (it.opt ? "<small>" + esc(it.opt) + "</small>" : "") + '</td><td class="num">' + esc(it.model || "") + (it.serial ? "<small>S/N " + esc(it.serial) + "</small>" : "") + "</td><td>" + esc(it.loc || "") + '</td><td class="r num">' + (it.buyPrice !== "" && it.buyPrice != null ? Number(it.buyPrice).toLocaleString("ko-KR") : "") + ((it.vendor || it.buyDate) ? "<small>" + esc([it.vendor, it.buyDate].filter(Boolean).join(" · ")) + "</small>" : "") + '</td><td class="r num">' + (Number(it.qty) || 0) + "</td>" +
+    return '<tr class="click" data-stedit="' + esc(it.code) + '" tabindex="0"><td><input type="checkbox" data-stpick="' + esc(it.code) + '" aria-label="라벨 선택"></td><td>' + (it.photo ? '<img src="' + it.photo + '" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:6px">' : "") + '</td><td class="num">' + esc(it.code) + (it.own ? ' <span class="pill p-acc">자체</span>' : "") + '</td><td class="num">' + esc(it.model || "") + (it.serial ? "<small>S/N " + esc(it.serial) + "</small>" : "") + "</td><td>" + esc(brandName(it.brand)) + '</td><td class="name">' + esc(it.name || "") + (it.opt ? "<small>" + esc(it.opt) + "</small>" : "") + '</td><td>' + esc(it.loc || "") + '</td><td class="r num">' + (it.buyPrice !== "" && it.buyPrice != null ? Number(it.buyPrice).toLocaleString("ko-KR") : "") + ((it.vendor || it.buyDate) ? "<small>" + esc([it.vendor, it.buyDate].filter(Boolean).join(" · ")) + "</small>" : "") + '</td><td class="r num">' + (Number(it.qty) || 0) + "</td>" +
       (cnt ? '<td class="r num">' + c + '</td><td class="r num ' + (diff ? "neg" : "") + '">' + (diff > 0 ? "+" : "") + diff + "</td>" : "") + "</tr>";
   }).join("");
-  h += L.length ? '<div class="table-wrap"><table><thead><tr><th><input type="checkbox" data-stpickall aria-label="전체 선택"></th><th>사진</th><th>바코드</th><th>브랜드</th><th>상품명</th><th>품번</th><th>위치</th><th class="r">매입</th><th class="r">재고</th>' + (cnt ? '<th class="r">실사</th><th class="r">차이</th>' : "") + "</tr></thead><tbody>" + body + "</tbody></table></div>"
+  h += L.length ? '<div class="table-wrap"><table><thead><tr><th><input type="checkbox" data-stpickall aria-label="전체 선택"></th><th>사진</th><th>바코드</th><th>품번</th><th>브랜드</th><th>상품명</th><th>위치</th><th class="r">매입</th><th class="r">재고</th>' + (cnt ? '<th class="r">실사</th><th class="r">차이</th>' : "") + "</tr></thead><tbody>" + body + "</tbody></table></div>"
     : '<div class="panel empty"><b>아직 등록된 재고가 없어요</b>위 칸을 누르고 브랜드 택 바코드를 찍거나, 자체 바코드를 발급하세요.</div>';
   return h;
 }
