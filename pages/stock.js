@@ -207,7 +207,7 @@ ERP.forms.stock = {
     lots = lots.filter(function (x) { return !x._del; });
     var add = Math.max(0, Math.floor(Number(o.addQty) || 0)); if (add > 500) throw new Error("한 번에 500개까지만 추가할 수 있어요.");
     for (var i = 0; i < add; i++) lots.push(mkLot({ vendor: o.vendor, date: o.buyDate, price: o.buyPrice, loc: loc }));
-    var it = { code: o.code, own: !!rec.own, brand: o.brand, name: o.name, model: o.model, serial: o.serial, opt: o.opt, loc: loc, lots: lots, qty: lots.length, photo: rec._photo || rec.photo || "", memo: o.memo, at: new Date().toISOString() };
+    var it = { code: o.code, own: !!rec.own, brand: o.brand, name: String(o.name || "").trim(), model: String(o.model || "").trim(), serial: String(o.serial || "").trim(), opt: String(o.opt || "").trim(), loc: loc, lots: lots, qty: lots.length, photo: rec._photo || rec.photo || "", memo: o.memo, at: new Date().toISOString() };
     d.items[it.code] = it;
     if (st.isNew && v.stMode === "실사") { if (!d.count) d.count = { at: new Date().toISOString(), scans: {} }; } if (st.isNew && d.count && v.stMode === "실사") d.count.scans[it.code] = (d.count.scans[it.code] || 0) + 1;
     var err = await save(true);
