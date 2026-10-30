@@ -146,8 +146,8 @@ async function writePage(origin, attrs, pick, tags, skipConv) {   /* skipConv: �
   var C0 = skipConv ? -1 : 2;
   Object.keys(pick).forEach(function (k) { var a = attrs.filter(function (x) { return x.name === k; })[0];
     pick[k].forEach(function (v) {
-      if (a.type === "multi" && a.optSel && a.optSel[v]) ops.push({ op: "click", sel: a.optSel[v] });   /* 줄 위치로 바로 클릭(빈 칸만 채우므로 체크 해제될 일 없음) */
-      else if (a.type === "single" && a.rowSel) { var o1 = a.options.filter(function (x) { return x.text === v; })[0]; ops.push({ op: "click", sel: a.rowSel + " .selectize-input" }); ops.push({ op: "click", sel: a.rowSel + ' .selectize-dropdown-content .option[data-value="' + o1.id + '"]' }); }
+      /* 10/31: 줄 위치 클릭은 화면 줄 순서가 읽을 때와 달라지는 경우(3/7)가 있어 체크박스엔 쓰지 않음(다른 칸을 잘못 누를 위험). 단일선택은 선택지 번호가 칸마다 고유해서 엉뚱한 칸에 들어갈 일이 없으므로 전체 화면에서 번호로 클릭 */
+      if (a.type === "single") { var o1 = a.options.filter(function (x) { return x.text === v; })[0]; opt.push(ops.length); ops.push({ op: "click", within: k, sel: ".selectize-input" }); ops.push({ op: "click", sel: '.selectize-dropdown-content .option[data-value="' + o1.id + '"]' }); }
       else if (a.type === "multi") { if (HV2) ops.push({ op: "check", near: k, value: v }); else [v, v + " 추천", v + "추천"].forEach(function (vv) { opt.push(ops.length); ops.push({ op: "check", near: k, value: vv }); }); }   /* 도우미 2.4부터 '값 추천'도 한 번에 찾음 — 조작 1번 */
       else { var o = a.options.filter(function (x) { return x.text === v; })[0]; ops.push({ op: "click", within: k, sel: ".selectize-input" }); ops.push({ op: "click", within: k, sel: '.selectize-dropdown-content .option[data-value="' + o.id + '"]' }); }
     }); });
