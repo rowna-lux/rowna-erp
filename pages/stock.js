@@ -73,7 +73,7 @@ function save(now) {
     });
     return saveQ;
   };
-  if (now) return run(); saveT = setTimeout(run, 700);
+  if (now) return run(); saveT = setTimeout(function () { saveT = null; run(); }, 700);
 }
 function items() { return Object.values(D().items); }
 /* ---------- 입고 내역(1개 = 1줄) — 같은 바코드·품번이라도 매입처·날짜·매입가가 다를 수 있어서 개별로 기록 ---------- */
@@ -195,7 +195,7 @@ function render() {
 }
 function bind(root) {
   var inp = root.querySelector("#st-scan");
-  if (inp) { if (!ERP.drawer()) inp.focus(); inp.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); var x = inp.value; inp.value = ""; onScan(x); } }); }
+  if (inp) { if (!ERP.drawer()) inp.focus({ preventScroll: true }); inp.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); var x = inp.value; inp.value = ""; onScan(x); } }); }
   root.querySelectorAll("[data-stage]").forEach(function (b) { b.onclick = function () { v.stAge = b.dataset.stage; ERP.render(); }; });
   root.querySelectorAll("[data-stmode]").forEach(function (b) { b.onclick = function () { v.stMode = b.dataset.stmode; if (v.stMode === "실사" && !D().count && (D().countAt = Date.now()) && ERP.canWrite("stock")) { D().count = { at: new Date().toISOString(), scans: {} }; save(); } ERP.render(); }; });
   root.querySelectorAll("[data-stedit]").forEach(function (tr) { var go = function (e) { if (e && e.target.closest("input")) return; open(D().items[tr.dataset.stedit]); }; tr.addEventListener("click", go); tr.addEventListener("keydown", function (e) { if (e.key === "Enter") go(); }); });
@@ -441,6 +441,19 @@ ERP.acts.stsabang = function () {
 };
 ERP.forms.stockview = { open: function () {}, commit: async function () { return true; } };
 
+/* 새 버전이 올라오면 예전 화면이 계속 쓰이지 않게 자동 새로고침 (등록창이 열려 있거나 저장 대기 중이면 안내만) */
+(function () {
+  var me = (document.querySelector('script[src*="pages/stock.js"]') || {}).src || "", cur = (me.match(/stock\.js\?v=([^&"]+)/) || [])[1];
+  if (!cur) return;
+  setInterval(async function () {
+    try {
+      var t = await (await fetch("index.html?ts=" + Date.now(), { cache: "no-store" })).text(), nv = (t.match(/pages\/stock\.js\?v=([^"&]+)/) || [])[1];
+      if (!nv || nv === cur) return;
+      if (!ERP.drawer() && !saveT) { location.reload(); return; }
+      ERP.toast("ERP가 업데이트됐어요 — 등록창을 닫으면 자동으로 새로고침돼요.");
+    } catch (e) {}
+  }, 120000);
+})();
 ERP.page({ id: "stock", title: "재고실사", wide: true, render: render, bind: bind,
   live: function () { var ae = document.activeElement; if (ae && ae.matches && ae.matches("input:not(#st-scan),select")) return; if (!ERP.drawer()) ERP.render(); },
   badge: function () { return D().count ? "실사중" : ""; } });
