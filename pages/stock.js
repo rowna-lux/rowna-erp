@@ -6,16 +6,28 @@ var KEY = "stock_inventory";
 var BRANDS = [["CH", "샤넬"], ["HM", "에르메스"], ["AI", "알파인더스트리"], ["MC", "몽클레어"], ["CL", "셀린느"], ["CO", "끌로에"], ["MM", "미우미우"], ["HK", "호카"], ["AM", "아미"], ["MK", "메종키츠네"], ["PB", "파라부트"], ["TB", "톰브라운"], ["VW", "비비안웨스트우드"], ["LV", "루이비통"], ["DI", "디올"], ["GC", "구찌"], ["PR", "프라다"], ["BV", "보테가베네타"], ["YS", "생로랑"], ["FE", "펜디"], ["BA", "발렌시아가"], ["LO", "로에베"], ["BB", "버버리"], ["MA", "메종마르지엘라"], ["ET", "기타"]];
 /* 기본 브랜드 + 직접 추가한 브랜드(stock_inventory.brands)를 가나다순으로, 기타는 맨 끝 */
 function allBrands() {
-  var L = BRANDS.concat((D().brands || []).filter(function (b) { return b && b[0] && !BRANDS.some(function (x) { return x[0] === b[0]; }); }));
+  /* 직접 추가한 브랜드: 목록(brands) + 상품에 같이 저장한 이름(brandLabel) — 목록이 날아가도 상품에서 되살림 */
+  var extra = (D().brands || []).slice();
+  Object.values(D().items || {}).forEach(function (it) { if (it.brandLabel && it.brand) extra.push([it.brand, it.brandLabel]); });
+  var L = BRANDS.slice();
+  extra.forEach(function (b) { if (b && b[0] && b[1] && !L.some(function (x) { return x[0] === b[0]; })) L.push([b[0], b[1]]); });
   return L.sort(function (a, b) { if (a[0] === "ET") return 1; if (b[0] === "ET") return -1; return a[1].localeCompare(b[1], "ko"); });
 }
 var v = ERP.view; v.stMode = v.stMode || "실사"; v.stQ = v.stQ || ""; v.stAge = v.stAge || ""; v.stLoc = v.stLoc || ""; v.stMsg = v.stMsg || "";
-function D() { var d = S.SET[KEY]; if (!d || !d.items) { d = { items: {}, seq: {}, count: null, locs: "A-01~A-05" }; S.SET[KEY] = d; } return d; }
+var LAST = null;
+function D() {
+  var d = S.SET[KEY];
+  /* 실시간 반영으로 들어온 값이 내가 방금 저장한 것보다 예전이면 내 것을 유지 */
+  if (LAST && d !== LAST && (!d || (Number(d._rev) || 0) < (Number(LAST._rev) || 0))) { d = LAST; S.SET[KEY] = d; }
+  if (!d || !d.items) { d = { items: {}, seq: {}, count: null, locs: "A-01~A-05" }; S.SET[KEY] = d; }
+  LAST = d; return d;
+}
 var saveT = null;
 function save(now) {
   clearTimeout(saveT);
   /* 저장 후 실제로 DB에 들어갔는지 다시 확인 — 안 들어갔으면 오류를 그대로 보여줌 */
   var run = async function () {
+    var dd = D(); dd._rev = Math.max(Number(dd._rev) || 0, Date.now());
     var r = await S.sb.from("app_settings").upsert({ key: KEY, value: D() }).select("key");
     var msg = r.error ? (ERP.errMsg(r.error) + " [" + (r.error.code || "") + " " + (r.error.message || "") + "]") : (!r.data || !r.data.length ? "DB에 저장되지 않았어요 (권한 정책에 막힌 것 같아요)" : "");
     if (msg) { console.error("[재고저장]", r.error || "0 rows", r.status); ERP.toast("재고 저장 실패: " + msg); }
@@ -260,7 +272,8 @@ ERP.forms.stock = {
     lots = lots.filter(function (x) { return !x._del; });
     var add = Math.max(0, Math.floor(Number(o.addQty) || 0)); if (add > 500) throw new Error("한 번에 500개까지만 추가할 수 있어요.");
     for (var i = 0; i < add; i++) lots.push(mkLot({ vendor: o.vendor, date: o.buyDate, price: o.buyPrice, loc: loc }));
-    var it = { code: o.code, own: !!rec.own, brand: o.brand, name: String(o.name || "").trim(), model: String(o.model || "").trim(), serial: String(o.serial || "").trim(), opt: String(o.opt || "").trim(), loc: loc, lots: lots, qty: lots.filter(function (x) { return !x.out; }).length, photo: rec._photo || rec.photo || "", memo: o.memo, at: new Date().toISOString() };
+    var custom = !BRANDS.some(function (x) { return x[0] === o.brand; });
+    var it = { code: o.code, own: !!rec.own, brand: o.brand, brandLabel: custom ? brandName(o.brand) : undefined, name: String(o.name || "").trim(), model: String(o.model || "").trim(), serial: String(o.serial || "").trim(), opt: String(o.opt || "").trim(), loc: loc, lots: lots, qty: lots.filter(function (x) { return !x.out; }).length, photo: rec._photo || rec.photo || "", memo: o.memo, at: new Date().toISOString() };
     d.items[it.code] = it;
     if (st.isNew && v.stMode === "실사") { if (!d.count) d.count = { at: new Date().toISOString(), scans: {} }; } if (st.isNew && d.count && v.stMode === "실사") d.count.scans[it.code] = (d.count.scans[it.code] || 0) + 1;
     var err = await save(true);
