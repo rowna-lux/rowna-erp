@@ -3,7 +3,7 @@
 "use strict";
 var ERP = window.ERP, U = ERP.U, S = ERP.S, esc = U.esc, norm = U.norm;
 var KEY = "stock_inventory";
-var BRANDS = [["CH", "샤넬"], ["HM", "에르메스"], ["LV", "루이비통"], ["DI", "디올"], ["GC", "구찌"], ["PR", "프라다"], ["BV", "보테가베네타"], ["CL", "셀린느"], ["YS", "생로랑"], ["ET", "기타"]];
+var BRANDS = [["CH", "샤넬"], ["HM", "에르메스"], ["LV", "루이비통"], ["DI", "디올"], ["GC", "구찌"], ["PR", "프라다"], ["BV", "보테가베네타"], ["CL", "셀린느"], ["YS", "생로랑"], ["TB", "톰브라운"], ["MM", "미우미우"], ["FE", "펜디"], ["BA", "발렌시아가"], ["LO", "로에베"], ["BB", "버버리"], ["MC", "몽클레르"], ["ET", "기타"]];
 var v = ERP.view; v.stMode = v.stMode || "실사"; v.stQ = v.stQ || ""; v.stLoc = v.stLoc || ""; v.stMsg = v.stMsg || "";
 function D() { var d = S.SET[KEY]; if (!d || !d.items) { d = { items: {}, seq: {}, count: null, locs: "A-01~A-05" }; S.SET[KEY] = d; } return d; }
 var saveT = null;
@@ -99,9 +99,10 @@ function open(it, code) {
   it = it ? Object.assign({}, it) : { code: code || "", own: !code, brand: code ? "ET" : "CH", name: "", model: "", serial: "", opt: "", loc: v.stLoc || "", qty: v.stMode === "출고" ? 0 : 1, photo: "", memo: "" };
   var f = '<div class="fg">' +
     (it.own && isNew ? '<div class="fd full"><label>바코드</label><div style="padding:8px 0">저장하면 <b>RW-' + esc(it.brand) + '-번호</b>로 자동 발급돼요</div></div>' : fd("바코드", "code", "text", it.code, "full", isNew ? "" : " readonly")) +
+    fd("품번 (넣고 Enter → 브랜드·상품명 자동)", "model", "text", it.model) + fd("사이즈·컬러 (Enter → 저장)", "opt", "text", it.opt) +
+    '<div class="fd full" id="st-found" role="status" style="font-size:13px;color:#666;min-height:18px"></div>' +
     ERP.sel("브랜드", "brand", BRANDS, it.brand) + fd("상품명 (짧게, 라벨에 찍혀요)", "name", "text", it.name) +
-    fd("품번·모델명", "model", "text", it.model) + fd("시리얼·보증카드 번호", "serial", "text", it.serial) +
-    fd("사이즈·컬러", "opt", "text", it.opt) + fd("위치 (예: A-01)", "loc", "text", it.loc) + fd("재고 수량", "qty", "number", it.qty) + fd("메모", "memo", "text", it.memo, "full") +
+    fd("시리얼·보증카드 번호", "serial", "text", it.serial) + fd("위치", "loc", "text", it.loc) + fd("재고 수량", "qty", "number", it.qty) + fd("메모", "memo", "text", it.memo, "full") +
     '<div class="fd full"><label for="st-photo">사진 (라벨이 떨어져도 찾을 수 있게)</label><input id="st-photo" type="file" accept="image/*" capture="environment"><div id="st-pv" style="margin-top:8px">' + (it.photo ? '<img src="' + it.photo + '" alt="상품 사진" style="width:120px;border-radius:8px">' : "") + "</div></div>" +
     (isNew ? "" : '<div class="fd full"><label>바코드 미리보기</label><div style="background:#fff;padding:8px;width:240px">' + barcodeSvg(it.code, 40) + "</div></div>") + "</div>";
   ERP.openDrawer(isNew ? (it.own ? "자체 바코드 발급" : "새 바코드 상품 등록") : "재고 상품 수정", f, "stock", it, isNew, { saveLabel: isNew && it.own ? "발급하고 저장" : "저장" });
@@ -116,6 +117,19 @@ function shrink(file) {
 ERP.forms.stock = {
   open: open,
   afterOpen: function (body, rec) {
+    var mi = body.querySelector('[name="model"]'), oi = body.querySelector('[name="opt"]'), fo = body.querySelector("#st-found");
+    var run = function () {
+      var r = lookup(mi.value); if (!mi.value.trim()) return;
+      if (!r) { fo.textContent = "ERP 기록에서 이 품번을 못 찾았어요 — 브랜드·상품명을 직접 넣어 주세요"; return; }
+      var bs = body.querySelector('[name="brand"]'), nm = body.querySelector('[name="name"]');
+      if (r.code && bs) bs.value = r.code;
+      if (nm && !nm.value) nm.value = r.name;
+      fo.textContent = "✔ 찾았어요 (" + r.src + "): " + (r.brandText || "") + " " + r.name;
+    };
+    if (mi) { if (!rec.model && !rec.own) setTimeout(function () { mi.focus(); }, 50);
+      mi.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); run(); if (oi) oi.focus(); } });
+      mi.addEventListener("change", run); }
+    if (oi) oi.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); var sv = document.getElementById("d-save"); if (sv) sv.click(); } });
     var ph = body.querySelector("#st-photo");
     ph.onchange = async function () { if (!ph.files[0]) return; rec._photo = await shrink(ph.files[0]); body.querySelector("#st-pv").innerHTML = '<img src="' + rec._photo + '" alt="상품 사진" style="width:120px;border-radius:8px">'; };
   },
@@ -134,6 +148,29 @@ ERP.forms.stock = {
   },
   remove: async function (rec) { delete D().items[rec.code]; await save(true); return true; }
 };
+
+/* ---------- 품번으로 ERP 기록(매입·소싱·매출·재고)에서 브랜드·상품명 찾기 ---------- */
+function brandCode(t) {
+  t = String(t || "").toLowerCase(); if (!t) return "";
+  var EN = { CH: "chanel", HM: "hermes", LV: "louis", DI: "dior", GC: "gucci", PR: "prada", BV: "bottega", CL: "celine", YS: "saint laurent", TB: "thom", MM: "miu", FE: "fendi", BA: "balenciaga", LO: "loewe", BB: "burberry", MC: "moncler" };
+  for (var i = 0; i < BRANDS.length; i++) { var c = BRANDS[i][0]; if (c === "ET") continue; if (t.indexOf(BRANDS[i][1]) !== -1 || (EN[c] && t.indexOf(EN[c]) !== -1)) return c; }
+  return "ET";
+}
+function lookup(model) {
+  var an = function (x) { return String(x || "").toUpperCase().replace(/[^A-Z0-9]/g, ""); };
+  var k = an(model); if (k.length < 4) return null;
+  var hit = function (x) { var n = an(x); return n && (n === k || (n.length >= 6 && n.indexOf(k) !== -1) || (k.length >= 6 && k.indexOf(n) !== -1 && n.length >= 6)); };
+  var clean = function (t) { return String(t || "").replace(/\[[^\]]*\]/g, "").replace(/\([^)]*\)\s*$/, "").replace(/\s+/g, " ").trim().slice(0, 40); };
+  var mk = function (b, name, src) { var bt = b || ""; return { code: brandCode(bt + " " + name), brandText: bt, name: clean(name), src: src }; };
+  var own = items().find(function (it) { return hit(it.model) && it.name; }); if (own) return { code: own.brand, brandText: brandName(own.brand), name: own.name, src: "재고" };
+  var pi = ERP.DATA.price_items ? ERP.list("price_items").find(function (r) { return hit(r.sku) || hit(r.name && (r.name.match(/[A-Z0-9][A-Z0-9-]{5,}/i) || [""])[0]); }) : null;
+  if (pi) return mk(pi.brand, (pi.extra && pi.extra.nameOverride) || pi.name || pi.sku, "소싱");
+  var pu = ERP.list("purchases").find(function (r) { return hit(r.itemCode); }); if (pu && (pu.productName || (pu.extra && pu.extra.name))) return mk(pu.brand, pu.productName || pu.extra.name, "매입");
+  var sa = ERP.list("sales").filter(function (r) { return hit(r.itemCode) || (k.length >= 6 && an(r.productName).indexOf(k) !== -1); }).pop();
+  if (sa) return mk(sa.brand, sa.productName, "매출");
+  if (pu) return mk(pu.brand, pu.brand || "", "매입");
+  return null;
+}
 
 /* ---------- 라벨 출력 (40×20mm) ---------- */
 function printLabels(L, locs) {
