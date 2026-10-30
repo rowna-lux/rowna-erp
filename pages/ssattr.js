@@ -167,6 +167,9 @@ async function writePage(origin, attrs, pick, tags) {
   return { tagReg: tr ? (tr.added || []).filter(function (x) { return (tr.reg || []).indexOf(x) >= 0; }) : null, tagInfo: tr ? { checked: tr.checked, removed: (tr.removed || []).length, rmFail: tr.rmFail || [] } : null, tagsNow: ti >= 0 && res[ti] ? parseChips(res[ti].html) : null, dialogs: r.dialogs || [], conv: conv, applied: applied, opsFailed: res.filter(function (x, i) { return x && !x.ok && !x.skipped && (i < 2 || i > 8) && opt.indexOf(i) < 0; }).map(function (x) { return x.error; }), saveMsg: ((t1 + "\n" + t2).match(/[^\n]*(수정되었|저장되었|완료되었|오류|실패|입력해 주세요|확인해 주세요)[^\n]*/g) || []).slice(0, 4) };
 }
 var lastProg = Date.now();
+async function loginOk() {   /* 스마트스토어 로그인이 풀렸는지 확인(풀린 채로 돌면 모든 상품이 '실패'로 기록돼 건너뛰어지던 문제) */
+  try { var d = await ERP.helperAsk("page", { url: "https://sell.smartstore.naver.com/#/products/origin-list", minLen: 100, tries: 3 }); return !/accounts\.commerce\.naver\.com|nid\.naver\.com/.test(String(d && d.url || "")); } catch (e) { return true; }
+}
 function log(s, row) { lastProg = Date.now(); s.log = (s.log || []).concat([row]).slice(-3000); save(s); }
 function dl(s, tag) { var rows = (s.log || []).map(function (x) { return [x.at, x.ch, x.origin || "", x.status, x.name, JSON.stringify(x.pick || {}), x.why || "", x.rex || "", x.conv || "", (x.tags || []).join(" "), (x.tagsNow || []).join(" "), (x.err || "") + (x.saveMsg ? " " + x.saveMsg.join(" / ") : "")].map(function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(","); });
   ERP.downloadBlob("스마트스토어_속성입력기록_" + tag + ".csv", new Blob(["﻿시각,채널상품번호,원상품번호,결과,상품명,넣은속성,AI메모,렉스몬드,에디터변환,추가태그,저장후태그,오류/저장메시지\n" + rows.join("\n")], { type: "text/csv" })); }
@@ -222,7 +225,9 @@ ERP.acts.ssattrrun = async function (btn) {
   if (btn && btn.dataset && btn.dataset.sold) { list = list.filter(function (t) { return t.sold > 0; }); lim = Infinity; }
   ERP.toast("상품속성 자동입력 시작: 남은 " + list.length + "개 중 " + (lim === Infinity ? "전부" : lim + "개"));
   for (var i = 0; i < list.length && n < lim && !stopReq; i++) {
-    var row = await one(list[i], s, {}); log(s, row); n++; ERP.render();
+    var row = await one(list[i], s, {});
+    if (row.status === "실패" && !/시간 초과/.test(row.err || "") && !(await loginOk())) { ERP.toast("⚠ 스마트스토어 로그인이 풀려서 멈췄어요. 로그인하면 자동으로 이어서 해요."); return { n: n, left: list.length - i, loggedOut: true }; }   /* 로그인 풀림은 실패로 기록하지 않음 */
+    log(s, row); n++; ERP.render();
     fails = row.status === "실패" ? fails + (/시간 초과/.test(row.err || "") ? 5 : 1) : 0;   /* 시간 초과가 한 번 나면 뒤 상품도 줄줄이 막혀서(기록상 재시작하면 풀림) 바로 1분 쉬고 다시 시작 */
     if (fails >= 5) { ERP.toast("⚠ 5개 연속 실패라 멈췄어요. 기록을 확인해 주세요."); break; }
     if (n % 200 === 0) dl(s, new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-"));   /* 기록 파일은 200개마다만(자주 받으면 탭이 멈춤) */
@@ -257,9 +262,11 @@ ERP.acts.ssattrauto = async function () {
       if (!(ERP.helperOn && ERP.helperOn())) { ERP.toast("로우나 도우미 연결을 기다리는 중…"); await new Promise(function (r) { setTimeout(r, 60000); }); continue; }
       var redo = await ERP.acts.ssattrrun({ dataset: { redo: "1" } });
       if (redo && redo.stopped) break;
+      if (redo && redo.loggedOut) { await new Promise(function (r) { setTimeout(r, 300000); }); continue; }   /* 5분마다 로그인 확인 후 이어서 */
       if (redo && redo.failStop) { if (++tries > 30) break; ERP.toast("연속 실패라 1분 쉬고 다시 해요(스마트스토어 로그인이 풀렸으면 로그인해 주세요)."); await new Promise(function (r) { setTimeout(r, 60000); }); continue; }
       var full = await ERP.acts.ssattrrun({ dataset: {} });
       if (full && full.stopped) break;
+      if (full && full.loggedOut) { await new Promise(function (r) { setTimeout(r, 300000); }); continue; }   /* 5분마다 로그인 확인 후 이어서 */
       if (full && full.failStop) { if (++tries > 30) break; ERP.toast("연속 실패라 1분 쉬고 다시 해요(스마트스토어 로그인이 풀렸으면 로그인해 주세요)."); await new Promise(function (r) { setTimeout(r, 60000); }); continue; }
       if (full && full.left <= 0) break;
     }
