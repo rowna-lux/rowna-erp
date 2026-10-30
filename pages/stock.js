@@ -14,7 +14,13 @@ function D() { var d = S.SET[KEY]; if (!d || !d.items) { d = { items: {}, seq: {
 var saveT = null;
 function save(now) {
   clearTimeout(saveT);
-  var run = async function () { var r = await S.sb.from("app_settings").upsert({ key: KEY, value: D() }); if (r.error) ERP.toast("재고 저장 실패: " + ERP.errMsg(r.error)); };
+  /* 저장 후 실제로 DB에 들어갔는지 다시 확인 — 안 들어갔으면 오류를 그대로 보여줌 */
+  var run = async function () {
+    var r = await S.sb.from("app_settings").upsert({ key: KEY, value: D() }).select("key");
+    var msg = r.error ? (ERP.errMsg(r.error) + " [" + (r.error.code || "") + " " + (r.error.message || "") + "]") : (!r.data || !r.data.length ? "DB에 저장되지 않았어요 (권한 정책에 막힌 것 같아요)" : "");
+    if (msg) { console.error("[재고저장]", r.error || "0 rows", r.status); ERP.toast("재고 저장 실패: " + msg); }
+    return msg;
+  };
   if (now) return run(); saveT = setTimeout(run, 700);
 }
 function items() { return Object.values(D().items); }
@@ -162,7 +168,8 @@ ERP.forms.stock = {
     var it = { code: o.code, own: !!rec.own, brand: o.brand, name: o.name, model: o.model, serial: o.serial, opt: o.opt, loc: String(o.loc || "").toUpperCase(), qty: Math.max(0, Number(o.qty) || 0), photo: rec._photo || rec.photo || "", memo: o.memo, vendor: String(o.vendor || "").trim(), buyDate: o.buyDate || "", buyPrice: o.buyPrice === "" || o.buyPrice == null ? "" : Math.max(0, Number(o.buyPrice) || 0), at: new Date().toISOString() };
     d.items[it.code] = it;
     if (st.isNew && v.stMode === "실사") { if (!d.count) d.count = { at: new Date().toISOString(), scans: {} }; } if (st.isNew && d.count && v.stMode === "실사") d.count.scans[it.code] = (d.count.scans[it.code] || 0) + 1;
-    await save(true);
+    var err = await save(true);
+    if (err) throw new Error("저장이 안 됐어요 — 이 화면을 캡처해서 알려 주세요: " + err);
     v.stMsg = (st.isNew ? "등록했어요: " : "수정했어요: ") + it.code + " " + label(it);
     if (st.isNew && it.own) setTimeout(function () { printLabels([it]); }, 300);
     return true;
