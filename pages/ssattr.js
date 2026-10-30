@@ -243,6 +243,7 @@ function lockOk() {   /* ERP 탭이 여러 개 열려도 한 탭만 돌게 */
 function lockBeat() { try { localStorage.setItem("rowna-ssattr-lock", JSON.stringify({ id: MYID, ts: Date.now() })); } catch (e) {} }
 ERP.acts.ssattrauto = async function () {
   if (autoOn) { ERP.toast("이미 자동 진행 중이에요."); return; }
+  for (var lw = 0; !lockOk() && lw < 10; lw++) await new Promise(function (r) { setTimeout(r, 30000); });   /* 새로고침 직후엔 이전 화면의 표시가 2분간 남아 있어서 기다렸다가 시작 */
   if (!lockOk()) { ERP.toast("다른 ERP 탭에서 이미 자동 진행 중이라 이 탭은 쉬어요."); return; }
   lockBeat(); var beat = setInterval(lockBeat, 30000);
   lastProg = Date.now();
