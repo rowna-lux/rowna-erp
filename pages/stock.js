@@ -24,8 +24,27 @@ function save(now) {
   if (now) return run(); saveT = setTimeout(run, 700);
 }
 function items() { return Object.values(D().items); }
+/* ---------- 입고 내역(1개 = 1줄) — 같은 바코드·품번이라도 매입처·날짜·매입가가 다를 수 있어서 개별로 기록 ---------- */
+function mkLot(t) { t = t || {}; return { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), vendor: String(t.vendor || "").trim(), date: t.date || "", price: t.price === "" || t.price == null ? "" : Math.max(0, Number(t.price) || 0), loc: String(t.loc || "").toUpperCase(), at: new Date().toISOString() }; }
+function lotsOf(it) {
+  if (!Array.isArray(it.lots)) { it.lots = []; for (var i = 0; i < (Number(it.qty) || 0); i++) it.lots.push(mkLot({ vendor: it.vendor, date: it.buyDate, price: it.buyPrice, loc: it.loc })); }
+  return it.lots;
+}
+function fifo(L) { return L.slice().sort(function (a, b) { return (a.date || "9999").localeCompare(b.date || "9999") || (a.at || "").localeCompare(b.at || ""); }); }
+function lastLot(it) { var L = lotsOf(it); return L.length ? L[L.length - 1] : { vendor: it.vendor, date: it.buyDate, price: it.buyPrice }; }
+function addLots(it, n, tpl) { var L = lotsOf(it); for (var i = 0; i < n; i++) L.push(mkLot(tpl)); it.qty = L.length; }
+function takeLots(it, n) { var keep = fifo(lotsOf(it)).slice(Math.max(0, n)); it.lots = keep; it.qty = keep.length; }
+function setCount(it, n) { var q = lotsOf(it).length; if (n > q) { var t = lastLot(it); addLots(it, n - q, { vendor: t.vendor, date: t.date, price: t.price, loc: it.loc }); } else if (n < q) takeLots(it, q - n); }
+function won(n) { return Number(n).toLocaleString("ko-KR"); }
+function buySummary(it) {
+  var L = lotsOf(it), P = L.filter(function (x) { return x.price !== "" && x.price != null; }).map(function (x) { return Number(x.price); });
+  var vs = {}; L.forEach(function (x) { if (x.vendor) vs[x.vendor] = 1; }); var vk = Object.keys(vs);
+  if (!P.length) return { main: "", sub: vk.join(", ") };
+  var mn = Math.min.apply(null, P), mx = Math.max.apply(null, P), avg = Math.round(P.reduce(function (a, b) { return a + b; }, 0) / P.length);
+  return { main: mn === mx ? won(mn) : "평균 " + won(avg), sub: (mn === mx ? "" : won(mn) + "~" + won(mx) + " · ") + (vk.length === 1 ? vk[0] : vk.length ? "매입처 " + vk.length + "곳" : "") + (P.length < L.length ? " · 매입가 미입력 " + (L.length - P.length) + "개" : ""), avg: avg, min: mn, max: mx };
+}
 function brandName(c) { var b = allBrands().find(function (x) { return x[0] === c; }); return b ? b[1] : (c || ""); }
-function vendors() { var o = { "오케이몰(렉스몬드)": 1 }; items().forEach(function (it) { if (it.vendor) o[it.vendor] = 1; }); return Object.keys(o).sort(function (a, b) { return a.localeCompare(b, "ko"); }); }
+function vendors() { var o = { "오케이몰(렉스몬드)": 1 }; items().forEach(function (it) { if (it.vendor) o[it.vendor] = 1; (it.lots || []).forEach(function (x) { if (x.vendor) o[x.vendor] = 1; }); }); return Object.keys(o).sort(function (a, b) { return a.localeCompare(b, "ko"); }); }
 function isLoc(code) { return /^LOC-/i.test(code); }
 
 /* ---------- 바코드 SVG (Code128) ---------- */
@@ -60,8 +79,8 @@ function onScan(raw) {
   if (v.stLoc) it.loc = v.stLoc;
   var m = v.stMode;
   if (m === "실사") { if (!d.count) d.count = { at: new Date().toISOString(), scans: {} }; d.count.scans[code] = (d.count.scans[code] || 0) + 1; v.stMsg = "✔ " + label(it) + " — 실사 " + d.count.scans[code] + "개째"; }
-  else if (m === "입고") { it.qty = (Number(it.qty) || 0) + 1; v.stMsg = "＋ 입고 " + label(it) + " → 재고 " + it.qty; }
-  else if (m === "출고") { it.qty = Math.max(0, (Number(it.qty) || 0) - 1); v.stMsg = "－ 출고 " + label(it) + " → 재고 " + it.qty; }
+  else if (m === "입고") { var t = lastLot(it); addLots(it, 1, { vendor: t.vendor, date: t.date, price: t.price, loc: v.stLoc || it.loc }); v.stMsg = "＋ 입고 " + label(it) + " → 재고 " + it.qty + " (매입정보는 직전 입고와 같게 들어갔어요 — 다르면 줄을 눌러 고쳐 주세요)"; }
+  else if (m === "출고") { takeLots(it, 1); v.stMsg = "－ 출고 " + label(it) + " → 재고 " + it.qty + " (먼저 들어온 것부터 빠져요)"; }
   else { v.stMsg = "🔎 " + label(it) + " · 재고 " + (it.qty || 0) + " · 위치 " + (it.loc || "-"); }
   it.at = new Date().toISOString(); save(); ERP.render();
 }
@@ -89,7 +108,7 @@ function render() {
   h += '<div class="tools filters"><input class="ctl" data-search="stQ" value="' + esc(v.stQ) + '" placeholder="검색: 코드·브랜드·상품명·품번·시리얼·위치" style="min-width:320px"></div>';
   var body = L.map(function (it) {
     var c = cnt ? (cnt.scans[it.code] || 0) : null, diff = cnt ? c - (Number(it.qty) || 0) : 0;
-    return '<tr class="click" data-stedit="' + esc(it.code) + '" tabindex="0"><td><input type="checkbox" data-stpick="' + esc(it.code) + '" aria-label="라벨 선택"></td><td>' + (it.photo ? '<img src="' + it.photo + '" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:6px">' : "") + '</td><td class="num">' + esc(it.code) + (it.own ? ' <span class="pill p-acc">자체</span>' : "") + '</td><td class="num">' + esc(it.model || "") + (it.serial ? "<small>S/N " + esc(it.serial) + "</small>" : "") + "</td><td>" + esc(brandName(it.brand)) + '</td><td class="name">' + esc(it.name || "") + (it.opt ? "<small>" + esc(it.opt) + "</small>" : "") + '</td><td>' + esc(it.loc || "") + '</td><td class="r num">' + (it.buyPrice !== "" && it.buyPrice != null ? Number(it.buyPrice).toLocaleString("ko-KR") : "") + ((it.vendor || it.buyDate) ? "<small>" + esc([it.vendor, it.buyDate].filter(Boolean).join(" · ")) + "</small>" : "") + '</td><td class="r num">' + (Number(it.qty) || 0) + "</td>" +
+    return '<tr class="click" data-stedit="' + esc(it.code) + '" tabindex="0"><td><input type="checkbox" data-stpick="' + esc(it.code) + '" aria-label="라벨 선택"></td><td>' + (it.photo ? '<img src="' + it.photo + '" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:6px">' : "") + '</td><td class="num">' + esc(it.code) + (it.own ? ' <span class="pill p-acc">자체</span>' : "") + '</td><td class="num">' + esc(it.model || "") + (it.serial ? "<small>S/N " + esc(it.serial) + "</small>" : "") + "</td><td>" + esc(brandName(it.brand)) + '</td><td class="name">' + esc(it.name || "") + (it.opt ? "<small>" + esc(it.opt) + "</small>" : "") + '</td><td>' + esc(it.loc || "") + '</td><td class="r num">' + (function () { var b = buySummary(it); return esc(b.main) + (b.sub ? "<small>" + esc(b.sub) + "</small>" : ""); })() + '</td><td class="r num">' + (Number(it.qty) || 0) + "</td>" +
       (cnt ? '<td class="r num">' + c + '</td><td class="r num ' + (diff ? "neg" : "") + '">' + (diff > 0 ? "+" : "") + diff + "</td>" : "") + "</tr>";
   }).join("");
   h += L.length ? '<div class="table-wrap"><table><thead><tr><th><input type="checkbox" data-stpickall aria-label="전체 선택"></th><th>사진</th><th>바코드</th><th>품번</th><th>브랜드</th><th>상품명</th><th>위치</th><th class="r">매입</th><th class="r">재고</th>' + (cnt ? '<th class="r">실사</th><th class="r">차이</th>' : "") + "</tr></thead><tbody>" + body + "</tbody></table></div>"
@@ -108,18 +127,30 @@ function picked() { var L = Array.from(document.querySelectorAll("[data-stpick]:
 /* ---------- 등록·수정 ---------- */
 function open(it, code) {
   var isNew = !it || !it.code, fd = ERP.fd;
-  it = it ? Object.assign({}, it) : { code: code || "", own: !code, brand: code ? "ET" : "CH", name: "", model: "", serial: "", opt: "", loc: v.stLoc || "", qty: v.stMode === "출고" ? 0 : 1, photo: "", memo: "", vendor: "", buyDate: U.today(), buyPrice: "" };
+  it = it ? Object.assign({}, it) : { code: code || "", own: !code, brand: code ? "ET" : "CH", name: "", model: "", serial: "", opt: "", loc: v.stLoc || "", qty: 0, photo: "", memo: "" };
   var f = '<div class="fg">' +
     (it.own && isNew ? '<div class="fd full"><label>바코드</label><div style="padding:8px 0">저장하면 <b>RW-' + esc(it.brand) + '-번호</b>로 자동 발급돼요</div></div>' : fd("바코드", "code", "text", it.code, "full", isNew ? "" : " readonly")) +
     fd("품번 (넣고 Enter → 브랜드·상품명 자동)", "model", "text", it.model) + fd("사이즈·컬러 (Enter → 저장)", "opt", "text", it.opt) +
     '<div class="fd full" id="st-found" role="status" style="font-size:13px;color:#666;min-height:18px"></div>' +
     ERP.sel("브랜드", "brand", allBrands(), it.brand) + (ERP.canWrite("stock") ? '<div class="fd" style="justify-content:flex-end"><button type="button" class="btn sm" id="st-addbrand">+ 브랜드 추가</button></div>' : "") + fd("상품명 (짧게, 라벨에 찍혀요)", "name", "text", it.name) +
-    fd("시리얼·보증카드 번호", "serial", "text", it.serial) + fd("위치", "loc", "text", it.loc) + fd("재고 수량", "qty", "number", it.qty) + fd("매입처", "vendor", "text", it.vendor || "", "", ' list="st-vendors" autocomplete="off"') + '<datalist id="st-vendors">' + vendors().map(function (x) { return '<option value="' + esc(x) + '">'; }).join("") + "</datalist>" +
-    fd("매입날짜", "buyDate", "date", it.buyDate || "") + fd("매입금액 (1개, 원)", "buyPrice", "number", it.buyPrice === 0 ? 0 : (it.buyPrice || "")) +
+    fd("시리얼·보증카드 번호", "serial", "text", it.serial) + fd("위치", "loc", "text", it.loc) +
+    (isNew ? "" : lotTable(it)) +
+    '<div class="fd full" style="font-weight:700;margin-top:6px">' + (isNew ? "매입 정보 (같은 조건으로 산 개수만큼 등록돼요)" : "입고 추가 (새로 들어온 것만 — 0이면 추가 안 함)") + "</div>" +
+    fd(isNew ? "수량" : "추가 수량", "addQty", "number", isNew ? (v.stMode === "출고" ? 0 : 1) : 0) +
+    fd("매입처", "vendor", "text", isNew ? "" : (lastLot(it).vendor || ""), "", ' list="st-vendors" autocomplete="off"') + '<datalist id="st-vendors">' + vendors().map(function (x) { return '<option value="' + esc(x) + '">'; }).join("") + "</datalist>" +
+    fd("매입날짜", "buyDate", "date", U.today()) + fd("매입금액 (1개, 원)", "buyPrice", "number", "") +
     fd("메모", "memo", "text", it.memo, "full") +
     '<div class="fd full"><label for="st-photo">사진 (라벨이 떨어져도 찾을 수 있게)</label><input id="st-photo" type="file" accept="image/*" capture="environment"><div id="st-pv" style="margin-top:8px">' + (it.photo ? '<img src="' + it.photo + '" alt="상품 사진" style="width:120px;border-radius:8px">' : "") + "</div></div>" +
     (isNew ? "" : '<div class="fd full"><label>바코드 미리보기</label><div style="background:#fff;padding:8px;width:240px">' + barcodeSvg(it.code, 40) + "</div></div>") + "</div>";
   ERP.openDrawer(isNew ? (it.own ? "자체 바코드 발급" : "새 바코드 상품 등록") : "재고 상품 수정", f, "stock", it, isNew, { saveLabel: isNew && it.own ? "발급하고 저장" : "저장" });
+}
+function lotTable(it) {
+  var L = fifo(lotsOf(it));
+  if (!L.length) return '<div class="fd full"><label>입고 내역</label><div class="muted">재고 0개</div></div>';
+  var rows = L.map(function (x, i) {
+    return '<tr data-lot="' + esc(x.id) + '"><td class="num">' + (i + 1) + '</td><td><input type="date" data-lk="date" value="' + esc(x.date || "") + '" style="width:130px"></td><td><input data-lk="vendor" list="st-vendors" value="' + esc(x.vendor || "") + '" style="width:120px"></td><td><input type="number" inputmode="numeric" data-lk="price" value="' + esc(x.price === "" || x.price == null ? "" : x.price) + '" style="width:100px"></td><td><input data-lk="loc" value="' + esc(x.loc || "") + '" style="width:60px"></td><td><input type="checkbox" data-lk="del" aria-label="' + (i + 1) + '번 빼기"></td></tr>';
+  }).join("");
+  return '<div class="fd full"><label>입고 내역 · ' + L.length + '개 (먼저 들어온 순 · 1개 = 1줄, 매입가를 줄마다 고칠 수 있어요)</label><div class="table-wrap" style="max-height:260px;overflow:auto"><table style="min-width:0"><thead><tr><th>#</th><th>매입날짜</th><th>매입처</th><th>매입가</th><th>위치</th><th>빼기</th></tr></thead><tbody>' + rows + "</tbody></table></div></div>";
 }
 function shrink(file) {
   return new Promise(function (res, rej) {
@@ -165,7 +196,18 @@ ERP.forms.stock = {
     if (rec.own && st.isNew) { var b = o.brand || "ET"; d.seq[b] = (d.seq[b] || 0) + 1; o.code = "RW-" + b + "-" + String(d.seq[b]).padStart(4, "0"); while (d.items[o.code]) { d.seq[b]++; o.code = "RW-" + b + "-" + String(d.seq[b]).padStart(4, "0"); } }
     o.code = String(o.code || "").trim(); if (!o.code) throw new Error("바코드를 입력해 주세요.");
     if (st.isNew && d.items[o.code]) throw new Error("이미 등록된 바코드예요: " + o.code);
-    var it = { code: o.code, own: !!rec.own, brand: o.brand, name: o.name, model: o.model, serial: o.serial, opt: o.opt, loc: String(o.loc || "").toUpperCase(), qty: Math.max(0, Number(o.qty) || 0), photo: rec._photo || rec.photo || "", memo: o.memo, vendor: String(o.vendor || "").trim(), buyDate: o.buyDate || "", buyPrice: o.buyPrice === "" || o.buyPrice == null ? "" : Math.max(0, Number(o.buyPrice) || 0), at: new Date().toISOString() };
+    var loc = String(o.loc || "").toUpperCase();
+    var lots = st.isNew ? [] : lotsOf(Object.assign({}, d.items[o.code] || rec)).map(function (x) { return Object.assign({}, x); });
+    body.querySelectorAll("[data-lot]").forEach(function (tr) {
+      var x = lots.find(function (l) { return l.id === tr.dataset.lot; }); if (!x) return;
+      if (tr.querySelector('[data-lk="del"]').checked) { x._del = true; return; }
+      var g = function (k) { return tr.querySelector('[data-lk="' + k + '"]').value; };
+      x.date = g("date"); x.vendor = g("vendor").trim(); x.loc = g("loc").trim().toUpperCase(); var pv = g("price"); x.price = pv === "" ? "" : Math.max(0, Number(pv) || 0);
+    });
+    lots = lots.filter(function (x) { return !x._del; });
+    var add = Math.max(0, Math.floor(Number(o.addQty) || 0)); if (add > 500) throw new Error("한 번에 500개까지만 추가할 수 있어요.");
+    for (var i = 0; i < add; i++) lots.push(mkLot({ vendor: o.vendor, date: o.buyDate, price: o.buyPrice, loc: loc }));
+    var it = { code: o.code, own: !!rec.own, brand: o.brand, name: o.name, model: o.model, serial: o.serial, opt: o.opt, loc: loc, lots: lots, qty: lots.length, photo: rec._photo || rec.photo || "", memo: o.memo, at: new Date().toISOString() };
     d.items[it.code] = it;
     if (st.isNew && v.stMode === "실사") { if (!d.count) d.count = { at: new Date().toISOString(), scans: {} }; } if (st.isNew && d.count && v.stMode === "실사") d.count.scans[it.code] = (d.count.scans[it.code] || 0) + 1;
     var err = await save(true);
@@ -242,12 +284,14 @@ ERP.acts.stfinish = function () {
     (diffs.length ? '<div class="table-wrap"><table><thead><tr><th>바코드</th><th>상품</th><th class="r">장부</th><th class="r">실사</th><th class="r">차이</th></tr></thead><tbody>' + rows + "</tbody></table></div>" : "");
   ERP.openDrawer("실사 마감", html, "stockfin", c, true, { saveLabel: "실사 수량으로 재고 반영" });
 };
-ERP.forms.stockfin = { open: function () {}, commit: async function () { var d = D(), c = d.count; items().forEach(function (it) { it.qty = c.scans[it.code] || 0; }); d.lastCount = c.at; d.count = null; v.stMode = "조회"; await save(true); v.stMsg = "실사 결과를 재고에 반영했어요."; return true; } };
+ERP.forms.stockfin = { open: function () {}, commit: async function () { var d = D(), c = d.count; items().forEach(function (it) { setCount(it, c.scans[it.code] || 0); }); d.lastCount = c.at; d.count = null; v.stMode = "조회"; await save(true); v.stMsg = "실사 결과를 재고에 반영했어요."; return true; } };
 ERP.acts.stcancel = function () { D().count = null; v.stMode = "조회"; save(); v.stMsg = "실사를 취소했어요 (재고는 그대로)."; ERP.render(); };
 ERP.acts.stxls = function () {
-  var A = [["바코드", "자체발급", "브랜드", "상품명", "품번", "시리얼", "사이즈·컬러", "위치", "재고", "매입처", "매입날짜", "매입금액", "메모", "수정일"]];
-  items().forEach(function (it) { A.push([it.code, it.own ? "Y" : "", brandName(it.brand), it.name, it.model, it.serial, it.opt, it.loc, Number(it.qty) || 0, it.vendor || "", it.buyDate || "", it.buyPrice === "" || it.buyPrice == null ? "" : Number(it.buyPrice), it.memo, (it.at || "").slice(0, 10)]); });
-  var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(A), "실물재고"); XLSX.writeFile(wb, "로우나_실물재고_" + U.today() + ".xlsx");
+  var A = [["바코드", "자체발급", "브랜드", "상품명", "품번", "시리얼", "사이즈·컬러", "위치", "재고", "평균매입가", "최저매입가", "최고매입가", "메모", "수정일"]];
+  items().forEach(function (it) { A.push([it.code, it.own ? "Y" : "", brandName(it.brand), it.name, it.model, it.serial, it.opt, it.loc, Number(it.qty) || 0, (buySummary(it).avg != null ? buySummary(it).avg : ""), (buySummary(it).min != null ? buySummary(it).min : ""), (buySummary(it).max != null ? buySummary(it).max : ""), it.memo, (it.at || "").slice(0, 10)]); });
+  var B = [["바코드", "품번", "브랜드", "상품명", "사이즈·컬러", "매입날짜", "매입처", "매입금액", "위치", "기록일"]];
+  items().forEach(function (it) { fifo(lotsOf(it)).forEach(function (x) { B.push([it.code, it.model, brandName(it.brand), it.name, it.opt, x.date, x.vendor, x.price === "" ? "" : Number(x.price), x.loc || it.loc, (x.at || "").slice(0, 10)]); }); });
+  var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(A), "실물재고"); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(B), "입고내역(1개씩)"); XLSX.writeFile(wb, "로우나_실물재고_" + U.today() + ".xlsx");
 };
 ERP.acts.stsabang = function () {
   var sk = S.SET.sabang_skus;
