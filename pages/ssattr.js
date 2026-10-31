@@ -255,6 +255,7 @@ ERP.acts.ssattrauto = async function () {
   for (var lw = 0; !lockOk() && lw < 10; lw++) await new Promise(function (r) { setTimeout(r, 30000); });   /* 새로고침 직후엔 이전 화면의 표시가 2분간 남아 있어서 기다렸다가 시작 */
   if (!lockOk()) { ERP.toast("다른 ERP 탭에서 이미 자동 진행 중이라 이 탭은 쉬어요."); return; }
   lockBeat(); var beat = setInterval(lockBeat, 30000);
+  try { if (navigator.locks && !window.__ssKeep) { window.__ssKeep = 1; navigator.locks.request("rowna-ssattr-keepalive", function () { return new Promise(function () {}); }); } } catch (e) {}   /* 크롬이 안 보는 탭을 얼려서(절전) 자동 작업이 멈추던 문제 — 잠금을 쥔 탭은 얼리지 않음 */
   lastProg = Date.now();
   var dog = setInterval(async function () {   /* 감시: 9분 동안 한 상품도 안 끝나면 도우미가 멈춘 것 — 도우미 2.6이면 도우미를 다시 켜고 ERP도 새로고침(사람 손 없이 복구) */
     if (Date.now() - lastProg < 540000) return;
