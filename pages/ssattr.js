@@ -146,6 +146,7 @@ async function writePage(origin, attrs, pick, tags, skipConv) {   /* skipConv: �
     { op: "closed", ms: 20000, need: 5 }, { op: "switchBack" }, { op: "wait", ms: 3000 }];
   if (skipConv) ops.splice(2, 7);
   var C0 = skipConv ? -1 : 2;
+  var pk = Object.keys(pick); if (pk.length) { opt.push(ops.length); ops.push({ op: "waitText", text: pk[pk.length - 1], ms: 15000 }); }   /* 11/3: 속성표가 늦게 그려지는 상품(신발 등)에서 칸이 생기기 전에 체크해서 '항목 없음'이 나던 문제 — 마지막 속성 이름이 보일 때까지 기다림 */
   Object.keys(pick).forEach(function (k) { var a = attrs.filter(function (x) { return x.name === k; })[0];
     pick[k].forEach(function (v) {
       /* 10/31: 줄 위치 클릭은 화면 줄 순서가 읽을 때와 달라지는 경우(3/7)가 있어 체크박스엔 쓰지 않음(다른 칸을 잘못 누를 위험). 단일선택은 선택지 번호가 칸마다 고유해서 엉뚱한 칸에 들어갈 일이 없으므로 전체 화면에서 번호로 클릭 */
