@@ -201,7 +201,8 @@ async function one(t, s, opts) {
     var tp = { have: p.have || [], reg: [] }, cands = [];
     if (HV25) {   /* 2.5: 태그 확인을 저장 화면에서 같이(페이지 1번 덜 엶) */
       if (!p.have || p.have.length < 10) { try { cands = await makeTags(t, rex, p.have || []); } catch (e) { row.tagErr = e.message; } }
-    } else { try { cands = await makeTags(t, typeof rex !== "undefined" ? rex : null, []); tp = await tagProbe(origin, cands, p.have); } catch (e) { row.tagErr = e.message; } }
+    } else if (p.have && p.have.length >= 5) { tp = { have: p.have, reg: [] }; row.tagSkip = "태그 " + p.have.length + "개 있음(AI 비용 절약)"; }   /* 11/2 비용 최소화: 태그가 이미 5개 이상이면 AI 태그 생성 건너뜀(이미 작업한 상품 재확인 때 비용 0) */
+    else { try { cands = await makeTags(t, typeof rex !== "undefined" ? rex : null, []); tp = await tagProbe(origin, cands, p.have); } catch (e) { row.tagErr = e.message; } }
     row.tags = tp.reg; row.tagsHad = tp.have.length;
     if (!Object.keys(c.pick).length && !needConv && !(HV25 ? cands.length : tp.reg.length)) { row.status = "할 일 없음(이미 입력·변환됨)"; return row; }
     if (opts.dry) { row.status = "미리보기(저장 안 함)"; return row; }
