@@ -57,7 +57,8 @@ async function rexInfo(code) {
 async function choose(t, attrs, rex) {
   var todo = attrs.filter(function (a) { return !a.selected.length; }).map(function (a) { return { name: a.name, type: a.type, options: a.type === "single" ? a.options.map(function (o) { return o.text; }) : a.options }; });
   if (!todo.length) return { pick: {}, why: "이미 모두 입력됨" };
-  var r = await ERP.helperAsk("ai", { body: { response_format: { type: "json_object" }, messages: [{ role: "user", content: PROMPT + "\n\n상품명: " + t.name + "\n카테고리: " + t.cat + "\n브랜드: " + t.brand + "\n\n[렉스몬드 상품정보]\n" + (rex && rex.found ? rex.info : "(없음 — 상품명만으로 확실한 것만)") + "\n\n속성 목록:\n" + JSON.stringify(todo) }] } });
+  var r = await ERP.helperAsk("ai", { body: { model: AIM, response_format: { type: "json_object" }, messages: [{ role: "user", content: PROMPT + "\n\n상품명: " + t.name + "\n카테고리: " + t.cat + "\n브랜드: " + t.brand + "\n\n[렉스몬드 상품정보]\n" + (rex && rex.found ? rex.info : "(없음 — 상품명만으로 확실한 것만)") + "\n\n속성 목록:\n" + JSON.stringify(todo) }] } });
+  if (r.usage) { TOK.i += r.usage.prompt_tokens || 0; TOK.o += r.usage.completion_tokens || 0; }
   var j = JSON.parse(r.content || "{}"), pick = {};
   Object.keys(j.pick || {}).forEach(function (k) { var a = attrs.filter(function (x) { return x.name === k; })[0]; if (!a || a.selected.length) return; var vals = (j.pick[k] || []).filter(function (v) { return a.type === "single" ? a.options.some(function (o) { return o.text === v; }) : a.options.indexOf(v) >= 0; }); if (a.type === "single" || /소재/.test(k)) vals = vals.slice(0, 1); else vals = vals.slice(0, 2); if (vals.length) pick[k] = vals; });
   return { pick: pick, why: j.why || "" };
@@ -71,7 +72,8 @@ var TAGP = [
   "서로 다른 20개를 중요한 순서로. 출력은 json으로: {\"tags\":[\"...\"]}"
 ].join("\n");
 async function makeTags(t, rex, have) {
-  var r = await ERP.helperAsk("ai", { body: { response_format: { type: "json_object" }, messages: [{ role: "user", content: TAGP + "\n\n상품명: " + t.name + "\n카테고리: " + t.cat + "\n브랜드(쓰지 말 것): " + t.brand + (rex && rex.found ? "\n렉스몬드 정보:\n" + rex.info.slice(0, 1200) : "") + (have && have.length ? "\n이미 있는 태그(제외): " + have.join(", ") : "") }] } });
+  var r = await ERP.helperAsk("ai", { body: { model: AIM, response_format: { type: "json_object" }, messages: [{ role: "user", content: TAGP + "\n\n상품명: " + t.name + "\n카테고리: " + t.cat + "\n브랜드(쓰지 말 것): " + t.brand + (rex && rex.found ? "\n렉스몬드 정보:\n" + rex.info.slice(0, 1200) : "") + (have && have.length ? "\n이미 있는 태그(제외): " + have.join(", ") : "") }] } });
+  if (r.usage) { TOK.i += r.usage.prompt_tokens || 0; TOK.o += r.usage.completion_tokens || 0; }
   var j = JSON.parse(r.content || "{}"), b = String(t.brand || "").replace(/\s+/g, ""), seen = {};
   return (j.tags || []).map(function (x) { return String(x).replace(/[#\s]/g, ""); }).filter(function (x) { if (!x || x.length > 15 || seen[x] || (b && x.indexOf(b) >= 0) || /로우나/.test(x)) return false; seen[x] = 1; return true; });
 }
@@ -174,6 +176,8 @@ async function writePage(origin, attrs, pick, tags, skipConv) {   /* skipConv: �
   return { tagReg: tr ? (tr.added || []).filter(function (x) { return (tr.reg || []).indexOf(x) >= 0; }) : null, tagInfo: tr ? { checked: tr.checked, removed: (tr.removed || []).length, rmFail: tr.rmFail || [] } : null, tagsNow: ti >= 0 && res[ti] ? parseChips(res[ti].html) : null, dialogs: r.dialogs || [], conv: conv, applied: applied, opsFailed: res.filter(function (x, i) { return x && !x.ok && !x.skipped && (C0 < 0 || i < 2 || i > 8) && opt.indexOf(i) < 0; }).map(function (x) { return x.error; }), saveMsg: ((t1 + "\n" + t2).match(/[^\n]*(수정되었|저장되었|완료되었|오류|실패|입력해 주세요|확인해 주세요)[^\n]*/g) || []).slice(0, 4) };
 }
 var lastProg = Date.now();
+var AIM = "gpt-4.1-mini";   /* 11/2 대표님 지시: 비용 최소화 — gpt-4.1(입력 $2·출력 $8 /100만토큰) 대신 mini(입력 $0.40·출력 $1.60), 약 1/5 비용 */
+var TOK = { i: 0, o: 0 };   /* 상품마다 쓴 토큰 수(비용 계산용) */
 async function loginOk() {   /* 스마트스토어 로그인이 풀렸는지 확인(풀린 채로 돌면 모든 상품이 '실패'로 기록돼 건너뛰어지던 문제) */
   try { var d = await ERP.helperAsk("page", { url: "https://sell.smartstore.naver.com/#/products/origin-list", minLen: 100, tries: 3 }); return !/accounts\.commerce\.naver\.com|nid\.naver\.com/.test(String(d && d.url || "")); } catch (e) { return true; }
 }
@@ -183,6 +187,7 @@ function dl(s, tag) { var rows = (s.log || []).map(function (x) { return [x.at, 
 
 async function one(t, s, opts) {
   var origin = (s.map || {})[t.ch] || t.origin; var row = { at: new Date().toISOString(), ch: t.ch, origin: origin, name: t.name };
+  TOK = { i: 0, o: 0 };
   try {
     var p;
     if (origin) p = await readPage(origin);
@@ -206,6 +211,7 @@ async function one(t, s, opts) {
     var convBad = needConv && w.conv !== "변환 완료";
     row.status = w.applied && !w.opsFailed.length && !convBad ? "저장 완료" : "일부 실패"; if (w.opsFailed.length) row.err = w.opsFailed.join(" / ");
   } catch (e) { row.status = "실패"; row.err = e.message; if (/멈춤|멈췄/.test(e.message)) stopReq = true; }
+  row.tok = [TOK.i, TOK.o]; row.aim = AIM;
   return row;
 }
 /* 첫 실행: 시험 상품 1개(발렌티노 크로스백 원상품번호 12652259462) + 상품목록 화면 구조 진단 */
