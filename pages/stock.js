@@ -158,10 +158,18 @@ function onScan(raw) {
 }
 function label(it) { return brandName(it.brand) + " " + (it.name || it.model || it.code) + (it.name && it.model ? " · " + it.model : ""); }
 
+/* ---------- 검색: 상품 키워드·바코드·품번(SKU). 띄어쓰기로 여러 단어, 하이픈·공백·대소문자 무시, 한글 자판으로 친 영문 코드도 찾음 ---------- */
+function an(x) { return String(x || "").toUpperCase().replace(/[^A-Z0-9가-힣]/g, ""); }
+function matchQ(it, raw) {
+  var words = String(raw || "").trim().split(/\s+/).filter(Boolean); if (!words.length) return true;
+  var hay = an([it.code, brandName(it.brand), it.brandEn, it.name, it.model, it.serial, it.opt, it.loc, it.memo].join(" "));
+  return words.every(function (w) { var a = an(w), b = an(fixKo(w)); return (a && hay.indexOf(a) !== -1) || (b && b !== a && hay.indexOf(b) !== -1); });
+}
+
 /* ---------- 화면 ---------- */
 function render() {
   var d = D(), w = ERP.canWrite("stock"), cnt = d.count, q = norm(v.stQ);
-  var L = items().filter(function (it) { return !q || norm([it.code, brandName(it.brand), it.name, it.model, it.serial, it.opt, it.loc].join(" ")).indexOf(q) !== -1; })
+  var L = items().filter(function (it) { return matchQ(it, v.stQ); })
     .filter(function (it) { return v.stAge !== "long" || (oldestDays(it) || 0) >= LONG; })
     .sort(v.stAge ? function (a, b) { return (oldestDays(b) || -1) - (oldestDays(a) || -1); } : function (a, b) { return (a.loc || "~").localeCompare(b.loc || "~") || a.code.localeCompare(b.code); });
   var tot = 0; items().forEach(function (it) { tot += Number(it.qty) || 0; });
@@ -183,7 +191,7 @@ function render() {
     ERP.tile("평균 보유일수", TO.avgDays == null ? "-" : TO.avgDays + "일", "입고일부터 오늘까지") +
     ERP.tile("장기재고 " + LONG + "일+", TO.longN + "개", TO.longCost ? won(TO.longCost) + "원 묶임" : "") +
     ERP.tile("회전율 (최근 90일)", TO.rate == null ? "-" : "연 " + TO.rate.toFixed(1) + "회", TO.soldN ? "출고 " + TO.soldN + "개 · 평균 " + TO.soldAvgDays + "일 만에 판매" : "출고 −1로 찍어야 계산돼요") + "</div>";
-  h += '<div class="tools filters"><input class="ctl" data-search="stQ" value="' + esc(v.stQ) + '" placeholder="검색: 코드·브랜드·상품명·품번·시리얼·위치" style="min-width:320px">' + ERP.chips("data-stage", v.stAge, [["", "위치순"], ["old", "오래된 재고순"], ["long", LONG + "일+ 장기재고만"]]) + '</div>';
+  h += '<div class="tools filters"><input class="ctl" data-search="stQ" value="' + esc(v.stQ) + '" type="search" placeholder="🔍 바로 검색: 상품 키워드 · 바코드 · 품번(SKU) · 시리얼 · 위치" style="min-width:320px">' + ERP.chips("data-stage", v.stAge, [["", "위치순"], ["old", "오래된 재고순"], ["long", LONG + "일+ 장기재고만"]]) + '</div>';
   var body = L.map(function (it) {
     var c = cnt ? (cnt.scans[it.code] || 0) : null, diff = cnt ? c - (Number(it.qty) || 0) : 0;
     return '<tr class="click" data-stedit="' + esc(it.code) + '" tabindex="0"><td><input type="checkbox" data-stpick="' + esc(it.code) + '" aria-label="라벨 선택"></td><td>' + (it.photo ? '<img src="' + it.photo + '" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:6px">' : "") + '</td><td class="num">' + esc(it.code) + (it.own ? ' <span class="pill p-acc">자체</span>' : "") + '</td><td class="num">' + esc(it.model || "") + (it.serial ? "<small>S/N " + esc(it.serial) + "</small>" : "") + "</td><td>" + esc(brandName(it.brand)) + '</td><td class="name">' + esc(it.name || "") + (it.opt ? "<small>" + esc(it.opt) + "</small>" : "") + '</td><td>' + esc(it.loc || "") + '</td><td class="r num">' + (function () { var b = buySummary(it); return esc(b.main) + (b.sub ? "<small>" + esc(b.sub) + "</small>" : ""); })() + '</td><td class="r num' + ((oldestDays(it) || 0) >= LONG ? " neg" : "") + '">' + (oldestDays(it) == null ? "" : oldestDays(it) + "일") + '</td><td class="r num">' + (Number(it.qty) || 0) + "</td>" +
