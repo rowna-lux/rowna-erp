@@ -13,7 +13,7 @@ function allBrands() {
   extra.forEach(function (b) { if (b && b[0] && b[1] && !L.some(function (x) { return x[0] === b[0]; })) L.push([b[0], b[1], b[2] || ""]); });
   return L.sort(function (a, b) { if (a[0] === "ET") return 1; if (b[0] === "ET") return -1; return a[1].localeCompare(b[1], "ko"); });
 }
-var v = ERP.view; v.stMode = v.stMode || "실사"; v.stQ = v.stQ || ""; v.stAge = v.stAge || ""; v.stLoc = v.stLoc || ""; v.stMsg = v.stMsg || "";
+var v = ERP.view; v.stMode = v.stMode || "실사"; v.stQ = v.stQ || ""; v.stAge = v.stAge || ""; v.stBrand = v.stBrand || ""; v.stLoc = v.stLoc || ""; v.stMsg = v.stMsg || "";
 var LAST = null;
 function D() {
   var d = S.SET[KEY];
@@ -172,6 +172,7 @@ function render() {
   var d = D(), w = ERP.canWrite("stock"), cnt = d.count, q = norm(v.stQ);
   var L = items().filter(function (it) { return matchQ(it, v.stQ); })
     .filter(function (it) { return v.stAge !== "long" || (oldestDays(it) || 0) >= LONG; })
+    .filter(function (it) { return !v.stBrand || it.brand === v.stBrand; })
     .sort(v.stAge ? function (a, b) { return (oldestDays(b) || -1) - (oldestDays(a) || -1); } : function (a, b) { return (a.loc || "~").localeCompare(b.loc || "~") || a.code.localeCompare(b.code); });
   var tot = 0; items().forEach(function (it) { tot += Number(it.qty) || 0; });
   var h = '<div class="head"><div><h1>재고실사</h1><p>바코드를 찍으면 재고가 맞춰져요 · 위치 바코드(LOC-)를 먼저 찍으면 위치도 기록돼요</p></div><div class="tools">' +
@@ -196,7 +197,14 @@ function render() {
     stat("평균 보유", TO.avgDays == null ? "-" : TO.avgDays + "일") +
     stat("장기 " + LONG + "일+", TO.longN + "개", TO.longCost ? won(TO.longCost) + "원" : "") +
     stat("회전율(90일)", TO.rate == null ? "-" : "연 " + TO.rate.toFixed(1) + "회") + "</div>";
-  h += '<div class="tools filters">' + ERP.chips("data-stage", v.stAge, [["", "위치순"], ["old", "오래된 재고순"], ["long", LONG + "일+ 장기재고만"]]) + '</div>';
+  /* 브랜드별 보기: 등록된 상품이 있는 브랜드만, 가나다순 · 상품 수/재고 수 */
+  var bc = {}; items().forEach(function (it) { var k = it.brand || "ET"; bc[k] = bc[k] || { n: 0, q: 0 }; bc[k].n++; bc[k].q += Number(it.qty) || 0; });
+  var bopts = allBrands().filter(function (b) { return bc[b[0]]; }).map(function (b) { return '<option value="' + esc(b[0]) + '"' + (v.stBrand === b[0] ? " selected" : "") + ">" + esc(b[1]) + " (" + bc[b[0]].n + "종 · " + bc[b[0]].q + "개)</option>"; }).join("");
+  h += '<div class="tools filters">' + ERP.chips("data-stage", v.stAge, [["", "위치순"], ["old", "오래된 재고순"], ["long", LONG + "일+ 장기재고만"]]) +
+    '<select class="ctl" id="st-brandf" aria-label="브랜드별 보기"><option value="">브랜드: 전체 (' + items().length + "종)</option>" + bopts + "</select>" +
+    (v.stBrand ? '<button class="btn sm" data-act="stbrandall">브랜드 해제</button>' : "") + '</div>';
+  /* 오른쪽 아래 고정 버튼: 어디서든 맨 위 바코드 칸으로 */
+  h += '<button type="button" data-act="sttop" aria-label="맨 위 바코드 칸으로" title="맨 위 바코드 칸으로" style="position:fixed;right:max(20px,env(safe-area-inset-right,0px));bottom:calc(24px + env(safe-area-inset-bottom,0px));z-index:30;border:0;border-radius:999px;padding:14px 18px;font-weight:700;font-size:14px;cursor:pointer;background:#3c96ff;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.35)">↑ 바코드 찍기</button>';
   var body = L.map(function (it) {
     var c = cnt ? (cnt.scans[it.code] || 0) : null, diff = cnt ? c - (Number(it.qty) || 0) : 0;
     return '<tr class="click" data-stedit="' + esc(it.code) + '" tabindex="0"><td><input type="checkbox" data-stpick="' + esc(it.code) + '" aria-label="라벨 선택"></td><td>' + (it.photo ? '<img src="' + it.photo + '" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:6px">' : "") + '</td><td class="num">' + esc(it.code) + (it.own ? ' <span class="pill p-acc">자체</span>' : "") + '</td><td class="num">' + esc(it.model || "") + (it.serial ? "<small>S/N " + esc(it.serial) + "</small>" : "") + "</td><td>" + esc(brandName(it.brand)) + '</td><td class="name">' + esc(it.name || "") + (it.opt ? "<small>" + esc(it.opt) + "</small>" : "") + '</td><td>' + esc(it.loc || "") + '</td><td class="r num">' + (function () { var b = buySummary(it); return esc(b.main) + (b.sub ? "<small>" + esc(b.sub) + "</small>" : ""); })() + '</td><td class="r num' + ((oldestDays(it) || 0) >= LONG ? " neg" : "") + '">' + (oldestDays(it) == null ? "" : oldestDays(it) + "일") + '</td><td class="r num">' + (Number(it.qty) || 0) + "</td>" +
@@ -210,6 +218,7 @@ function bind(root) {
   var inp = root.querySelector("#st-scan");
   if (inp) { if (!ERP.drawer()) inp.focus({ preventScroll: true }); inp.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); var x = inp.value; inp.value = ""; onScan(x); } }); }
   root.querySelectorAll("[data-stage]").forEach(function (b) { b.onclick = function () { v.stAge = b.dataset.stage; ERP.render(); }; });
+  var bf = root.querySelector("#st-brandf"); if (bf) bf.onchange = function () { v.stBrand = bf.value; ERP.render(); };
   root.querySelectorAll("[data-stmode]").forEach(function (b) { b.onclick = function () { v.stMode = b.dataset.stmode; if (v.stMode === "실사" && !D().count && (D().countAt = Date.now()) && ERP.canWrite("stock")) { D().count = { at: new Date().toISOString(), scans: {} }; save(); } ERP.render(); }; });
   root.querySelectorAll("[data-stedit]").forEach(function (tr) { var go = function (e) { if (e && e.target.closest("input")) return; open(D().items[tr.dataset.stedit]); }; tr.addEventListener("click", go); tr.addEventListener("keydown", function (e) { if (e.key === "Enter") go(); }); });
   var all = root.querySelector("[data-stpickall]"); if (all) all.onchange = function () { root.querySelectorAll("[data-stpick]").forEach(function (c) { c.checked = all.checked; }); };
@@ -477,6 +486,8 @@ ERP.acts.stundo = function () {
   v.stMsg = n ? "↩ 출고 취소: " + label(it) + " → 재고 " + it.qty + " (원래 입고일·매입가 그대로)" : "취소할 출고가 없어요";
   save(true); ERP.render();
 };
+ERP.acts.sttop = function () { window.scrollTo({ top: 0, behavior: "smooth" }); var i = document.getElementById("st-scan"); if (i) setTimeout(function () { i.focus({ preventScroll: true }); }, 250); };
+ERP.acts.stbrandall = function () { v.stBrand = ""; ERP.render(); };
 ERP.acts.stcancel = function () { D().count = null; D().countAt = Date.now(); v.stMode = "조회"; save(); v.stMsg = "실사를 취소했어요 (재고는 그대로)."; ERP.render(); };
 ERP.acts.stxls = function () {
   var A = [["바코드", "자체발급", "브랜드", "상품명", "품번", "시리얼", "사이즈·컬러", "위치", "재고", "평균매입가", "최저매입가", "최고매입가", "메모", "수정일"]];
