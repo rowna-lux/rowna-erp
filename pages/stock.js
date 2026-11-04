@@ -386,8 +386,11 @@ function lookup(model) {
 /* ---------- 라벨 출력 (40×20mm) ---------- */
 /* PC의 '라벨 도우미'(127.0.0.1:17777)가 켜져 있으면 4B-2054N으로 바로 출력, 꺼져 있으면 화면 인쇄로 */
 var HELPER = "http://127.0.0.1:17777";
+/* 라벨 아래 줄: 품번 / 사이즈·컬러 / 입고일(가장 최근 입고, 없으면 오늘) */
+function inDateOf(it) { var ds = (it.lots ? active(it) : []).map(lotIn).filter(Boolean).sort(); var d = ds.length ? ds[ds.length - 1] : (it.at || U.today()).slice(0, 10); return String(d).slice(2, 10).replace(/-/g, "."); }
+function labelInfo(it) { return [it.model, it.opt, "IN " + inDateOf(it)].filter(Boolean).join(" / "); }
 async function helperPrint(L, locs) {
-  var labels = L.map(function (it) { return { code: it.code, sub: locs ? "LOCATION" : [it.model, it.opt].filter(Boolean).join(" ") }; });
+  var labels = L.map(function (it) { return { code: it.code, sub: locs ? "LOCATION" : labelInfo(it) }; });
   try {
     var ctl = new AbortController(), tm = setTimeout(function () { ctl.abort(); }, 4000);
     var r = await fetch(HELPER + "/print", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ labels: labels }), signal: ctl.signal });
@@ -404,13 +407,13 @@ async function printLabels(L, locs) {
 }
 function printLabelsWindow(L, locs) {
   var cells = L.map(function (it) {
-    return '<div class="lb"><div class="bc">' + barcodeSvg(it.code, 40) + '</div><div class="cd">' + esc(it.code) + '</div><div class="nm">' + esc((locs ? "보관 위치" : brandName(it.brand) + " " + (it.name || it.model || "")).slice(0, 22)) + "</div></div>";
+    return '<div class="lb"><div class="bc">' + barcodeSvg(it.code, 40) + '</div><div class="cd">' + esc(it.code) + '</div>' + (locs ? '<div class="nm">보관 위치</div>' : '<div class="nm">' + esc(labelInfo(it)) + '</div>') + "</div>";
   }).join("");
   var w = window.open("", "_blank");
   if (!w) { ERP.toast("팝업이 막혔어요. 주소창 오른쪽에서 팝업을 허용해 주세요."); return; }
   w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>라벨 출력</title><style>@page{size:40mm 20mm;margin:0}*{box-sizing:border-box}body{margin:0;font-family:"Malgun Gothic",sans-serif}' +
     '.lb{width:40mm;height:20mm;padding:1.2mm 2mm;page-break-after:always;overflow:hidden;display:flex;flex-direction:column;align-items:center}' +
-    '.bc svg{width:36mm;height:9mm;display:block}.cd{font-size:8pt;font-weight:700;letter-spacing:.3px;margin-top:.6mm}.nm{font-size:6.5pt;white-space:nowrap;overflow:hidden;max-width:36mm}' +
+    '.bc svg{width:36mm;height:9mm;display:block}.cd{font-size:8pt;font-weight:700;letter-spacing:.3px;margin-top:.6mm}.nm{font-size:7pt;font-weight:600;white-space:nowrap;overflow:hidden;max-width:37mm}' +
     '@media screen{body{background:#eee;padding:10px}.lb{background:#fff;margin:0 0 6px;outline:1px dashed #aaa}.tip{font:13px sans-serif;margin-bottom:10px}}@media print{.tip{display:none}}</style></head><body>' +
     '<div class="tip">인쇄 설정: 프린터 4B-2054N · 용지 40×20mm · 여백 없음 · 배율 100% (기본값). ' + L.length + '장</div>' + cells + "<script>setTimeout(function(){print()},400)<\/script></body></html>");
   w.document.close();
