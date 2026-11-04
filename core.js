@@ -309,4 +309,15 @@ async function boot() {
 window.addEventListener("online", function () { ERP.sync("ok", "다시 연결됨"); });
 window.addEventListener("offline", function () { ERP.sync("err", "오프라인 · 저장 안 됨"); });
 ERP.boot = boot;
+/* 모든 화면 공통: 아래로 내려가면 오른쪽 아래에 '맨 위로' 버튼 */
+(function () {
+  var b = document.createElement("button");
+  b.type = "button"; b.id = "to-top"; b.textContent = "↑ 맨 위로"; b.setAttribute("aria-label", "맨 위로");
+  b.style.cssText = "position:fixed;right:max(20px,env(safe-area-inset-right,0px));bottom:calc(24px + env(safe-area-inset-bottom,0px));z-index:35;border:0;border-radius:999px;padding:14px 20px;font-weight:700;font-size:15px;cursor:pointer;background:#3c96ff;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.35);display:none";
+  b.onclick = function () { window.scrollTo({ top: 0, behavior: "smooth" }); var i = document.getElementById("st-scan"); if (i) setTimeout(function () { i.focus({ preventScroll: true }); }, 300); };
+  var tick = function () { b.style.display = window.scrollY > 200 ? "block" : "none"; };
+  window.addEventListener("scroll", tick, { passive: true });
+  var add = function () { if (!document.getElementById("to-top")) document.body.appendChild(b); tick(); };
+  if (document.body) add(); else document.addEventListener("DOMContentLoaded", add);
+})();
 })();
