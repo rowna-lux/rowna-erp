@@ -388,7 +388,8 @@ function lookup(model) {
 var HELPER = "http://127.0.0.1:17777";
 /* 라벨 아래 줄: 품번 / 사이즈·컬러 / 입고일(가장 최근 입고, 없으면 오늘) */
 function inDateOf(it) { var ds = (it.lots ? active(it) : []).map(lotIn).filter(Boolean).sort(); var d = ds.length ? ds[ds.length - 1] : (it.at || U.today()).slice(0, 10); return String(d).slice(2, 10).replace(/-/g, "."); }
-function labelInfo(it) { return [it.model, it.opt].filter(Boolean).join(" / "); }
+/* 라벨 프린터는 영문·숫자만 찍혀서, 한글만 있는 칸(예: 색상 "블랙")은 빼고 이어붙임 */
+function labelInfo(it) { return [it.model, it.opt].map(function (x) { return String(x || "").replace(/[^\x20-\x7E]/g, "").replace(/\s+/g, " ").trim(); }).filter(Boolean).join(" / "); }
 function labelDate(it) { return "IN " + inDateOf(it); }
 async function helperPrint(L, locs) {
   var labels = L.map(function (it) { return locs ? { code: it.code, sub: "LOCATION" } : { code: it.code, sub: labelInfo(it), sub2: labelDate(it) }; });
