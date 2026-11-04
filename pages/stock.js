@@ -179,19 +179,23 @@ function render() {
   h += '<div class="panel" style="padding:16px;margin-bottom:12px"><div class="tools filters" style="margin-bottom:10px">' + ERP.chips("data-stmode", v.stMode, [["실사", "실사(개수 세기)"], ["입고", "입고 +1"], ["출고", "출고 −1"], ["조회", "조회만"]]) +
     '<span class="pill ' + (v.stLoc ? "p-acc" : "p-mute") + '">위치: ' + esc(v.stLoc || "없음") + "</span>" + (v.stLoc ? '<button class="btn sm" data-act="stlocclear">위치 해제</button>' : "") + "</div>" +
     '<input class="ctl" id="st-scan" autocomplete="off" placeholder="여기를 누르고 바코드를 찍으세요 (직접 입력 후 Enter도 가능)" style="width:100%;font-size:20px;padding:14px" aria-label="바코드 입력">' +
+    '<input class="ctl" data-search="stQ" value="' + esc(v.stQ) + '" type="search" aria-label="재고 검색" placeholder="🔍 바로 검색: 상품 키워드 · 바코드 · 품번(SKU) · 시리얼 · 위치" style="width:100%;margin-top:8px;padding:10px 12px">' +
     '<div id="st-msg" role="status" style="margin-top:10px;font-size:15px;min-height:22px">' + (v.stLast ? '<b>✔ 방금 읽은 바코드: ' + esc(v.stLast) + "</b><br>" : "") + esc(v.stMsg) + '</div><div id="st-saved" class="muted" style="margin-top:6px;font-size:12.5px">' + (lastSavedAt ? "✔ 저장됨 " + lastSavedAt + " · 상품 " + items().length + "개" : "상품 " + items().length + "개 · 저장할 때마다 서버 최신 값과 합쳐서 저장해요") + "</div></div>";
   if (cnt) {
     var scanned = 0; Object.values(cnt.scans).forEach(function (n) { scanned += n; });
     h += '<div class="panel" style="padding:14px;margin-bottom:12px;border-left:4px solid #851b00"><b>실사 진행 중</b> · ' + esc(cnt.at.slice(0, 16).replace("T", " ")) + " 시작 · 찍은 수량 " + scanned + "개 " +
       (w ? '<button class="btn sm pri" data-act="stfinish" style="margin-left:8px">실사 마감 · 차이 보기</button><button class="btn sm" data-act="stcancel">실사 취소</button>' : "") + "</div>";
   }
-  h += '<div class="tiles">' + ERP.tile("상품(SKU)", items().length + "개") + ERP.tile("총 수량", tot + "개") + ERP.tile("자체 바코드", items().filter(function (it) { return it.own; }).length + "개", "RW-브랜드-번호") + "</div>";
+  var ownN = items().filter(function (it) { return it.own; }).length;
   var TO = turnover();
-  h += '<div class="tiles">' + ERP.tile("재고 원가", (TO.cost ? won(TO.cost) + "원" : "-"), TO.noPrice ? "매입가 미입력 " + TO.noPrice + "개 제외" : "보유 중 " + TO.n + "개") +
-    ERP.tile("평균 보유일수", TO.avgDays == null ? "-" : TO.avgDays + "일", "입고일부터 오늘까지") +
-    ERP.tile("장기재고 " + LONG + "일+", TO.longN + "개", TO.longCost ? won(TO.longCost) + "원 묶임" : "") +
-    ERP.tile("회전율 (최근 90일)", TO.rate == null ? "-" : "연 " + TO.rate.toFixed(1) + "회", TO.soldN ? "출고 " + TO.soldN + "개 · 평균 " + TO.soldAvgDays + "일 만에 판매" : "출고 −1로 찍어야 계산돼요") + "</div>";
-  h += '<div class="tools filters"><input class="ctl" data-search="stQ" value="' + esc(v.stQ) + '" type="search" placeholder="🔍 바로 검색: 상품 키워드 · 바코드 · 품번(SKU) · 시리얼 · 위치" style="min-width:320px">' + ERP.chips("data-stage", v.stAge, [["", "위치순"], ["old", "오래된 재고순"], ["long", LONG + "일+ 장기재고만"]]) + '</div>';
+  var stat = function (k, val, sub) { return '<span style="white-space:nowrap"><span class="muted">' + k + '</span> <b>' + val + '</b>' + (sub ? ' <small class="muted">(' + sub + ')</small>' : "") + "</span>"; };
+  h += '<div class="panel" style="padding:8px 12px;margin-bottom:10px;font-size:13px;display:flex;flex-wrap:wrap;gap:6px 18px">' +
+    stat("상품(SKU)", items().length + "개") + stat("총 수량", tot + "개") + stat("자체 바코드", ownN + "개") +
+    stat("재고 원가", TO.cost ? won(TO.cost) + "원" : "-", TO.noPrice ? "매입가 미입력 " + TO.noPrice + "개 제외" : "") +
+    stat("평균 보유", TO.avgDays == null ? "-" : TO.avgDays + "일") +
+    stat("장기 " + LONG + "일+", TO.longN + "개", TO.longCost ? won(TO.longCost) + "원" : "") +
+    stat("회전율(90일)", TO.rate == null ? "-" : "연 " + TO.rate.toFixed(1) + "회") + "</div>";
+  h += '<div class="tools filters">' + ERP.chips("data-stage", v.stAge, [["", "위치순"], ["old", "오래된 재고순"], ["long", LONG + "일+ 장기재고만"]]) + '</div>';
   var body = L.map(function (it) {
     var c = cnt ? (cnt.scans[it.code] || 0) : null, diff = cnt ? c - (Number(it.qty) || 0) : 0;
     return '<tr class="click" data-stedit="' + esc(it.code) + '" tabindex="0"><td><input type="checkbox" data-stpick="' + esc(it.code) + '" aria-label="라벨 선택"></td><td>' + (it.photo ? '<img src="' + it.photo + '" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:6px">' : "") + '</td><td class="num">' + esc(it.code) + (it.own ? ' <span class="pill p-acc">자체</span>' : "") + '</td><td class="num">' + esc(it.model || "") + (it.serial ? "<small>S/N " + esc(it.serial) + "</small>" : "") + "</td><td>" + esc(brandName(it.brand)) + '</td><td class="name">' + esc(it.name || "") + (it.opt ? "<small>" + esc(it.opt) + "</small>" : "") + '</td><td>' + esc(it.loc || "") + '</td><td class="r num">' + (function () { var b = buySummary(it); return esc(b.main) + (b.sub ? "<small>" + esc(b.sub) + "</small>" : ""); })() + '</td><td class="r num' + ((oldestDays(it) || 0) >= LONG ? " neg" : "") + '">' + (oldestDays(it) == null ? "" : oldestDays(it) + "일") + '</td><td class="r num">' + (Number(it.qty) || 0) + "</td>" +
