@@ -391,7 +391,7 @@ function inDateOf(it) { var ds = (it.lots ? active(it) : []).map(lotIn).filter(B
 function labelInfo(it) { return [it.model, it.opt].filter(Boolean).join(" / "); }
 function labelDate(it) { return "IN " + inDateOf(it); }
 async function helperPrint(L, locs) {
-  var labels = L.map(function (it) { return locs ? { code: it.code, sub: "LOCATION" } : { code: it.code, sub: labelInfo(it), sub2: labelDate(it), lines: [labelInfo(it), labelDate(it)] }; });
+  var labels = L.map(function (it) { return locs ? { code: it.code, sub: "LOCATION" } : { code: it.code, sub: labelInfo(it), sub2: labelDate(it) }; });
   try {
     var ctl = new AbortController(), tm = setTimeout(function () { ctl.abort(); }, 4000);
     var r = await fetch(HELPER + "/print", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ labels: labels }), signal: ctl.signal });
@@ -410,14 +410,20 @@ function printLabelsWindow(L, locs) {
   var cells = L.map(function (it) {
     return '<div class="lb"><div class="bc">' + barcodeSvg(it.code, 40) + '</div><div class="cd">' + esc(it.code) + '</div>' + (locs ? '<div class="nm">보관 위치</div>' : '<div class="nm">' + esc(labelInfo(it)) + '</div><div class="nm dt">' + esc(labelDate(it)) + '</div>') + "</div>";
   }).join("");
-  var w = window.open("", "_blank");
-  if (!w) { ERP.toast("팝업이 막혔어요. 주소창 오른쪽에서 팝업을 허용해 주세요."); return; }
+  /* 팝업 대신 화면 안 숨은 틀(iframe)로 인쇄 — 라벨 도우미 응답을 기다린 뒤에도 팝업 차단에 안 걸림 */
+  var old = document.getElementById("st-print-frame"); if (old) old.remove();
+  var fr = document.createElement("iframe"); fr.id = "st-print-frame"; fr.setAttribute("aria-hidden", "true");
+  fr.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+  document.body.appendChild(fr);
+  var w = fr.contentWindow;
+  w.document.open();
   w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>라벨 출력</title><style>@page{size:40mm 20mm;margin:0}*{box-sizing:border-box}body{margin:0;font-family:"Malgun Gothic",sans-serif}' +
     '.lb{width:40mm;height:20mm;padding:1.2mm 2mm;page-break-after:always;overflow:hidden;display:flex;flex-direction:column;align-items:center}' +
     '.bc svg{width:36mm;height:8mm;display:block}.dt{font-weight:400}.cd{font-size:8pt;font-weight:700;letter-spacing:.3px;margin-top:.6mm}.nm{font-size:7pt;font-weight:600;white-space:nowrap;overflow:hidden;max-width:37mm}' +
     '@media screen{body{background:#eee;padding:10px}.lb{background:#fff;margin:0 0 6px;outline:1px dashed #aaa}.tip{font:13px sans-serif;margin-bottom:10px}}@media print{.tip{display:none}}</style></head><body>' +
-    '<div class="tip">인쇄 설정: 프린터 4B-2054N · 용지 40×20mm · 여백 없음 · 배율 100% (기본값). ' + L.length + '장</div>' + cells + "<script>setTimeout(function(){print()},400)<\/script></body></html>");
+    '<div class="tip">인쇄 설정: 프린터 4B-2054N · 용지 40×20mm · 여백 없음 · 배율 100% (기본값). ' + L.length + '장</div>' + cells + "</body></html>");
   w.document.close();
+  setTimeout(function () { try { w.focus(); w.print(); } catch (e) { ERP.toast("인쇄 창을 열지 못했어요: " + e.message); } }, 400);
 }
 function expandLocs(txt) {
   var out = [];
