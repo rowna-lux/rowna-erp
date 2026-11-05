@@ -52,6 +52,8 @@ function listDates() { var d = {}; items().forEach(function (x) { if (x.listDate
 function vpill(c) { if (!c) return '<span class="pill p-mute">크림가 필요</span>'; return c.verdict === "추천" ? '<span class="pill p-good">✓ 추천</span>' : c.verdict === "검토" ? '<span class="pill p-warn">△ 검토</span>' : '<span class="pill p-crit">✕ 비추천</span>'; }
 
 function helperOn() { return document.documentElement.dataset.rownaKream === "1"; }
+/* 국내몰 리셀은 전용 확장 ‘로우나 리셀 도우미’만 씀 — 기존 도우미(스마트스토어 속성·크림 도매)와 통로·대기줄·탭이 모두 따로 */
+function resellOn() { return document.documentElement.dataset.rownaResell === "1"; }
 function kcell(it) {
   var k = (it.extra || {}).kream;
   if (!k) return '<span class="muted">' + (busy[it.id] ? "확인 중…" : "–") + "</span>";
@@ -89,7 +91,7 @@ function render() {
   cand.sort(function (a, b) { return b.c.rate - a.c.rate; }).forEach(function (x) { var price = cost(x.it), n = Math.min(x.rq, Math.floor((budget - pick.whole) / price)); if (n > 0) { pick.qty += n; pick.whole += n * price; pick.real += n * x.c.real; pick.lines.push((x.it.brand || "") + " " + (x.it.name || x.it.sku || "").slice(0, 18) + " ×" + n); } });
   var sups = suppliers();
   var mall = KIND() === "mall";
-  var h = '<div class="head"><div><h1>' + (mall ? "크림 리셀 소싱 (국내몰)" : "크림 도매") + '</h1><p>' + (mall ? "국내몰 세일 목록을 할인율 높은 순으로 읽어 크림 시세·거래량·이익과 비교해요 · " : "도매 리스트 사진을 올리면 크림 시세·거래량·이익을 자동으로 채워요 · ") + (helperOn() ? '<span class="pill p-good">도우미 켜짐</span>' : '<span class="pill p-crit" title="크롬 확장 ‘로우나 도우미’를 설치해야 사진 읽기·크림 조회가 돼요">도우미 꺼짐</span>') + '</p></div><div class="tools">' +
+  var h = '<div class="head"><div><h1>' + (mall ? "크림 리셀 소싱 (국내몰)" : "크림 도매") + '</h1><p>' + (mall ? "국내몰 세일 목록을 할인율 높은 순으로 읽어 크림 시세·거래량·이익과 비교해요 · " : "도매 리스트 사진을 올리면 크림 시세·거래량·이익을 자동으로 채워요 · ") + (mall ? (resellOn() ? '<span class="pill p-good">리셀 도우미 켜짐</span>' : '<span class="pill p-crit" title="국내몰은 전용 확장 ‘로우나 리셀 도우미’로만 돌아가요 (기존 도우미는 안 씀)">리셀 도우미 꺼짐</span>') : helperOn() ? '<span class="pill p-good">도우미 켜짐</span>' : '<span class="pill p-crit" title="크롬 확장 ‘로우나 도우미’를 설치해야 사진 읽기·크림 조회가 돼요">도우미 꺼짐</span>') + '</p></div><div class="tools">' +
     '<select class="ctl" id="k-kind" aria-label="구분"><option value="whole"' + (mall ? "" : " selected") + '>도매처</option><option value="mall"' + (mall ? " selected" : "") + '>국내몰</option></select>' +
     '<select class="ctl" id="k-sup" aria-label="도매처">' + sups.map(function (x) { return "<option" + (x === SUP() ? " selected" : "") + ">" + esc(x) + "</option>"; }).join("") + (mall ? "" : '<option value="__new">+ 도매처 추가</option>') + "</select>" +
     (dates.length ? '<select class="ctl" id="k-list" aria-label="리스트 날짜">' + dates.map(function (d) { return "<option" + (d === v.kList ? " selected" : "") + ' value="' + d + '">' + d.replace(/-/g, ".") + " 리스트</option>"; }).join("") + "</select>" : "") +
@@ -171,12 +173,19 @@ ERP.forms.kream_wholesale = {
 };
 /* ---------- 크롬 확장 '로우나 크림 도우미' 연결 ---------- */
 var waits = {};
-window.addEventListener("message", function (e) { if (e.source !== window || !e.data || e.data.rownaK !== "res") return; var f = waits[e.data.id]; if (f) { delete waits[e.data.id]; f(e.data); } });
+window.addEventListener("message", function (e) { if (e.source !== window || !e.data || (e.data.rownaK !== "res" && e.data.rownaR !== "res")) return; var f = waits[e.data.id]; if (f) { delete waits[e.data.id]; f(e.data); } });
 function ask(type, payload) {
   return new Promise(function (res, rej) {
     if (!helperOn()) { rej(new Error("크롬 확장 ‘로우나 도우미’가 꺼져 있어요. 설치 후 ERP를 새로고침(F5)해 주세요.")); return; }
     var id = U.uid(); waits[id] = function (d) { d.ok ? res(d.data) : rej(new Error(d.error || "실패")); };
     window.postMessage(Object.assign({ rownaK: "req", id: id, type: type }, payload), location.origin);
+  });
+}
+function askR(type, payload) {
+  return new Promise(function (res, rej) {
+    if (!resellOn()) { rej(new Error("크롬 확장 ‘로우나 리셀 도우미’가 꺼져 있어요. 설치 후 ERP를 새로고침(F5)해 주세요.")); return; }
+    var id = U.uid(); waits[id] = function (d) { d.ok ? res(d.data) : rej(new Error(d.error || "실패")); };
+    window.postMessage(Object.assign({ rownaR: "req", id: id, type: type }, payload), location.origin);
   });
 }
 /* ---------- 읽는 규칙 (ERP 안에 있어서 고치면 모든 PC에 바로 반영) ---------- */
@@ -198,7 +207,7 @@ async function ocrList(dataUrl) {
   return JSON.parse(r.content || "{}");
 }
 var BLOCK_RE = /비정상적인 (접근|요청)|접근이 (차단|제한)|Access Denied|자동입력 방지|보안 문자|too many requests|잠시 후 다시 시도/i;
-async function pageSafe(opt) { var p = await ask("page", opt); if (BLOCK_RE.test(String((p && p.text) || "").slice(0, 3000))) throw new Error("차단·경고 화면이 보여서 멈췄어요 (" + String(opt.url).split("?")[0] + ")"); return p; }
+async function pageSafe(opt, chan) { var p = await (chan === "R" ? askR : ask)("page", opt); if (BLOCK_RE.test(String((p && p.text) || "").slice(0, 3000))) throw new Error("차단·경고 화면이 보여서 멈췄어요 (" + String(opt.url).split("?")[0] + ")"); return p; }
 function knorm(s) { return String(s || "").toUpperCase().replace(/[\s\-_.\/]/g, ""); }
 function kloose(s) { return knorm(s).replace(/O/g, "0").replace(/[IL]/g, "1").replace(/B/g, "8").replace(/S/g, "5").replace(/Z/g, "2"); }
 function ksame(a, b) { if (!a || !b) return 0; if (knorm(a) === knorm(b)) return 2; if (kloose(a) === kloose(b)) return 1; return 0; }
@@ -215,14 +224,14 @@ function parseSearch(p) {
   var seen = {}, out = []; (p.links || []).forEach(function (a) { var id = (String(a.href).match(/kream\.co\.kr\/products\/(\d+)/) || [])[1]; if (id && !seen[id]) { seen[id] = 1; out.push({ id: id, text: a.text }); } });
   return out.slice(0, 6);
 }
-async function kreamLookup(sku, url) {
+async function kreamLookup(sku, url, chan) {
   sku = String(sku || "").trim(); var tried = [], best = null, hit = null;
   async function check(pid, via) {
     if (!pid || tried.indexOf(pid) >= 0) return null; tried.push(pid);
-    var d = parseProduct(await pageSafe({ url: "https://kream.co.kr/products/" + pid, waitFor: "모델번호|발매가", minLen: 300 }));
+    var d = parseProduct(await pageSafe({ url: "https://kream.co.kr/products/" + pid, waitFor: "모델번호|발매가", minLen: 300 }, chan));
     d.via = via; d.match = ksame(d.model, sku); if (!best || d.match > best.match) best = d; return d.match ? d : null;
   }
-  async function search(q, via) { var c = parseSearch(await pageSafe({ url: "https://kream.co.kr/search?keyword=" + encodeURIComponent(q), waitFor: "관심|검색 결과가 없습니다", minLen: 200 })).slice(0, 3); for (var k = 0; k < c.length && !hit; k++) hit = await check(c[k].id, via); }
+  async function search(q, via) { var c = parseSearch(await pageSafe({ url: "https://kream.co.kr/search?keyword=" + encodeURIComponent(q), waitFor: "관심|검색 결과가 없습니다", minLen: 200 }, chan)).slice(0, 3); for (var k = 0; k < c.length && !hit; k++) hit = await check(c[k].id, via); }
   var id = (String(url || "").match(/products\/(\d+)/) || [])[1];
   if (id) hit = await check(id, "리스트 링크");
   if (!hit && sku) await search(sku, "품번 검색");
@@ -246,7 +255,7 @@ async function fetchKream(rows, opt) {
     if (i && opt && opt.gap) { var sec = opt.gap[0] + Math.random() * (opt.gap[1] - opt.gap[0]); ERP.toast("차단 방지로 " + Math.round(sec) + "초 쉬는 중 · 다음 " + (i + 1) + "/" + keys.length); await new Promise(function (r) { setTimeout(r, sec * 1000); }); }
     var g = bySku[keys[i]], f = g[0]; g.forEach(function (it) { busy[it.id] = 1; }); ERP.render();
     ERP.toast("크림 확인 중 " + (i + 1) + "/" + keys.length + " · " + (f.brand || "") + " " + (f.sku || ""));
-    var k; try { k = await kreamLookup(f.sku, f.kreamUrl); } catch (e) { k = { error: e.message }; if (/멈췄|멈춤|꺼져/.test(e.message)) { g.forEach(function (it) { delete busy[it.id]; }); ERP.toast("⚠ " + e.message); break; } }
+    var k; try { k = await kreamLookup(f.sku, f.kreamUrl, opt && opt.chan); } catch (e) { k = { error: e.message }; if (/멈췄|멈춤|꺼져/.test(e.message)) { g.forEach(function (it) { delete busy[it.id]; }); ERP.toast("⚠ " + e.message); break; } }
     var out = [], logs = [];
     g.forEach(function (it) {
       delete busy[it.id];
@@ -264,7 +273,7 @@ async function fetchKream(rows, opt) {
   }
   ERP.render(); ERP.toast("크림 확인을 마쳤어요.");
 }
-ERP.acts.kreamfetch = function () { var list = items().filter(function (x) { return x.listDate === v.kList; }); if (!list.length) return; fetchKream(list, isMall(SUP()) ? { gap: [20, 30] } : null); };
+ERP.acts.kreamfetch = function () { var list = items().filter(function (x) { return x.listDate === v.kList; }); if (!list.length) return; fetchKream(list, isMall(SUP()) ? { gap: [20, 30], chan: "R" } : null); };
 ERP.acts.kreamphoto = function () {
   if (!helperOn()) { ERP.toast("크롬 확장 ‘로우나 도우미’가 꺼져 있어요. 설치 후 새로고침(F5)해 주세요."); return; }
   var inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*"; inp.multiple = true;
@@ -306,12 +315,12 @@ function parseMusinsa(p) {
 }
 var mallRunning = false;
 ERP.acts.kreammall = async function () {
-  if (!helperOn()) { ERP.toast("크롬 확장 ‘로우나 도우미’가 꺼져 있어요. 설치 후 새로고침(F5)해 주세요."); return; }
+  if (!resellOn()) { ERP.toast("크롬 확장 ‘로우나 리셀 도우미’가 꺼져 있어요. 설치 후 새로고침(F5)해 주세요."); return; }
   if (mallRunning) { ERP.toast("이미 진행 중이에요."); return; }
   var sup = SUP(), M = MALLS[sup]; if (!M) return; mallRunning = true;
   try {
     ERP.toast(M.label + " 목록 여는 중…");
-    var all = parseMusinsa(await pageSafe({ url: M.url, waitFor: "할인율순", minLen: 1000, tries: 15 }));
+    var all = parseMusinsa(await pageSafe({ url: M.url, waitFor: "할인율순", minLen: 1000, tries: 15 }, "R"));
     if (!all.length) { ERP.toast("⚠ 목록에서 상품을 읽지 못했어요 (화면 구조가 바뀌었을 수 있어요)."); return; }
     var day = U.today(), have = {}, brands = mallBrands(), skip = { disc: 0, brand: 0, sku: 0, dup: 0 }, made = [];
     ERP.list("kream_wholesale").forEach(function (x) { var m = (x.extra || {}).mall; if (m && m.id && x.supplier === sup && x.listDate === day) have[m.id] = 1; });
@@ -331,7 +340,7 @@ ERP.acts.kreammall = async function () {
     var rowsDb = made.map(function (o) { return ERP.toRow("kream_wholesale", o); });
     await ERP.saveBatch("kream_wholesale", rowsDb); rowsDb.forEach(function (r) { ERP.applyRow("kream_wholesale", r); });
     v.kList = day; ERP.render(); ERP.toast(why);
-    await fetchKream(made, { gap: [20, 30] });
+    await fetchKream(made, { gap: [20, 30], chan: "R" });
   } catch (e) { ERP.toast("⚠ " + e.message); }
   finally { mallRunning = false; }
 };
