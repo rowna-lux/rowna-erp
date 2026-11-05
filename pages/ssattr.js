@@ -189,14 +189,16 @@ function dl(s, tag) { var rows = (s.log || []).map(function (x) { return [x.at, 
 async function one(t, s, opts) {
   var origin = (s.map || {})[t.ch] || t.origin; var row = { at: new Date().toISOString(), ch: t.ch, origin: origin, name: t.name };
   TOK = { i: 0, o: 0 };
+  var MS = {}, TT = Date.now(); function mk(k) { MS[k] = Math.round((Date.now() - TT) / 1000); TT = Date.now(); }   /* 11/5 단계별 걸린 초 기록 */
   try {
     var p;
     if (origin) p = await readPage(origin);
     else { p = await readViaSearch(t.ch); origin = row.origin = p.origin; s.map = s.map || {}; s.map[t.ch] = origin; save(s); }
+    mk("읽기");
     var needConv = /으로 변환하기/.test(p.text || ""), c = { pick: {}, why: "속성칸 없음" }, rex = null;
     if (p.attrs.length && p.attrs.some(function (a) { return !a.selected.length; })) {
-      rex = await rexInfo(t.code); row.rex = rex.found ? rex.url : "못 찾음(" + rex.why + ")";
-      c = await choose(t, p.attrs, rex);
+      rex = await rexInfo(t.code); row.rex = rex.found ? rex.url : "못 찾음(" + rex.why + ")"; mk("렉스");
+      c = await choose(t, p.attrs, rex); mk("AI속성");
     }
     row.pick = c.pick; row.why = c.why; row.v = 5;
     var tp = { have: p.have || [], reg: [] }, cands = [];
@@ -204,16 +206,17 @@ async function one(t, s, opts) {
       if (!p.have || p.have.length < 10) { try { cands = await makeTags(t, rex, p.have || []); } catch (e) { row.tagErr = e.message; } }
     } else if (p.have && p.have.length >= 5) { tp = { have: p.have, reg: [] }; row.tagSkip = "태그 " + p.have.length + "개 있음(AI 비용 절약)"; }   /* 11/2 비용 최소화: 태그가 이미 5개 이상이면 AI 태그 생성 건너뜀(이미 작업한 상품 재확인 때 비용 0) */
     else { try { cands = await makeTags(t, typeof rex !== "undefined" ? rex : null, []); tp = await tagProbe(origin, cands, p.have); } catch (e) { row.tagErr = e.message; } }
-    row.tags = tp.reg; row.tagsHad = tp.have.length;
+    row.tags = tp.reg; row.tagsHad = tp.have.length; mk("태그");
     if (!Object.keys(c.pick).length && !needConv && !(HV25 ? cands.length : tp.reg.length)) { row.status = "할 일 없음(이미 입력·변환됨)"; return row; }
     if (opts.dry) { row.status = "미리보기(저장 안 함)"; return row; }
     var preConv = null;
-    if (needConv) preConv = await convertOnly(origin);   /* 스마트에디터 변환은 따로 먼저(같이 하면 4분 넘어 시간 초과) */
+    if (needConv) { preConv = await convertOnly(origin); mk("변환"); }   /* 스마트에디터 변환은 따로 먼저(같이 하면 4분 넘어 시간 초과) */
     var w = await writePage(origin, p.attrs, c.pick, HV25 ? cands : tp.reg, !!preConv && preConv === "변환 완료"); if (preConv) w.conv = preConv; if (w.tagReg) { row.tags = w.tagReg; row.tagInfo = w.tagInfo; } row.tagsNow = w.tagsNow; row.saveMsg = w.saveMsg; row.conv = w.conv; if (w.dialogs.length) row.saveMsg = w.dialogs.concat(row.saveMsg || []);
+    mk("저장");
     var convBad = needConv && w.conv !== "변환 완료";
     row.status = w.applied && !w.opsFailed.length && !convBad ? "저장 완료" : "일부 실패"; if (w.opsFailed.length) row.err = w.opsFailed.join(" / ");
   } catch (e) { row.status = "실패"; row.err = e.message; if (/멈춤|멈췄/.test(e.message)) stopReq = true; }
-  row.tok = [TOK.i, TOK.o]; row.aim = AIM;
+  row.ms = MS; row.tok = [TOK.i, TOK.o]; row.aim = AIM;
   return row;
 }
 /* 첫 실행: 시험 상품 1개(발렌티노 크로스백 원상품번호 12652259462) + 상품목록 화면 구조 진단 */
