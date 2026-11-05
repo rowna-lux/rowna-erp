@@ -26,7 +26,21 @@ function base() { return S.SET.kream_fee_base == null ? 2500 : num(S.SET.kream_f
 function premium(it) { var t = ((it.brand || "") + " " + (it.name || "")).toUpperCase(); return (/CHANEL|샤넬|HERMES|HERMÈS|에르메스/.test(t) && /백|BAG|토트|숄더|클러치|버킨|켈리|플랩/.test(t)) || /ROLEX|롤렉스|AUDEMARS|오데마|PATEK|파텍|VACHERON|바쉐론/.test(t); }
 /* 국내몰 실제 매입가 = 목록 세일가 × (1−등급할인) × (1−쿠폰) × (1−카드 청구할인·적립) — 대표님 등급·카드에 맞춰 설정칸에서 입력 */
 function mallDisc(k) { return num(S.SET["kream_mall_" + k]) / 100; }
-function cost(it) { var w = num(it.wholesalePrice); if (!isMall(it.supplier)) return w; return Math.round(w * (1 - mallDisc("grade")) * (1 - mallDisc("coupon")) * (1 - mallDisc("card"))); }
+/* 카드표: 한 줄에 '카드명, 할인·적립 %, 월 한도(원, 0=무제한), 이번 달 이미 쓴 혜택(원)' */
+function mallCards() { return String(S.SET.kream_mall_cards || "").split("\n").map(function (l) { var a = l.split(","); return { name: (a[0] || "").trim(), pct: num(a[1]) / 100, limit: num(a[2]), used: num(a[3]) }; }).filter(function (c) { return c.name && c.pct > 0; }); }
+var CARD = {};   /* 상품 id → {name, save} : 화면 그릴 때마다 남은 한도 안에서 다시 배정 */
+function preCard(it) { return Math.round(num(it.wholesalePrice) * (1 - mallDisc("grade")) * (1 - mallDisc("coupon"))); }
+function assignCards(list) {
+  CARD = {}; var cards = mallCards(); if (!cards.length) return;
+  var left = cards.map(function (c) { return c.limit ? Math.max(0, c.limit - c.used) : Infinity; });
+  /* 크림 기준가 대비 마진이 좋은 상품부터 카드 혜택을 배정 */
+  list.filter(function (it) { return isMall(it.supplier) && it.decision !== "제외"; }).map(function (it) { var b = preCard(it); return { it: it, b: b, m: num(it.kreamPrice) ? num(it.kreamPrice) / b : 0 }; })
+    .sort(function (x, y) { return y.m - x.m; }).forEach(function (x) {
+      var best = -1, save = 0; cards.forEach(function (c, i) { var s = Math.min(x.b * c.pct, left[i]); if (s > save) { save = s; best = i; } });
+      if (best >= 0) { left[best] -= save; CARD[x.it.id] = { name: cards[best].name, save: Math.round(save) }; }
+    });
+}
+function cost(it) { var w = num(it.wholesalePrice); if (!isMall(it.supplier)) return w; var b = preCard(it); if (mallCards().length) return b - ((CARD[it.id] || {}).save || 0); return Math.round(b * (1 - mallDisc("card"))); }
 function calc(it) { var p = premium(it), wh = cost(it); if (isMall(it.supplier) && !mallVat()) wh = wh * 1.1;   /* kream()은 매입가÷1.1을 빼므로 ×1.1 = 매입가 전액을 원가로 */
   return C.kream(it.kreamPrice, wh, p ? 0.03 : rate(), cap(), p ? 20000 : base()); }
 function items() { return ERP.list("kream_wholesale").filter(function (x) { return (x.supplier || "열무") === SUP(); }); }
@@ -52,6 +66,7 @@ function render() {
   var groups = {}, order = [];
   list.forEach(function (x) { var k = x.sku || x.name || x.id; if (!groups[k]) { groups[k] = []; order.push(k); } groups[k].push(x); });
   var T = { qty: 0, whole: 0, real: 0, recQty: 0, recReal: 0, recWhole: 0, buyQty: 0, buyWhole: 0, buyReal: 0 }, cand = [];
+  if (KIND() === "mall") assignCards(list);
   var body = order.map(function (key) {
     var g = groups[key].sort(function (a, b) { return String(a.size).localeCompare(String(b.size), "ko", { numeric: true }); }), f = g[0];
     return g.map(function (it, i) {
@@ -62,7 +77,7 @@ function render() {
       var flags = (it.extra || {}).ocr || {};
       var prod = i ? "" : '<td class="name" rowspan="' + g.length + '"><b>' + esc(f.brand || "") + "</b> " + esc(f.name || "") + '<small class="num">' + esc(f.sku || "") + (flags.skuUnsure ? ' <span class="pill p-warn" title="사진에서 글자가 흐려 확실하지 않아요">글자 확인</span>' : "") + "</small>" + (f.kreamUrl ? '<small><a href="' + esc(f.kreamUrl) + '" target="_blank" rel="noopener">크림에서 보기 ↗</a></small>' : "") + (((f.extra || {}).mall || {}).url ? '<small><a href="' + esc(f.extra.mall.url) + '" target="_blank" rel="noopener">' + esc(f.supplier) + " " + esc(String(f.extra.mall.disc || "")) + "% 세일 ↗</a></small>" : "") + "</td><td rowspan=\"" + g.length + "\">" + kcell(f) + "</td>";
       var trades = (k.trades || []).slice(0, 5).map(function (t) { return t.date.replace(/^26\//, "") + " " + won(t.price); }).join("<br>");
-      return '<tr class="' + (it.decision === "제외" ? "off" : "") + '">' + prod + '<td class="click" data-edit="kream_wholesale:' + esc(it.id) + '" tabindex="0">' + esc(it.size || "F") + '</td><td class="r num">' + q + '</td><td class="r num">' + won(cost(it)) + (isMall(it.supplier) && cost(it) !== num(it.wholesalePrice) ? '<small class="muted">목록 ' + won(it.wholesalePrice) + "</small>" : "") + '</td>' +
+      return '<tr class="' + (it.decision === "제외" ? "off" : "") + '">' + prod + '<td class="click" data-edit="kream_wholesale:' + esc(it.id) + '" tabindex="0">' + esc(it.size || "F") + '</td><td class="r num">' + q + '</td><td class="r num">' + won(cost(it)) + (isMall(it.supplier) && cost(it) !== num(it.wholesalePrice) ? '<small class="muted">목록 ' + won(it.wholesalePrice) + "</small>" : "") + (CARD[it.id] ? '<small class="muted">' + esc(CARD[it.id].name) + " −" + won(CARD[it.id].save) + "</small>" : "") + '</td>' +
         '<td class="r num">' + (k.price ? won(k.price) : "–") + '</td><td class="r"><small class="num">' + (trades || "–") + '</small></td><td class="r num">' + (k.tradeCount != null && k.model ? U.esc(String(k.tradeCount)) + "건" : "–") + (sp ? '<small class="muted">월 ' + sp.perMonth + "건 추정</small>" : "") + "</td>" +
         '<td class="r kp">' + (w ? '<input class="cell-in num" type="number" inputmode="numeric" aria-label="' + esc((f.brand || "") + " " + (it.size || "") + " 크림 기준가") + '" data-kp="' + esc(it.id) + '" value="' + (it.kreamPrice == null ? "" : Math.round(it.kreamPrice)) + '" placeholder="입력">' : '<span class="num">' + (it.kreamPrice == null ? "–" : won(it.kreamPrice)) + "</span>") + "</td>" +
         '<td class="r num ' + (c && c.real < 0 ? "neg" : "") + '">' + (c ? won(c.real) : "–") + '</td><td class="r num">' + (c ? pct(c.rate) : "–") + '</td><td class="r num">' + (c ? won(c.breakeven) : "–") + "</td><td>" + vpill(c) + '</td><td class="r num"><b>' + (rq ? rq + "개" : "–") + "</b></td><td>" +
@@ -93,8 +108,9 @@ function mallNote(w) {
     f("km-grade", "등급 할인 %", num(S.SET.kream_mall_grade)) + f("km-coupon", "쿠폰 할인 % (장바구니·상품 쿠폰)", num(S.SET.kream_mall_coupon)) + f("km-card", "카드 청구할인·적립 %", num(S.SET.kream_mall_card)) +
     f("km-min", "할인율 몇 % 이상만", mallMin(), 'type="number"') + f("km-max", "한 번에 확인할 상품 수", mallMax(), 'type="number"') +
     '<div class="fd"><label for="km-vat">매입 부가세</label><select class="ctl" id="km-vat"' + dis + '><option value="0"' + (mallVat() ? "" : " selected") + '>공제 안 됨 (보수적)</option><option value="1"' + (mallVat() ? " selected" : "") + ">공제됨</option></select></div></div>" +
+    '<div class="fd"><label for="km-cards">결제 카드표 — 한 줄에 카드명, 무신사 할인·적립 %, 월 한도(원, 0=무제한), 이번 달 이미 받은 혜택(원). 적어 두면 위 ‘카드 %’ 대신 이 표로 상품마다 남은 한도 안에서 가장 많이 깎이는 카드를 자동 배정해요.</label><textarea id="km-cards" class="ctl" rows="6" placeholder="디어쇼퍼, 5, 200000, 0"' + dis + ">" + esc(String(S.SET.kream_mall_cards || "")) + "</textarea></div>" +
     '<div class="fd"><label for="km-brands">이 브랜드만 크림에서 확인 (쉼표로 구분, 비우면 전부)</label><textarea id="km-brands" class="ctl" rows="2"' + dis + ">" + esc(mallBrandsStr()) + "</textarea></div>" +
-    '<p class="note">실제 매입가 = 목록 세일가 × (1−등급 할인) × (1−쿠폰) × (1−카드 할인·적립). 쿠폰은 상품마다 적용 여부가 달라 평균값으로 넣어 주세요. 정확한 금액은 무신사 상품 페이지의 회원 최저가로 확인. 매입 부가세 ‘공제 안 됨’이면 매입가 전액을 원가로 계산해요. 크림은 한 상품씩 20~30초 간격으로 열고, 차단·경고 화면이 보이면 바로 멈춰요. 스마트스토어 속성 작업과 도우미를 같이 쓰니 동시에 돌리지 마세요.</p></div>';
+    '<p class="note">실제 매입가 = 목록 세일가 × (1−등급 할인) × (1−쿠폰) − 카드 혜택(카드표가 있으면 남은 월 한도 안에서 자동 배정, 없으면 카드 % 적용). 쿠폰은 상품마다 적용 여부가 달라 평균값으로 넣어 주세요. 정확한 금액은 무신사 상품 페이지의 회원 최저가로 확인. 매입 부가세 ‘공제 안 됨’이면 매입가 전액을 원가로 계산해요. 크림은 한 상품씩 20~30초 간격으로 열고, 차단·경고 화면이 보이면 바로 멈춰요. 스마트스토어 속성 작업과 도우미를 같이 쓰니 동시에 돌리지 마세요.</p></div>';
 }
 function feeNote(w) {
   return mallNote(w) + '<div class="panel"><h2>계산 기준</h2><div class="fg narrow"><div class="fd"><label for="k-rate">크림 판매 수수료 % (부가세 별도)</label><input id="k-rate" type="number" step="0.1" value="' + (rate() * 100).toFixed(1) + '"' + (ERP.isOwner() ? "" : " disabled") + '></div><div class="fd"><label for="k-base">크림 기본 수수료(원, 부가세 별도)</label><input id="k-base" type="number" value="' + base() + '"' + (ERP.isOwner() ? "" : " disabled") + '></div><div class="fd"><label for="k-cap">수수료 최대 금액(원, 부가세 포함)</label><input id="k-cap" type="number" value="' + cap() + '"' + (ERP.isOwner() ? "" : " disabled") + '></div><div class="fd"><label for="k-bud">매입 예산(원)</label><input id="k-bud" type="number" value="' + (num(S.SET.kream_budget) || 10000000) + '"></div></div>' +
@@ -105,6 +121,7 @@ function bind(root) {
   var kk = root.querySelector("#k-kind"); if (kk) kk.onchange = function () { v.kSup = kk.value === "mall" ? Object.keys(MALLS)[0] : "열무"; v.kList = ""; ERP.render(); };
   [["km-grade", "kream_mall_grade"], ["km-coupon", "kream_mall_coupon"], ["km-card", "kream_mall_card"], ["km-min", "kream_mall_min"], ["km-max", "kream_mall_max"]].forEach(function (a) { var el = root.querySelector("#" + a[0]); if (el) el.onchange = async function () { await ERP.saveSetting(a[1], num(el.value)); ERP.render(); }; });
   var kv = root.querySelector("#km-vat"); if (kv) kv.onchange = async function () { await ERP.saveSetting("kream_mall_vat_deduct", kv.value === "1"); ERP.render(); };
+  var kcd = root.querySelector("#km-cards"); if (kcd) kcd.onchange = async function () { await ERP.saveSetting("kream_mall_cards", kcd.value.trim()); ERP.render(); };
   var kbr = root.querySelector("#km-brands"); if (kbr) kbr.onchange = async function () { await ERP.saveSetting("kream_mall_brands", kbr.value.trim()); ERP.render(); };
   var ks = root.querySelector("#k-sup"); if (ks) ks.onchange = function () { if (ks.value === "__new") { var n = (prompt("도매처 이름") || "").trim(); if (n) v.kSup = n; } else v.kSup = ks.value; v.kList = ""; ERP.render(); };
   var kb = root.querySelector("#k-base"); if (kb) kb.onchange = function () { ERP.saveSetting("kream_fee_base", num(kb.value)); ERP.render(); };
