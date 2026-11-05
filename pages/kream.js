@@ -96,7 +96,7 @@ function render() {
     '<select class="ctl" id="k-sup" aria-label="도매처">' + sups.map(function (x) { return "<option" + (x === SUP() ? " selected" : "") + ">" + esc(x) + "</option>"; }).join("") + (mall ? "" : '<option value="__new">+ 도매처 추가</option>') + "</select>" +
     (dates.length ? '<select class="ctl" id="k-list" aria-label="리스트 날짜">' + dates.map(function (d) { return "<option" + (d === v.kList ? " selected" : "") + ' value="' + d + '">' + d.replace(/-/g, ".") + " 리스트</option>"; }).join("") + "</select>" : "") +
     (w ? (mall ? '<button class="btn pri" data-act="kreammall">🛒 ' + esc(MALLS[SUP()].label) + " 불러오기</button>" : '<button class="btn pri" data-act="kreamphoto">📷 리스트 사진 올리기</button>') + (list.length ? '<button class="btn" data-act="kreamfetch">크림 시세 다시 가져오기</button>' : "") + '<button class="btn" data-act="kreamadd">+ 직접 추가</button>' : "") + (list.length ? '<button class="btn" data-act="kreamexport">엑셀 내보내기</button>' : "") + "</div></div>";
-  if (!list.length) return h + '<div class="panel empty"><b>' + esc(SUP()) + (mall ? " 후보가 아직 없어요</b>" + (w ? "‘🛒 불러오기’를 누르면 세일 목록 1장을 열어 조건에 맞는 상품만 담고, 크림에서 한 상품씩(20~30초 간격) 확인해요." : "") : ' 도매 리스트가 아직 없어요</b>' + (w ? "‘📷 리스트 사진 올리기’로 도매처가 보낸 사진을 올리면 표를 읽고 크림 시세까지 채워요." : "")) + "</div>" + feeNote(w);
+  if (!list.length) return h + '<div class="panel empty"><b>' + esc(SUP()) + (mall ? " 후보가 아직 없어요</b>" + (w ? "‘🛒 불러오기’를 누르면 세일 목록 1장을 열어 조건에 맞는 상품만 담고, 크림에서 한 상품씩(10~12초 간격) 확인해요." : "") : ' 도매 리스트가 아직 없어요</b>' + (w ? "‘📷 리스트 사진 올리기’로 도매처가 보낸 사진을 올리면 표를 읽고 크림 시세까지 채워요." : "")) + "</div>" + feeNote(w);
   h += '<div class="tiles">' + ERP.tile("리스트 전체", T.qty + "개", won(T.whole) + "원 · 전부 사면 예상 이익 " + won(T.real) + "원") + ERP.tile("추천 수량만 사면", T.recQty + "개", won(T.recWhole) + "원 → 이익 " + won(T.recReal) + "원", "hl") +
     ERP.tile("예산 " + won(budget) + "원 안에서", pick.qty + "개", won(pick.whole) + "원 → 이익 " + won(pick.real) + "원<br><small>" + esc(pick.lines.join(" · ")) + "</small>") + ERP.tile("매입 결정", T.buyQty + "개", won(T.buyWhole) + "원 · 예상 이익 " + won(T.buyReal) + "원") + "</div>";
   h += '<div class="table-wrap"><table style="min-width:1500px"><thead><tr><th>상품</th><th>크림 품번 확인</th><th>사이즈</th><th class="r">수량</th><th class="r">' + (mall ? "실제 매입가" : "도매가") + '</th><th class="r">크림 즉시구매가</th><th class="r">최근 체결</th><th class="r">누적 거래</th><th class="r">계산 기준가</th><th class="r">개당 실이익</th><th class="r">이익률</th><th class="r">손익분기가</th><th>판단</th><th class="r">추천 수량</th><th>결정</th></tr></thead><tbody>' + body + "</tbody></table></div>";
@@ -112,7 +112,7 @@ function mallNote(w) {
     '<div class="fd"><label for="km-vat">매입 부가세</label><select class="ctl" id="km-vat"' + dis + '><option value="0"' + (mallVat() ? "" : " selected") + '>공제 안 됨 (보수적)</option><option value="1"' + (mallVat() ? " selected" : "") + ">공제됨</option></select></div></div>" +
     '<div class="fd"><label for="km-cards">결제 카드표 — 한 줄에 카드명, 무신사 할인·적립 %, 월 한도(원, 0=무제한), 이번 달 이미 받은 혜택(원). 적어 두면 위 ‘카드 %’ 대신 이 표로 상품마다 남은 한도 안에서 가장 많이 깎이는 카드를 자동 배정해요.</label><textarea id="km-cards" class="ctl" rows="6" placeholder="디어쇼퍼, 5, 200000, 0"' + dis + ">" + esc(String(S.SET.kream_mall_cards || "")) + "</textarea></div>" +
     '<div class="fd"><label for="km-brands">이 브랜드만 크림에서 확인 (쉼표로 구분, 비우면 전부)</label><textarea id="km-brands" class="ctl" rows="2"' + dis + ">" + esc(mallBrandsStr()) + "</textarea></div>" +
-    '<p class="note">실제 매입가 = 목록 세일가 × (1−등급 할인) × (1−쿠폰) − 카드 혜택(카드표가 있으면 남은 월 한도 안에서 자동 배정, 없으면 카드 % 적용). 쿠폰은 상품마다 적용 여부가 달라 평균값으로 넣어 주세요. 정확한 금액은 무신사 상품 페이지의 회원 최저가로 확인. 매입 부가세 ‘공제 안 됨’이면 매입가 전액을 원가로 계산해요. 크림은 한 상품씩 20~30초 간격으로 열고, 차단·경고 화면이 보이면 바로 멈춰요. 스마트스토어 속성 작업과 도우미를 같이 쓰니 동시에 돌리지 마세요.</p></div>';
+    '<p class="note">실제 매입가 = 목록 세일가 × (1−등급 할인) × (1−쿠폰) − 카드 혜택(카드표가 있으면 남은 월 한도 안에서 자동 배정, 없으면 카드 % 적용). 쿠폰은 상품마다 적용 여부가 달라 평균값으로 넣어 주세요. 정확한 금액은 무신사 상품 페이지의 회원 최저가로 확인. 매입 부가세 ‘공제 안 됨’이면 매입가 전액을 원가로 계산해요. 크림은 한 상품씩 10~12초 간격으로 열고, 차단·경고 화면이 보이면 바로 멈춰요. 스마트스토어 속성 작업과 도우미를 같이 쓰니 동시에 돌리지 마세요.</p></div>';
 }
 function feeNote(w) {
   return mallNote(w) + '<div class="panel"><h2>계산 기준</h2><div class="fg narrow"><div class="fd"><label for="k-rate">크림 판매 수수료 % (부가세 별도)</label><input id="k-rate" type="number" step="0.1" value="' + (rate() * 100).toFixed(1) + '"' + (ERP.isOwner() ? "" : " disabled") + '></div><div class="fd"><label for="k-base">크림 기본 수수료(원, 부가세 별도)</label><input id="k-base" type="number" value="' + base() + '"' + (ERP.isOwner() ? "" : " disabled") + '></div><div class="fd"><label for="k-cap">수수료 최대 금액(원, 부가세 포함)</label><input id="k-cap" type="number" value="' + cap() + '"' + (ERP.isOwner() ? "" : " disabled") + '></div><div class="fd"><label for="k-bud">매입 예산(원)</label><input id="k-bud" type="number" value="' + (num(S.SET.kream_budget) || 10000000) + '"></div></div>' +
@@ -273,7 +273,7 @@ async function fetchKream(rows, opt) {
   }
   ERP.render(); ERP.toast("크림 확인을 마쳤어요.");
 }
-ERP.acts.kreamfetch = function () { var list = items().filter(function (x) { return x.listDate === v.kList; }); if (!list.length) return; fetchKream(list, isMall(SUP()) ? { gap: [20, 30], chan: "R" } : null); };
+ERP.acts.kreamfetch = function () { var list = items().filter(function (x) { return x.listDate === v.kList; }); if (!list.length) return; fetchKream(list, isMall(SUP()) ? { gap: [10, 12], chan: "R" } : null); };
 ERP.acts.kreamphoto = function () {
   if (!helperOn()) { ERP.toast("크롬 확장 ‘로우나 도우미’가 꺼져 있어요. 설치 후 새로고침(F5)해 주세요."); return; }
   var inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*"; inp.multiple = true;
@@ -340,7 +340,7 @@ ERP.acts.kreammall = async function () {
     var rowsDb = made.map(function (o) { return ERP.toRow("kream_wholesale", o); });
     await ERP.saveBatch("kream_wholesale", rowsDb); rowsDb.forEach(function (r) { ERP.applyRow("kream_wholesale", r); });
     v.kList = day; ERP.render(); ERP.toast(why);
-    await fetchKream(made, { gap: [20, 30], chan: "R" });
+    await fetchKream(made, { gap: [10, 12], chan: "R" });
   } catch (e) { ERP.toast("⚠ " + e.message); }
   finally { mallRunning = false; }
 };
