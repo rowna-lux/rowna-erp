@@ -157,7 +157,7 @@ function bossInfo(p) {
     return Object.assign(base, { status: al.length ? "alert" : wk.length ? "work" : "idle", bubble: al.length ? "확인할 일 " + al.length + "건" : wk.length ? "직원 " + wk.length + "명 일하는 중" : "오늘도 화이팅!",
       checks: al.map(function (q) { return q.name + " · " + info(q).bubble; }), todo: al.length ? al.map(function (q) { return q.name + "(" + q.role + "): " + (info(q).todo || info(q).bubble); }).join(" / ") : "" });
   }
-  return Object.assign(base, { status: r.status || "idle", bubble: r.note || "대표님 옆에서 업무 중" });
+  return Object.assign(base, { status: r.status || "idle", bubble: r.note || "오늘도 화이팅!" });
 }
 /* ---------- 팀·자리 ---------- */
 var W = 480, H = 270, CORR = 150, MIDX = 240;
@@ -173,7 +173,7 @@ TEAMS.forEach(function (t) { t.ids.forEach(function (id, k) { var dx = t.x + 8 +
 /* 대표석: 가운데 위 — 대표 신소희 + 옆자리 다정 */
 var BOSS = [
   { id: "ceo", name: "신소희", role: "대표", hair: "#2b1d14", shirt: "#e07a3f", skin: "#f6d3b0", boss: true },
-  { id: "dj", name: "다정", role: "대표 옆자리", hair: "#5a3a22", shirt: "#f4a7b9", skin: "#f3cfa8", boss: true }
+  { id: "dj", name: "임다정", role: "대표", hair: "#5a3a22", shirt: "#f4a7b9", skin: "#f3cfa8", boss: true }
 ];
 HAIRSTYLE.ceo = "bob"; HAIRSTYLE.dj = "long";
 var BOSSROOM = { name: "대표실" };
@@ -439,7 +439,7 @@ function overlays() {
   h += '<div class="of-cat" id="of-cat">잭슨</div>';
   ALL.forEach(function (p) {
     var s = SEAT[p.id], inf = info(p);
-    h += '<div class="of-name' + (p.boss ? " boss" : "") + (v.ofSel === p.id ? " on" : "") + '" data-name="' + p.id + '" style="left:' + pct(s.x, W) + ";top:" + pct(s.dy + 22, H) + '">' + esc(p.id === "ceo" ? "대표 " + p.name : p.name) + "</div>";
+    h += '<div class="of-name' + (p.boss ? " boss" : "") + (v.ofSel === p.id ? " on" : "") + '" data-name="' + p.id + '" style="left:' + pct(s.x, W) + ";top:" + pct(s.dy + 22, H) + '">' + esc(p.boss ? "대표 " + p.name : p.name) + "</div>";
     h += '<div class="of-say' + (inf.status === "alert" ? " alert" : "") + '" id="of-say-' + p.id + '" style="left:' + pct(s.x, W) + ";top:" + pct(s.y - 26, H) + '">' + esc(inf.bubble) + "</div>";
   });
   return h;
