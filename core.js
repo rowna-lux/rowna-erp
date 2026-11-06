@@ -204,6 +204,7 @@ async function afterLogin() {
 /* ---------- 메뉴 ---------- */
 /* 메뉴 순서·묶음은 여기서만 정합니다. 화면 내용은 pages/*.js */
 var MENU = ERP.MENU = [
+  { id: "office", top: true },
   { g: "운영" }, { id: "home" }, { id: "sales" }, { id: "purchases" }, { id: "returns" }, { id: "stock" }, { id: "documents" },
   { g: "사방넷 소싱" }, { id: "rex-sourcing" }, { id: "naver-auto" },
   { g: "스마트스토어" }, { id: "sourcing" }, { id: "ss-attr" }, { id: "blog" },
@@ -223,10 +224,13 @@ function renderNav() {
   var items = MENU.filter(allowed), html = "";
   items.forEach(function (m, i) {
     if (m.g) { var next = items.slice(i + 1).find(function (x) { return x.g || x.id || x.soon; }); if (next && !next.g) html += '<div class="grp">' + m.g + "</div>"; return; }
+    if (m.top) return;
     if (m.soon) { if (ERP.isOwner()) html += '<button type="button" class="soon" aria-disabled="true">' + m.soon + '<span class="soon-tag">예정</span></button>'; return; }
     var p = ERP.pages[m.id], badge = p.badge ? p.badge() : "";
     html += '<button type="button" data-tab="' + m.id + '" class="' + (ERP.view.tab === m.id ? "on" : "") + '"' + (ERP.view.tab === m.id ? ' aria-current="page"' : "") + ">" + p.title + (badge ? '<span class="badge">' + badge + "</span>" : "") + "</button>";
   });
+  /* 맨 위 별도 메뉴: 픽셀 사무실 */
+  if (ERP.pages.office && allowed({ id: "office" })) html = '<button type="button" data-tab="office" class="office-top' + (ERP.view.tab === "office" ? " on" : "") + '" style="margin-bottom:10px;font-weight:700;background:linear-gradient(90deg,rgba(60,150,255,.28),rgba(0,212,255,.12));border:1px solid rgba(124,200,255,.4)">🏢 픽셀 사무실</button>' + html;
   nav.innerHTML = html;
   nav.querySelectorAll("button[data-tab]").forEach(function (b) { b.onclick = function () { ERP.go(b.dataset.tab); window.scrollTo(0, 0); }; });
 }
@@ -235,7 +239,7 @@ ERP.go = function (tab, opts) { ERP.view.tab = tab; Object.assign(ERP.view, opts
 ERP.render = function () {
   if (!S.profile || !$("main")) return;
   var ids = MENU.filter(function (m) { return m.id && allowed(m); }).map(function (m) { return m.id; });
-  if (ids.indexOf(ERP.view.tab) === -1) ERP.view.tab = ids[0];
+  if (ids.indexOf(ERP.view.tab) === -1) ERP.view.tab = ids.filter(function (x) { return x !== "office"; })[0] || ids[0];
   renderNav();
   var p = ERP.pages[ERP.view.tab], main = $("main");
   document.body.classList.toggle("wide", !!(p && p.wide));
