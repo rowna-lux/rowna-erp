@@ -27,8 +27,11 @@ var v = ERP.view; v.ofSel = v.ofSel || "";
     ".of-say{position:absolute;transform:translate(-50%,-100%);max-width:15%;padding:4px 8px;border-radius:10px;background:#fff;color:#3b2a1c;font-size:clamp(9px,.75vw,12px);font-weight:600;line-height:1.3;box-shadow:0 2px 0 #3b2a1c;border:2px solid #3b2a1c;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
     ".of-say:after{content:'';position:absolute;left:50%;bottom:-7px;margin-left:-5px;border:5px solid transparent;border-top-color:#3b2a1c}",
     ".of-say.alert{background:#ffe4e4;color:#a11d22}",
+    ".of-name.boss{background:#b8860b;color:#fffbe6}",
+    ".of-cat{position:absolute;transform:translate(-50%,0);padding:0 5px;border-radius:5px;background:rgba(255,255,255,.9);color:#3b2a1c;font-size:clamp(8px,.7vw,11px);font-weight:800;pointer-events:none;white-space:nowrap;border:1px solid #3b2a1c}",
+    ".of-chip.boss{background:#fff3cf}",
     ".of-zone{position:absolute;transform:translate(-50%,0);font-size:clamp(9px,.75vw,12px);font-weight:800;color:#6b4a2f;background:rgba(255,248,238,.85);padding:1px 8px;border-radius:999px;pointer-events:none;letter-spacing:.04em}",
-    ".of-bar{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-top:12px}",
+    ".of-bar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;margin-top:12px}",
     ".of-chip{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:12px;background:var(--of-paper);color:var(--of-ink);border:2px solid transparent;min-width:0}",
     ".of-chip:hover{border-color:var(--of-line)}.of-chip.on{border-color:var(--of-accent)}.of-chip:focus-visible{outline:2px solid var(--of-accent)}",
     ".of-chip canvas{width:28px;height:28px;image-rendering:pixelated;flex:none;border-radius:8px;background:var(--of-paper2)}",
@@ -137,6 +140,7 @@ function liveBooks() {
     todo: noCost ? "매출에서 원가 미입력 주문에 렉스몬드 매입 연결" : "" };
 }
 function info(p) {
+  if (p.boss) return bossInfo(p);
   var r = rec(p.id), live = p.id === "stock" ? liveStock() : p.id === "books" ? liveBooks() : null;
   var step = r.step == null ? -1 : Number(r.step);
   var st = r.status || (live && live.status) || (r.updatedAt ? "idle" : "none");
@@ -146,6 +150,15 @@ function info(p) {
   return { r: r, live: live, step: step, status: st, bubble: bubble, todo: (live && live.todo) || r.todo || "", log: (r.log || []).slice(-8).reverse() };
 }
 
+function bossInfo(p) {
+  var r = rec(p.id), base = { r: r, live: null, step: -1, todo: r.todo || "", log: (r.log || []).slice(-8).reverse() };
+  if (p.id === "ceo") {
+    var al = STAFF.filter(function (q) { return info(q).status === "alert"; }), wk = STAFF.filter(function (q) { return info(q).status === "work"; });
+    return Object.assign(base, { status: al.length ? "alert" : wk.length ? "work" : "idle", bubble: al.length ? "확인할 일 " + al.length + "건" : wk.length ? "직원 " + wk.length + "명 일하는 중" : "오늘도 화이팅!",
+      checks: al.map(function (q) { return q.name + " · " + info(q).bubble; }), todo: al.length ? al.map(function (q) { return q.name + "(" + q.role + "): " + (info(q).todo || info(q).bubble); }).join(" / ") : "" });
+  }
+  return Object.assign(base, { status: r.status || "idle", bubble: r.note || "대표님 옆에서 업무 중" });
+}
 /* ---------- 팀·자리 ---------- */
 var W = 480, H = 270, CORR = 150, MIDX = 240;
 var TEAMS = [
@@ -157,7 +170,18 @@ var TEAMS = [
 var HAIRSTYLE = { stock: "short", books: "bob", sync: "long", rex: "cap", domestic: "short", store: "bun", photo: "long", detail: "bob", blog: "bun", ads: "spiky", bot: "cap", veloa: "long" };
 var SEAT = {};
 TEAMS.forEach(function (t) { t.ids.forEach(function (id, k) { var dx = t.x + 8 + k * 58; SEAT[id] = { dx: dx, dy: t.y + 40, x: dx + 23, y: t.y + 36, wy: t.y + 8, team: t }; }); });
-var SPOTS = { coffee: { x: 222, y: 58, face: "up" }, water: { x: 258, y: 58, face: "up" }, meet: { x: 228, y: 100, face: "right" }, meet2: { x: 252, y: 100, face: "left" }, sofa: { x: 240, y: 228, sit: true }, window: { x: 120, y: 58, face: "up" } };
+/* 대표석: 가운데 위 — 대표 신소희 + 옆자리 다정 */
+var BOSS = [
+  { id: "ceo", name: "신소희", role: "대표", hair: "#2b1d14", shirt: "#e07a3f", skin: "#f6d3b0", boss: true },
+  { id: "dj", name: "다정", role: "대표 옆자리", hair: "#5a3a22", shirt: "#f4a7b9", skin: "#f3cfa8", boss: true }
+];
+HAIRSTYLE.ceo = "bob"; HAIRSTYLE.dj = "long";
+var BOSSROOM = { name: "대표실" };
+SEAT.ceo = { dx: 198, dy: 96, w: 50, x: 223, y: 92, wy: 62, team: BOSSROOM };
+SEAT.dj = { dx: 252, dy: 96, w: 36, x: 270, y: 92, wy: 62, team: BOSSROOM };
+var ALL = BOSS.concat(STAFF);
+function lane(s) { return s.x < MIDX ? 190 : 290; }
+var SPOTS = { coffee: { x: 222, y: 58, face: "up" }, water: { x: 258, y: 58, face: "up" }, report: { x: 214, y: 128, face: "up" }, report2: { x: 262, y: 128, face: "up" }, meet2x: { x: 252, y: 100, face: "left" }, sofa: { x: 240, y: 228, sit: true }, window: { x: 120, y: 58, face: "up" } };
 
 /* ---------- 그리기 도구 ---------- */
 var cv = null, ctx = null, raf = null, frame = 0, last = 0;
@@ -260,32 +284,34 @@ function drawProps(c) {
   if ((frame >> 3) % 2) R(c, 213, 26, 1, 3, "rgba(255,255,255,.8)");
   R(c, 250, 28, 14, 26, "#e2e8f0"); R(c, 252, 22, 10, 8, "#7dd3fc"); R(c, 253, 40, 8, 2, "#3b82f6");
   R(c, 268, 22, 16, 32, "#f8fafc"); R(c, 268, 36, 16, 1, "#cbd5e1"); R(c, 281, 26, 1, 6, "#94a3b8"); R(c, 281, 40, 1, 8, "#94a3b8");
-  /* 회의 테이블 */
-  R(c, 212, 82, 56, 26, "#8a5a33"); R(c, 214, 84, 52, 22, "#a86f3e"); R(c, 222, 88, 10, 7, "#fff"); R(c, 246, 92, 8, 6, "#fde68a");
-  [[216, 76], [234, 76], [252, 76], [216, 108], [234, 108], [252, 108]].forEach(function (p) { R(c, p[0], p[1], 12, 5, "#3f4f66"); });
+  /* 대표실 러그 */
+  R(c, 194, 66, 92, 56, "#d4a72c"); R(c, 196, 68, 88, 52, "#f6e2b3"); for (var i = 0; i < 84; i += 8) { R(c, 199 + i, 70, 4, 2, "#ecd08a"); R(c, 199 + i, 116, 4, 2, "#ecd08a"); }
   /* 라운지 소파·테이블 */
   R(c, 212, 214, 56, 18, "#e07a3f"); R(c, 212, 210, 56, 6, "#c6612c"); R(c, 208, 212, 6, 20, "#c6612c"); R(c, 266, 212, 6, 20, "#c6612c");
   R(c, 228, 238, 24, 8, "#8a5a33"); R(c, 236, 236, 6, 3, "#fff");
-  /* 라벨 프린터 + 택배 박스 (운영팀 옆) */
-  R(c, 190, 142, 22, 12, "#6b4a2f"); R(c, 192, 136, 16, 8, "#e2e8f0"); R(c, 194, 138, 12, 2, "#475569"); R(c, 196, 144, 8, 2, "#fff");
-  [[188, 124], [198, 124], [192, 114]].forEach(function (b) { R(c, b[0], b[1], 10, 10, "#d6a86e"); R(c, b[0], b[1] + 4, 10, 1, "#b0844c"); R(c, b[0] + 4, b[1], 2, 10, "#e9c38f"); });
+  /* 라벨 프린터 + 택배 박스 (왼쪽 아래 구석) */
+  R(c, 12, 256, 22, 12, "#6b4a2f"); R(c, 14, 250, 16, 8, "#e2e8f0"); R(c, 16, 252, 12, 2, "#475569"); R(c, 18, 258, 8, 2, "#fff");
+  [[40, 256], [50, 256], [45, 247]].forEach(function (b) { R(c, b[0], b[1], 10, 10, "#d6a86e"); R(c, b[0], b[1] + 4, 10, 1, "#b0844c"); R(c, b[0] + 4, b[1], 2, 10, "#e9c38f"); });
   /* 화분 */
-  plant(c, 2, 46, true); plant(c, 462, 46, true); plant(c, 184, 232, false); plant(c, 284, 232, false); plant(c, 286, 120, false);
+  plant(c, 2, 46, true); plant(c, 462, 46, true); plant(c, 184, 232, false); plant(c, 284, 232, false);
 }
 function drawDesk(c, s, st, t, sel) {
-  var x = s.dx, y = s.dy;
+  var x = s.dx, y = s.dy, w = s.w || 46, mx = x + Math.round(w / 2) - 23;
   /* 책상 상판 + 다리 */
-  R(c, x, y, 46, 4, "#b98251"); R(c, x, y + 4, 46, 12, "#9a6337"); R(c, x, y + 4, 46, 1, "#7a4a24");
-  R(c, x + 3, y + 16, 3, 6, "#6b4120"); R(c, x + 40, y + 16, 3, 6, "#6b4120"); R(c, x + 30, y + 6, 12, 8, "#87542c"); R(c, x + 35, y + 9, 2, 1, "#e9c38f");
+  R(c, x, y, w, 4, s === SEAT.ceo ? "#8a5a33" : "#b98251"); R(c, x, y + 4, w, 12, s === SEAT.ceo ? "#6b4120" : "#9a6337"); R(c, x, y + 4, w, 1, "#7a4a24");
+  R(c, x + 3, y + 16, 3, 6, "#6b4120"); R(c, x + w - 6, y + 16, 3, 6, "#6b4120"); R(c, x + w - 16, y + 6, 12, 8, "#87542c"); R(c, x + w - 11, y + 9, 2, 1, "#e9c38f");
+  if (s === SEAT.ceo) { R(c, x + 4, y + 7, 18, 6, "#d4a72c"); R(c, x + 5, y + 8, 16, 4, "#fff3c4"); c.fillStyle = "#7a4a24"; c.font = "bold 4px monospace"; c.fillText("CEO", x + 8, y + 10.5); }
+  x = mx;
   /* 노트북 (뒷면) — 화면 불빛 색 = 상태 */
   var glow = st === "alert" ? ((t >> 3) % 2 ? "#ff6b6b" : "#ffb4b4") : st === "work" ? "#7dd3fc" : st === "done" ? "#86efac" : "#cbd5e1";
   R(c, x + 16, y - 7, 15, 8, "#4b5563"); R(c, x + 17, y - 6, 13, 6, "#6b7280"); R(c, x + 22, y - 4, 3, 2, glow); R(c, x + 14, y + 1, 19, 2, "#9ca3af");
   if (st === "work" || st === "alert") { c.fillStyle = st === "alert" ? "rgba(255,80,80,.18)" : "rgba(125,211,252,.18)"; c.fillRect(x + 12, y - 12, 23, 6); }
   /* 서류·머그·작은 화분 */
   R(c, x + 3, y + 1, 8, 2, "#fff"); R(c, x + 4, y, 8, 2, "#fef3c7"); R(c, x + 37, y - 2, 4, 4, "#fff"); R(c, x + 38, y - 1, 2, 1, "#7a4a24");
-  if (sel) { c.strokeStyle = "#e07a3f"; c.lineWidth = 1; c.setLineDash([2, 2]); c.strokeRect(x - 3.5, y - 30.5, 53, 56); c.setLineDash([]); }
+  if (sel) { c.strokeStyle = "#e07a3f"; c.lineWidth = 1; c.setLineDash([2, 2]); c.strokeRect(s.dx - 3.5, y - 30.5, w + 7, 56); c.setLineDash([]); }
 }
-function drawChair(c, s) { R(c, s.x - 7, s.y - 16, 14, 9, "#7a4a24"); R(c, s.x - 6, s.y - 15, 12, 7, "#a86f3e"); R(c, s.x - 5, s.y - 14, 10, 1, "#c48a55"); R(c, s.x - 8, s.y - 8, 16, 4, "#6b4120"); }
+function drawChair(c, s) {
+  if (s === SEAT.ceo) { R(c, s.x - 9, s.y - 20, 18, 13, "#3b2a1c"); R(c, s.x - 8, s.y - 19, 16, 11, "#5c3a22"); R(c, s.x - 7, s.y - 18, 14, 2, "#7a4a24"); R(c, s.x - 10, s.y - 8, 20, 4, "#2b1d14"); return; } R(c, s.x - 7, s.y - 16, 14, 9, "#7a4a24"); R(c, s.x - 6, s.y - 15, 12, 7, "#a86f3e"); R(c, s.x - 5, s.y - 14, 10, 1, "#c48a55"); R(c, s.x - 8, s.y - 8, 16, 4, "#6b4120"); }
 
 /* ---------- 움직임 ---------- */
 var ACT = {};
@@ -294,10 +320,11 @@ function actor(p) {
   if (!a) a = ACT[p.id] = { x: s.x, y: s.y, mode: "seat", path: [], wait: 60 + Math.random() * 200, dir: "down", spot: null };
   return a;
 }
-function goSpot(a, s, name) { var sp = SPOTS[name]; a.path = [{ x: s.x, y: s.wy }, { x: MIDX, y: s.wy }, { x: MIDX, y: sp.y }, { x: sp.x, y: sp.y }]; a.mode = "walk"; a.target = name; }
-function goHome(a, s) { var from = a.y; a.path = [{ x: MIDX, y: a.y }, { x: MIDX, y: s.wy }, { x: s.x, y: s.wy }, { x: s.x, y: s.y }]; if (Math.abs(a.x - MIDX) < 1) a.path.shift(); a.mode = "walk"; a.target = "seat"; }
+function goSpot(a, s, name) { var sp = SPOTS[name], L = lane(s); a.path = [{ x: s.x, y: s.wy }, { x: L, y: s.wy }, { x: L, y: sp.y }, { x: sp.x, y: sp.y }]; a.mode = "walk"; a.target = name; }
+function goHome(a, s) { var L = lane(s); a.path = [{ x: L, y: a.y }, { x: L, y: s.wy }, { x: s.x, y: s.wy }, { x: s.x, y: s.y }]; a.mode = "walk"; a.target = "seat"; }
 function stepActor(p, st) {
   var a = actor(p), s = SEAT[p.id], sp = 1.4;
+  if (p.boss) return a;
   if (a.mode === "walk") {
     var q = a.path[0];
     if (!q) { a.mode = a.target === "seat" ? "seat" : "spot"; a.spot = a.target; a.wait = 90 + Math.random() * 120; a.dir = a.target === "seat" ? "down" : (SPOTS[a.target] && SPOTS[a.target].face) || "down"; return a; }
@@ -312,14 +339,14 @@ function stepActor(p, st) {
   if (st === "done" && a.mode === "seat") { a.wait--; if (a.wait <= 0) goSpot(a, s, "sofa"); return a; }
   if (st === "done") return a;
   if (a.mode === "spot") { a.wait--; if (a.wait <= 0) goHome(a, s); return a; }
-  if (!wantSeat) { a.wait--; if (a.wait <= 0) { var opts = ["coffee", "water", "meet", "meet2", "window"]; goSpot(a, s, opts[Math.floor(Math.random() * opts.length)]); a.wait = 0; } }
+  if (!wantSeat) { a.wait--; if (a.wait <= 0) { var opts = ["coffee", "water", "report", "report2", "window", "coffee"]; goSpot(a, s, opts[Math.floor(Math.random() * opts.length)]); a.wait = 0; } }
   return a;
 }
 
 function drawScene() {
   var c = ctx; c.imageSmoothingEnabled = false;
   drawWall(c); drawFloor(c); drawProps(c);
-  var list = STAFF.map(function (p) { var inf = info(p), a = stepActor(p, inf.status); return { p: p, inf: inf, a: a }; });
+  var list = ALL.map(function (p) { var inf = info(p), a = stepActor(p, inf.status); return { p: p, inf: inf, a: a }; });
   /* 의자 → 앉은 직원 → 책상 순서로 (책상이 다리를 가림) */
   list.forEach(function (o) { drawChair(c, SEAT[o.p.id]); });
   list.forEach(function (o, i) {
@@ -339,14 +366,26 @@ function drawScene() {
   /* 말풍선·이름표 위치 갱신 */
   list.forEach(function (o) { var el = document.getElementById("of-say-" + o.p.id); if (el) el.style.display = o.a.mode === "seat" && (o.inf.status === "alert" || o.inf.status === "work") ? "" : "none"; });
 }
-var CAT = { x: 120, y: 152, tx: 360, wait: 0, dir: 1 };
+/* 사무실 고양이 잭슨 (젖소무늬) — 복도를 돌아다니다 가끔 대표님 자리 앞에서 쉼 */
+var CAT = { x: 120, y: 150, tx: 360, ty: 150, wait: 0, dir: 1 };
 function drawCat(c) {
-  if (CAT.wait > 0) CAT.wait--; else { var d = CAT.tx - CAT.x; if (Math.abs(d) < 1) { CAT.wait = 120 + Math.random() * 200; CAT.tx = 20 + Math.random() * 440; } else { CAT.x += Math.sign(d) * 0.6; CAT.dir = Math.sign(d); } }
-  var x = Math.round(CAT.x), y = CAT.y, f = CAT.wait > 0 ? 0 : (frame >> 2) % 2, col = "#f2a65a", dk = "#c97b36";
-  R(c, x, y + 3, 9, 4, col); R(c, x + (CAT.dir > 0 ? 7 : -3), y, 5, 5, col); R(c, x + (CAT.dir > 0 ? 7 : -3), y - 1, 1, 1, dk); R(c, x + (CAT.dir > 0 ? 11 : 1), y - 1, 1, 1, dk);
-  R(c, x + (CAT.dir > 0 ? 9 : -1), y + 2, 1, 1, "#2b1d14");
-  R(c, x + 1, y + 7, 1, 2 - f, dk); R(c, x + 7, y + 7, 1, 1 + f, dk); R(c, x + (CAT.dir > 0 ? -2 : 9), y + 1 + f, 2, 3, col);
-  R(c, x + 2, y + 4, 4, 1, dk);
+  if (CAT.wait > 0) CAT.wait--;
+  else {
+    var dx = CAT.tx - CAT.x, dy = CAT.ty - CAT.y;
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) { CAT.wait = 140 + Math.random() * 260; var r = Math.random(); if (r < 0.25) { CAT.tx = 240; CAT.ty = 126; } else if (r < 0.4) { CAT.tx = 236; CAT.ty = 246; } else { CAT.tx = 20 + Math.random() * 440; CAT.ty = 150; } if (CAT.ty !== 150 && Math.abs(CAT.y - 150) > 1 === false) {} }
+    else if (Math.abs(dx) > 0.5 && Math.abs(CAT.y - 150) < 1) { CAT.x += Math.sign(dx) * 0.6; CAT.dir = Math.sign(dx); }
+    else if (Math.abs(dx) > 0.5) { CAT.y += Math.sign(150 - CAT.y) * 0.6; }
+    else { CAT.y += Math.sign(dy) * 0.6; }
+  }
+  var x = Math.round(CAT.x), y = Math.round(CAT.y), f = CAT.wait > 0 ? 0 : (frame >> 2) % 2, W1 = "#fbfbf8", K = "#1f1f1f", P = "#f4a3a8", rt = CAT.dir > 0;
+  var hx = rt ? x + 8 : x - 4;
+  /* 꼬리 */ R(c, rt ? x - 2 : x + 10, y + 1 + f, 2, 4, K);
+  /* 몸 (흰 바탕 + 검은 점) */ R(c, x, y + 3, 10, 5, W1); R(c, x + 2, y + 3, 3, 2, K); R(c, x + 6, y + 5, 3, 2, K); R(c, x, y + 4, 1, 2, K);
+  /* 다리 */ R(c, x + 1, y + 8, 1, 2 - f, K); R(c, x + 3, y + 8, 1, 1 + f, W1); R(c, x + 7, y + 8, 1, 1 + f, W1); R(c, x + 8, y + 8, 1, 2 - f, K);
+  /* 머리 */ R(c, hx, y, 6, 5, W1); R(c, rt ? hx + 3 : hx, y, 3, 2, K); R(c, hx, y - 1, 1, 1, K); R(c, hx + 5, y - 1, 1, 1, rt ? W1 : K);
+  R(c, rt ? hx + 4 : hx + 1, y + 2, 1, 1, K); R(c, rt ? hx + 5 : hx, y + 3, 1, 1, P);
+  if (CAT.wait > 0 && (frame >> 4) % 6 === 0) { c.fillStyle = "#3b2a1c"; c.font = "6px monospace"; c.fillText("z", x + 10, y - 2); }
+  var el = document.getElementById("of-cat"); if (el) { el.style.left = ((x + 5) / W * 100) + "%"; el.style.top = ((y + 11) / H * 100) + "%"; }
 }
 function loop(ts) {
   if (!cv || !document.body.contains(cv)) { raf = null; return; }
@@ -355,7 +394,7 @@ function loop(ts) {
 }
 function pick(ev) {
   var r = cv.getBoundingClientRect(), x = (ev.clientX - r.left) / r.width * W, y = (ev.clientY - r.top) / r.height * H, best = null, bd = 1e9;
-  STAFF.forEach(function (p) { var a = actor(p), d = Math.abs(a.x - x) + Math.abs(a.y - 12 - y); if (d < bd) { bd = d; best = p; } });
+  ALL.forEach(function (p) { var a = actor(p), d = Math.abs(a.x - x) + Math.abs(a.y - 12 - y); if (d < bd) { bd = d; best = p; } });
   if (best && bd < 40) { v.ofSel = best.id; userPick = Date.now(); showCard(); }
 }
 
@@ -366,6 +405,13 @@ var userPick = 0;
 function pct(x, n) { return (x / n * 100).toFixed(2) + "%"; }
 function card(p) {
   var inf = info(p), r = inf.r;
+  if (p.boss) {
+    var chk = p.id === "ceo" ? (inf.checks && inf.checks.length ? '<h4>대표님 확인할 일</h4><ul class="of-log">' + inf.checks.map(function (x) { return "<li>❗ " + esc(x) + "</li>"; }).join("") + "</ul>" : '<h4>대표님 확인할 일</h4><p class="muted" style="font-size:13px;margin:0 0 12px">지금은 확인할 일이 없어요 ☕</p>') : "";
+    var team = p.id === "ceo" ? '<h4>오늘 사무실</h4><div class="of-stats">' + [["work", "일하는 중"], ["alert", "확인 필요"], ["done", "완료"], ["idle", "대기"]].map(function (k) { var n = STAFF.filter(function (q) { var st = info(q).status; return k[0] === "idle" ? (st === "idle" || st === "none") : st === k[0]; }).length; return "<div><small>" + k[1] + "</small><b>" + n + "명</b></div>"; }).join("") + "</div>" : "";
+    var lg = inf.log.length ? '<h4>최근 기록</h4><ul class="of-log">' + inf.log.map(function (l) { return "<li><small>" + esc(ago(l.at)) + "</small> · " + esc(l.text) + "</li>"; }).join("") + "</ul>" : "";
+    return '<div class="of-card"><div class="of-card-h"><canvas width="16" height="26" data-ava="' + p.id + '"></canvas><div><b>' + esc(p.name) + '</b><div class="muted">' + esc(p.role) + ' · 대표실</div></div><span class="of-st" style="background:' + SC[inf.status] + '">' + SN[inf.status] + "</span></div>" +
+      '<div class="of-bubble">💬 ' + esc(inf.bubble) + "</div>" + team + chk + lg + "</div>";
+  }
   var steps = p.steps.map(function (s, i) {
     var cls = i < inf.step ? "ok" : i === inf.step ? "now" : "";
     return '<li class="' + cls + '"><span>' + (i < inf.step ? "✔" : i + 1) + "</span>" + esc(s) + "</li>";
@@ -390,29 +436,30 @@ function sumHtml() { var c = counts(); return [["work", "일하는 중"], ["aler
 function overlays() {
   var h = "";
   TEAMS.forEach(function (t) { h += '<div class="of-zone" style="left:' + pct(t.x + 88, W) + ";top:" + pct(t.y + 74, H) + '">' + esc(t.name) + "</div>"; });
-  STAFF.forEach(function (p) {
+  h += '<div class="of-cat" id="of-cat">잭슨</div>';
+  ALL.forEach(function (p) {
     var s = SEAT[p.id], inf = info(p);
-    h += '<div class="of-name' + (v.ofSel === p.id ? " on" : "") + '" data-name="' + p.id + '" style="left:' + pct(s.x, W) + ";top:" + pct(s.dy + 22, H) + '">' + esc(p.name) + "</div>";
+    h += '<div class="of-name' + (p.boss ? " boss" : "") + (v.ofSel === p.id ? " on" : "") + '" data-name="' + p.id + '" style="left:' + pct(s.x, W) + ";top:" + pct(s.dy + 22, H) + '">' + esc(p.id === "ceo" ? "대표 " + p.name : p.name) + "</div>";
     h += '<div class="of-say' + (inf.status === "alert" ? " alert" : "") + '" id="of-say-' + p.id + '" style="left:' + pct(s.x, W) + ";top:" + pct(s.y - 26, H) + '">' + esc(inf.bubble) + "</div>";
   });
   return h;
 }
 function bar() {
-  return STAFF.map(function (p) {
+  return ALL.map(function (p) {
     var inf = info(p);
-    return '<button type="button" class="of-chip' + (v.ofSel === p.id ? " on" : "") + '" data-ofsel="' + p.id + '"><canvas width="16" height="16" data-ava="' + p.id + '"></canvas><span style="min-width:0"><b>' + esc(p.name) + "</b><small>" + esc(p.role) + '</small></span><span class="st" style="background:' + SC[inf.status] + '" title="' + SN[inf.status] + '"></span></button>';
+    return '<button type="button" class="of-chip' + (p.boss ? " boss" : "") + (v.ofSel === p.id ? " on" : "") + '" data-ofsel="' + p.id + '"><canvas width="16" height="16" data-ava="' + p.id + '"></canvas><span style="min-width:0"><b>' + esc(p.name) + "</b><small>" + esc(p.role) + '</small></span><span class="st" style="background:' + SC[inf.status] + '" title="' + SN[inf.status] + '"></span></button>';
   }).join("");
 }
-function paintAvatars(root) { (root || document).querySelectorAll("canvas[data-ava]").forEach(function (cnv) { var p = STAFF.find(function (x) { return x.id === cnv.dataset.ava; }); if (p) avatar(cnv, p); }); }
+function paintAvatars(root) { (root || document).querySelectorAll("canvas[data-ava]").forEach(function (cnv) { var p = ALL.find(function (x) { return x.id === cnv.dataset.ava; }); if (p) avatar(cnv, p); }); }
 function showCard() {
-  var p = STAFF.find(function (x) { return x.id === v.ofSel; }) || STAFF[0], side = document.getElementById("of-side");
+  var p = ALL.find(function (x) { return x.id === v.ofSel; }) || ALL[0], side = document.getElementById("of-side");
   if (side) { side.innerHTML = card(p); paintAvatars(side); }
   document.querySelectorAll("[data-ofsel]").forEach(function (b) { b.classList.toggle("on", b.dataset.ofsel === p.id); });
   document.querySelectorAll("[data-name]").forEach(function (b) { b.classList.toggle("on", b.dataset.name === p.id); });
 }
 function render() {
-  if (!v.ofSel) v.ofSel = STAFF[0].id;
-  var sel = STAFF.find(function (p) { return p.id === v.ofSel; }) || STAFF[0];
+  if (!v.ofSel) v.ofSel = "ceo";
+  var sel = ALL.find(function (p) { return p.id === v.ofSel; }) || ALL[0];
   return '<div class="of-wrap">' +
     '<div class="of-head"><div><h1>🏢 로우나 사무실</h1><p>직원을 누르면 하는 일과 진행 단계가 보여요</p></div><div class="of-sum" id="of-sum">' + sumHtml() + "</div>" +
     (KIOSK ? '<span class="of-clock" id="of-clock"></span>' : '<a class="btn" href="office.html" target="_blank" rel="noopener">모니터용 전광판 열기</a>') + "</div>" +
