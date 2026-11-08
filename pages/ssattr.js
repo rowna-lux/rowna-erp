@@ -110,7 +110,7 @@ function viaSearchOps(ch) { return [{ op: "waitText", text: "상품목록", ms: 
   { op: "waitText", text: "상품속성", ms: 30000 }, { op: "wait", ms: 1500 }, { op: "html", sel: "#attribute-table", max: 200000 }, { op: "text" },
   { op: "click", sel: "#anchor-tag .title-line" }, { op: "wait", ms: 1200 }, { op: "html", sel: "#anchor-tag", max: 60000 }]; }
 async function readViaSearch(ch) {
-  var r = await ERP.helperAsk("act", { url: "https://sell.smartstore.naver.com/#/products/origin-list", visible: true, ops: viaSearchOps(ch) });
+  var r = await ERP.helperAsk("act", { url: "https://sell.smartstore.naver.com/#/products/origin-list", visible: false, ops: viaSearchOps(ch) });
   var res = r.results, last = res[9] || {}, url = last.url || "", origin = (url.match(/products\/edit\/(\d+)/) || [])[1];
   if (!origin) throw new Error("목록에서 수정 화면으로 못 들어감 (" + res.map(function (x, i) { return x && !x.ok ? i + ":" + (x.error || "실패") : ""; }).filter(Boolean).join(", ") + ")");
   var th = res[12] && res[12].ok && res[12].html;
