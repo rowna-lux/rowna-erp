@@ -110,7 +110,7 @@ function viaSearchOps(ch) { return [{ op: "waitText", text: "상품목록", ms: 
   { op: "waitText", text: "상품속성", ms: 30000 }, { op: "wait", ms: 1500 }, { op: "html", sel: "#attribute-table", max: 200000 }, { op: "text" },
   { op: "click", sel: "#anchor-tag .title-line" }, { op: "wait", ms: 1200 }, { op: "html", sel: "#anchor-tag", max: 60000 }]; }
 async function readViaSearch(ch) {
-  var r = await ERP.helperAsk("act", { url: "https://sell.smartstore.naver.com/#/products/origin-list", visible: false, ops: viaSearchOps(ch) });
+  var r = await ERP.helperAsk("act", { url: "https://sell.smartstore.naver.com/#/products/origin-list", visible: true, ops: viaSearchOps(ch) });
   var res = r.results, last = res[9] || {}, url = last.url || "", origin = (url.match(/products\/edit\/(\d+)/) || [])[1];
   if (!origin) throw new Error("목록에서 수정 화면으로 못 들어감 (" + res.map(function (x, i) { return x && !x.ok ? i + ":" + (x.error || "실패") : ""; }).filter(Boolean).join(", ") + ")");
   var th = res[12] && res[12].ok && res[12].html;
@@ -215,7 +215,7 @@ async function one(t, s, opts) {
     mk("저장");
     var convBad = needConv && w.conv !== "변환 완료";
     row.status = w.applied && !w.opsFailed.length && !convBad ? "저장 완료" : "일부 실패"; if (w.opsFailed.length) row.err = w.opsFailed.join(" / ");
-  } catch (e) { row.status = "실패"; row.err = e.message; if (/^목록에서 수정 화면으로 못 들어감 \(5:/.test(e.message)) { row.status = "건너뜀(판매중 목록에 없음)"; row.v = 5; }   /* 11/8 대표님 지시: 판매중 상품만 — 목록 검색에 안 나오는 상품은 실패로 두지 않고 건너뜀 */ if (/멈춤|멈췄/.test(e.message)) stopReq = true; }
+  } catch (e) { row.status = "실패"; row.err = e.message; if (/멈춤|멈췄/.test(e.message)) stopReq = true; }
   row.ms = MS; row.tok = [TOK.i, TOK.o]; row.aim = AIM;
   return row;
 }
