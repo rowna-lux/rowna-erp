@@ -215,7 +215,7 @@ async function one(t, s, opts) {
     mk("저장");
     var convBad = needConv && w.conv !== "변환 완료";
     row.status = w.applied && !w.opsFailed.length && !convBad ? "저장 완료" : "일부 실패"; if (w.opsFailed.length) row.err = w.opsFailed.join(" / ");
-  } catch (e) { row.status = "실패"; row.err = e.message; if (/멈춤|멈췄/.test(e.message)) stopReq = true; }
+  } catch (e) { row.status = "실패"; row.err = e.message; if (/^목록에서 수정 화면으로 못 들어감 \(5:/.test(e.message)) { row.status = "건너뜀(판매중 목록에 없음)"; row.v = 5; }   /* 11/8 대표님 지시: 판매중 상품만 — 목록 검색에 안 나오는 상품은 실패로 두지 않고 건너뜀 */ if (/멈춤|멈췄/.test(e.message)) stopReq = true; }
   row.ms = MS; row.tok = [TOK.i, TOK.o]; row.aim = AIM;
   return row;
 }
@@ -235,7 +235,7 @@ ERP.acts.ssattrrun = async function (btn) {
   if (!(ERP.helperOn && ERP.helperOn())) { ERP.toast("크롬 확장 ‘로우나 도우미’가 꺼져 있어요."); return; }
   var lim = Number((btn && btn.dataset && btn.dataset.limit) || 0) || Infinity;
   try { var pg = await ERP.helperAsk("ping", {}); var vv = String(pg && pg.version || "0").split(".").map(Number); HV2 = vv[0] > 2 || (vv[0] === 2 && vv[1] >= 4); HV25 = false;   /* 태그 한 번에(tagAuto)는 10/30 시험에서 저장 단계가 멈춰서 끔 — 원인 확인 후 다시 켬 */ } catch (e) { HV2 = false; HV25 = false; }
-  running = true; stopReq = false; var s = st(), done = {}; (s.log || []).forEach(function (x) { if (x.v >= 2 && /저장 완료|할 일 없음/.test(x.status)) done[x.ch] = Math.max(done[x.ch] || 0, x.v); });
+  running = true; stopReq = false; var s = st(), done = {}; (s.log || []).forEach(function (x) { if (x.v >= 2 && /저장 완료|할 일 없음|건너뜀/.test(x.status)) done[x.ch] = Math.max(done[x.ch] || 0, x.v); });
   var SHOE = /신발|화$|화>|샌들|슬리퍼|부츠|힐|로퍼|스니커즈|뮬|플랫/;   /* 신발은 굽높이 규칙(v3) 전에 한 것을 한 번 더 봄 */
   var nf = {}; (s.log || []).forEach(function (x) { if (x.status === "실패" || x.status === "일부 실패") nf[x.ch] = (nf[x.ch] || 0) + 1; });   /* 실패·일부 실패 상품은 따로 모아 두고, 전체를 다 한 뒤 한 번에 다시 함(대표님 지시 10/30) */
   var list = (await targets()).filter(function (t) { var d = done[t.ch] || 0; return !(d >= 5) && !nf[t.ch]; }), n = 0, fails = 0;
