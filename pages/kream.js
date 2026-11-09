@@ -216,8 +216,14 @@ function parseProduct(p) {
   var trades = [], i = t.indexOf("거래일"), j = t.indexOf("거래 내역 더보기");
   if (i >= 0) { var seg = t.slice(i + 3, j > i ? j : i + 1500), re = /([^\n]+)\n([\d,]+)원\n([^\n]+)/g, mm; while ((mm = re.exec(seg)) && trades.length < 10) trades.push({ size: mm[1].trim(), price: Number(mm[2].replace(/,/g, "")), date: mm[3].trim() }); }
   var tc = t.match(/\n거래\s+([\d,.]+)(만)?\s*\n/) || [];
+  /* 95점(하자) 가격 — 계산에 절대 안 씀 (대표님 지시 2026-11-09) */
+  var p95 = [], a95 = t.indexOf("95점 동일 상품"), b95 = t.indexOf("95점 동일 상품 더보기");
+  if (a95 >= 0) (t.slice(a95, b95 > a95 ? b95 : a95 + 600).match(/[\d,]{5,}원/g) || []).forEach(function (x) { p95.push(Number(x.replace(/[^\d]/g, ""))); });
+  /* 판매 입찰 목록(리셀 도우미가 숨은 탭에서 읽어 줌): 빠른배송·사업자(아이콘 있음) / 일반배송 — 95점 가격과 같은 빠른배송 1건은 95점 상품이라 뺌 */
+  var asks = [], g = p.kream && p.kream.groups, left95 = p95.slice();
+  if (g && g[1]) g[1].forEach(function (a) { var k95 = a.fast ? left95.indexOf(a.price) : -1; if (k95 >= 0) { left95.splice(k95, 1); return; } asks.push({ size: a.opt, price: a.price, fast: !!a.fast }); });
   return { url: String(p.url || "").split("?")[0], productId: (String(p.url || "").match(/products\/(\d+)/) || [])[1] || "", name: String(p.title || "").replace(/\s*정품 안심 거래\s*\|\s*KREAM\s*$/, "").trim(), nameEn: m["og:title"] || "", brand: m["product:brand"] || "",
-    model: model, price: Number(m["product:price:amount"]) || null, availability: m["product:availability"] || "", tradeCount: tc[1] ? Math.round(Number(tc[1].replace(/,/g, "")) * (tc[2] ? 10000 : 1)) : 0, trades: trades, loggedIn: /로그아웃/.test(t.slice(0, 400)) };
+    model: model, price: Number(m["product:price:amount"]) || null, availability: m["product:availability"] || "", p95: p95, asks: asks, asksRead: !!(g && g[1]), tradeCount: tc[1] ? Math.round(Number(tc[1].replace(/,/g, "")) * (tc[2] ? 10000 : 1)) : 0, trades: trades, loggedIn: /로그아웃/.test(t.slice(0, 400)) };
 }
 function parseSearch(p) {
   if (/검색 결과가 없습니다/.test(p.text || "")) return [];
@@ -248,6 +254,13 @@ function shrink(file) {   /* 사진을 긴 변 2000px JPEG로 줄여서 보냄 (
 }
 function median(a) { a = a.slice().sort(function (x, y) { return x - y; }); var n = a.length; return n ? (n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2) : null; }
 function sizeTrades(k, size) { var tr = k.trades || [], s = String(size || "").toUpperCase(); if (!s || /^(F|FREE|TU|OS|ONE ?SIZE)$/.test(s)) return tr; var m = tr.filter(function (t) { return String(t.size).toUpperCase().replace(/\s/g, "") === s.replace(/\s/g, ""); }); return m.length ? m : tr; }
+/* 계산 기준가: 빠른배송·사업자 최저 판매입찰가, 없으면 일반배송 — 95점·즉시구매가 대표값은 안 씀 */
+function basisPrices(k, size) {
+  var s = String(size || "").toUpperCase().replace(/\s/g, ""), all = k.asks || [], free = !s || /^(F|FREE|TU|OS|ONESIZE)$/.test(s);
+  var a = free ? all : all.filter(function (x) { return String(x.size).toUpperCase().replace(/\s/g, "") === s; });
+  function mn(f) { var v = a.filter(f).map(function (x) { return x.price; }); return v.length ? Math.min.apply(null, v) : null; }
+  return { fast: mn(function (x) { return x.fast; }), normal: mn(function (x) { return !x.fast; }) };
+}
 async function fetchKream(rows, opt) {
   var bySku = {}, keys = [];
   rows.forEach(function (it) { var key = (it.sku || it.name || it.id) + "|" + (it.kreamUrl || ""); if (!bySku[key]) { bySku[key] = []; keys.push(key); } bySku[key].push(it); });
@@ -261,10 +274,15 @@ async function fetchKream(rows, opt) {
       delete busy[it.id];
       var o = Object.assign({}, it, { extra: Object.assign({}, it.extra || {}, { kream: k }) });
       if (k && !k.error && k.verified) {
-        var tr = sizeTrades(k, it.size).map(function (t) { return t.price; }), md = median(tr.slice(0, 5)), ref = md && k.price ? Math.min(md, k.price) : (md || k.price);
-        o.kreamPrice = ref || null; o.kreamUrl = k.url || o.kreamUrl; o.kreamRecent = sizeTrades(k, it.size).slice(0, 5).map(function (t) { return t.date + " " + Number(t.price).toLocaleString(); }).join(" · "); o.kreamCheckedAt = new Date().toISOString();
+        var x95 = k.p95 || [], tr = sizeTrades(k, it.size).filter(function (t) { return x95.indexOf(t.price) < 0; }).map(function (t) { return t.price; }), md = median(tr.slice(0, 5));
+        var ba = basisPrices(k, it.size), ref;
+        if (ba.fast || ba.normal) { ref = ba.fast || ba.normal; o.extra.kreamBasis = { fast: ba.fast, normal: ba.normal, by: ba.fast ? "빠른배송·사업자" : "일반배송" }; }
+        else { var mp = k.price && x95.indexOf(k.price) < 0 ? k.price : null; ref = md && mp ? Math.min(md, mp) : (md || mp); o.extra.kreamBasis = { by: "최근 체결가(빠른·일반 판매가 못 읽음" + (k.asksRead ? "" : " — 리셀 도우미 필요") + ")" }; }
+        o.kreamPrice = ref || null; o.kreamUrl = k.url || o.kreamUrl;
+        o.kreamRecent = (ba.fast || ba.normal ? "빠른 " + (ba.fast ? Number(ba.fast).toLocaleString() : "-") + " · 일반 " + (ba.normal ? Number(ba.normal).toLocaleString() : "-") + " | " : "") + sizeTrades(k, it.size).filter(function (t) { return x95.indexOf(t.price) < 0; }).slice(0, 5).map(function (t) { return t.date + " " + Number(t.price).toLocaleString(); }).join(" · ");
+        o.kreamCheckedAt = new Date().toISOString();
         if (!o.name && k.name) o.name = k.name;
-        logs.push({ sku: it.sku || it.name || "", size: it.size || "", kream_url: o.kreamUrl || "", last_trade: md, lowest_ask: k.price, trades: o.kreamRecent, source: "helper" });
+        logs.push({ sku: it.sku || it.name || "", size: it.size || "", kream_url: o.kreamUrl || "", last_trade: md, lowest_ask: o.kreamPrice, trades: o.kreamRecent, source: "helper" });
       }
       out.push(o);
     });
