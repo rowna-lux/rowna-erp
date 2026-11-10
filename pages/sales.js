@@ -14,7 +14,7 @@ function rows() {
     if (v.saleFilter === "pending" && (settleOf(s) === "확정" || ERP.excluded(s))) return false;
     if (v.saleFilter === "ret" && !S.retBySale.get(s.id)) return false;
     if (v.platform && s.platformId !== v.platform) return false;
-    if (q && ((s.productName || "") + " " + (s.itemCode || "") + " " + (s.sabangOrderNo || "") + " " + (s.mallOrderNo || "")).toLowerCase().indexOf(q) === -1) return false;
+    if (q && ((s.productName || "") + " " + (s.itemCode || "") + " " + (s.sabangOrderNo || "") + " " + (s.mallOrderNo || "") + " " + custText(s)).toLowerCase().indexOf(q) === -1) return false;
     return true;
   }).sort(function (a, b) { return ((b.date || "") + (b.orderTime || "")).localeCompare((a.date || "") + (a.orderTime || "")); });
 }
@@ -25,6 +25,12 @@ function perTag(s) {
   return pl ? '<span class="pill p-warn" style="display:block;width:max-content;margin:0 0 2px auto;font-size:10px;padding:1px 6px">' + esc(pl) + " 매입</span>" : "";
 }
 ERP.perTag = perTag;
+function custText(s) { var c = (s.extra && s.extra.customer) || {}; return (c.orderer || "") + " " + (c.receiver || ""); }
+function custCell(s) {
+  var c = (s.extra && s.extra.customer) || {}, o = c.orderer || "", r = c.receiver || "";
+  if (!o && !r) return '<span class="muted">–</span>';
+  return '<span title="주문자">' + (o ? esc(o) : '<span class="muted">–</span>') + '</span><small class="muted">받는분 ' + (r ? esc(r) : "–") + "</small>";
+}
 function render() {
   var list = rows(), cross = v.saleFilter === "nocost" || v.saleFilter === "pending", w = ERP.canWrite("sales"), t = { rev: 0, fee: 0, set: 0, cost: 0, margin: 0, mrev: 0 };
   var body = list.map(function (s) {
@@ -32,12 +38,12 @@ function render() {
     if (!off) { t.rev += num(s.salePrice); t.fee += d.fee; t.set += d.settled; t.cost += num(s.cost); if (d.hasCost) { t.margin += d.margin; t.mrev += num(s.salePrice); } }
     var stp = d.st === "확정" ? '<span class="pill p-good">확정</span>' : d.st === "예상" ? '<span class="pill p-warn">예상</span>' : '<span class="pill p-crit">미확인</span>';
     var rp = r ? ' <span class="pill ' + (r.status === "완료" ? "p-mute" : "p-crit") + '">' + esc(r.type) + " " + esc(r.status) + "</span>" : "";
-    return '<tr class="click ' + (off ? "off" : "") + '" data-edit="sales:' + esc(s.id) + '" tabindex="0"><td class="num">' + esc((s.date || "날짜없음").slice(5)) + "</td><td>" + esc(ERP.platName(s.platformId)) + '</td><td class="name">' + esc(s.productName) + rp + '<small class="num">' + esc(s.itemCode || "") + (s.sabangOrderNo ? " · 사방넷 " + esc(s.sabangOrderNo) : "") + '</small></td><td class="r num">' + won(s.salePrice) + '</td><td class="r num">' + won(d.fee) + '</td><td class="r num">' + won(d.settled) + " " + stp + '</td><td class="r num">' + perTag(s) + (num(s.cost) ? won(s.cost) : '<span class="pill p-warn">미입력</span>') + '</td><td class="r num ' + (d.hasCost && d.margin < 0 ? "neg" : "") + '">' + (d.hasCost ? won(d.margin) : "–") + '</td><td class="muted">' + esc(cardOf(s)) + '</td><td class="r num">' + (d.hasCost ? pct(d.rate) : "–") + "</td></tr>";
+    return '<tr class="click ' + (off ? "off" : "") + '" data-edit="sales:' + esc(s.id) + '" tabindex="0"><td class="num">' + esc((s.date || "날짜없음").slice(5)) + "</td><td>" + esc(ERP.platName(s.platformId)) + "</td><td>" + custCell(s) + '</td><td class="name">' + esc(s.productName) + rp + '<small class="num">' + esc(s.itemCode || "") + (s.sabangOrderNo ? " · 사방넷 " + esc(s.sabangOrderNo) : "") + '</small></td><td class="r num">' + won(s.salePrice) + '</td><td class="r num">' + won(d.fee) + '</td><td class="r num">' + won(d.settled) + " " + stp + '</td><td class="r num">' + perTag(s) + (num(s.cost) ? won(s.cost) : '<span class="pill p-warn">미입력</span>') + '</td><td class="r num ' + (d.hasCost && d.margin < 0 ? "neg" : "") + '">' + (d.hasCost ? won(d.margin) : "–") + '</td><td class="muted">' + esc(cardOf(s)) + '</td><td class="r num">' + (d.hasCost ? pct(d.rate) : "–") + "</td></tr>";
   }).join("");
   var h = '<div class="head"><div><h1>매출</h1><p>' + (cross ? "모든 기간" : v.month.replace("-", "년 ") + "월") + " · " + list.length + "건" + (w ? " · 줄을 누르면 수정해요" : "") + '</p></div><div class="tools">' + (cross ? "" : ERP.monthBar()) + (w ? '<button class="btn" data-act="sabangimport">사방넷 주문 가져오기</button><button class="btn pri" data-act="newsale">+ 매출 추가</button>' : "") + '<button class="btn" data-act="exportsales">엑셀 내보내기</button></div></div>';
-  h += '<div class="tools filters">' + ERP.chips("data-view", "saleFilter=" + v.saleFilter, [["saleFilter=all", "전체"], ["saleFilter=nocost", "원가 미입력"], ["saleFilter=pending", "정산 미확정"], ["saleFilter=ret", "반품·취소 건"]]) + '<select class="ctl" id="f-plat" aria-label="쇼핑몰">' + ERP.platOptions(v.platform, true) + '</select><input class="ctl search" data-search="q" type="search" aria-label="검색" placeholder="상품명·품번·주문번호" value="' + esc(v.q) + '"></div>';
+  h += '<div class="tools filters">' + ERP.chips("data-view", "saleFilter=" + v.saleFilter, [["saleFilter=all", "전체"], ["saleFilter=nocost", "원가 미입력"], ["saleFilter=pending", "정산 미확정"], ["saleFilter=ret", "반품·취소 건"]]) + '<select class="ctl" id="f-plat" aria-label="쇼핑몰">' + ERP.platOptions(v.platform, true) + '</select><input class="ctl search" data-search="q" type="search" aria-label="검색" placeholder="상품명·품번·주문번호·주문자" value="' + esc(v.q) + '"></div>';
   h += '<div class="tiles">' + ERP.tile("매출", won(t.rev)) + ERP.tile("수수료", won(t.fee)) + ERP.tile("정산액", won(t.set)) + ERP.tile("원가", won(t.cost)) + ERP.tile("마진", '<span class="' + (t.margin < 0 ? "neg" : "") + '">' + won(t.margin) + "</span>", "원가 입력분 마진율 " + pct(t.mrev ? t.margin / t.mrev : 0)) + "</div>";
-  h += list.length ? '<div class="table-wrap"><table><thead><tr><th>날짜</th><th>쇼핑몰</th><th>상품</th><th class="r">판매가</th><th class="r">수수료</th><th class="r">정산액</th><th class="r">원가</th><th class="r">마진</th><th>카드</th><th class="r">마진율</th></tr></thead><tbody>' + body + "</tbody></table></div>" : '<div class="panel empty"><b>조건에 맞는 매출이 없어요</b>' + (w ? "사방넷 주문 엑셀을 가져오거나 ‘매출 추가’로 직접 입력하세요." : "") + "</div>";
+  h += list.length ? '<div class="table-wrap"><table><thead><tr><th>날짜</th><th>쇼핑몰</th><th>주문자</th><th>상품</th><th class="r">판매가</th><th class="r">수수료</th><th class="r">정산액</th><th class="r">원가</th><th class="r">마진</th><th>카드</th><th class="r">마진율</th></tr></thead><tbody>' + body + "</tbody></table></div>" : '<div class="panel empty"><b>조건에 맞는 매출이 없어요</b>' + (w ? "사방넷 주문 엑셀을 가져오거나 ‘매출 추가’로 직접 입력하세요." : "") + "</div>";
   return h + '<p class="note">정산액: 확정은 실제 정산 금액, 예상·미확인은 판매가에서 수수료를 뺀 추정치예요. 마진 = 정산액 + 조정 − 원가 − 배송비 − 후정산 광고비.</p>';
 }
 function bind(root) { var fp = root.querySelector("#f-plat"); if (fp) fp.onchange = function () { v.platform = fp.value; ERP.render(); }; }
