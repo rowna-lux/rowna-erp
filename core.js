@@ -79,6 +79,7 @@ async function fetchAll(table, order, optional) {
   while (true) {
     var q = S.sb.from(table).select("*").range(from, from + size - 1);
     if (order) q = q.order(order, { ascending: true });
+    if (table === "app_settings") q = q.not("key", "like", "file:%"); /* 큰 데이터 파일은 필요할 때만 불러옴 */
     var res = await q;
     if (res.error) { if (optional) return []; throw res.error; }
     out = out.concat(res.data || []);
@@ -88,6 +89,24 @@ async function fetchAll(table, order, optional) {
   return out;
 }
 ERP.fetchAll = fetchAll;
+/* 로그인한 사람만 볼 수 있는 데이터 파일 (예전 data/*.json — 공개 저장소에서 옮김) */
+var FILES = {};
+ERP.loadFile = function (name) {
+  if (FILES[name]) return FILES[name];
+  FILES[name] = (async function () {
+    var m = await S.sb.from("app_settings").select("value").eq("key", "file:" + name).maybeSingle();
+    if (m.error || !m.data) throw new Error("데이터 파일을 불러오지 못했어요: " + name);
+    var meta = m.data.value, keys = [];
+    for (var i = 0; i < meta.parts; i++) keys.push("file:" + name + ":" + i);
+    var r = await S.sb.from("app_settings").select("key,value").in("key", keys);
+    if (r.error) throw r.error;
+    var map = {}; (r.data || []).forEach(function (x) { map[x.key] = x.value; });
+    var txt = keys.map(function (k) { return map[k] || ""; }).join("");
+    return JSON.parse(txt);
+  })();
+  FILES[name].catch(function () { delete FILES[name]; });
+  return FILES[name];
+};
 ERP.loadAll = async function () {
   ERP.sync("busy", "불러오는 중");
   var r = await Promise.all([fetchAll("platforms", "sort"), fetchAll("cards"), fetchAll("app_settings"), fetchAll("sales", "id"), fetchAll("purchases", "id"), fetchAll("returns", "id"), fetchAll("documents", "id"), fetchAll("kream_wholesale", "id", true), fetchAll("price_items", "id", true)]);
