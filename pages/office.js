@@ -70,30 +70,34 @@ var v = ERP.view; v.ofSel = v.ofSel || "";
 
 /* ---------- 직원 ---------- */
 var STAFF = [
-  { id: "stock", name: "바코", role: "재고관리", hair: "#2b1d14", shirt: "#3c96ff", skin: "#f2c9a0", tab: "stock",
-    steps: ["위치 바코드 찍기", "택·자체 바코드 등록", "입고일·매입가 입력", "라벨 출력·부착", "출고 −1", "실사 마감·사방넷 대조"] },
-  { id: "books", name: "장부", role: "매입·매출정산", hair: "#111", shirt: "#20b486", skin: "#e9bb8f", tab: "sales",
-    steps: ["사방넷 주문 가져오기", "렉스몬드 매입 연결(원가)", "카드전표 확인", "쇼핑몰 정산 확정", "반품·취소 반영", "월 마감·부가세"] },
-  { id: "sync", name: "맞춤", role: "재고정합성", hair: "#6b3e1f", shirt: "#8b5cf6", skin: "#f5d0a9",
-    steps: ["사방넷 상품 다운로드", "일시중지 → 품절 확인", "완전품절 → 재입고 확인", "몰별 판매중 대조", "사방넷 대량수정 파일", "몰별 품절 처리"] },
-  { id: "rex", name: "렉스", role: "렉스몬드 소싱", hair: "#333", shirt: "#f59e0b", skin: "#eec39a", tab: "rex-sourcing",
-    steps: ["인기상품 수집(찜·리뷰순)", "사방넷·소싱폼 중복 제외", "후보 엑셀", "대표 선택", "사방넷 등록"] },
-  { id: "domestic", name: "국내", role: "국내사이트 소싱", hair: "#4a2a12", shirt: "#ef4444", skin: "#f1c7a1", tab: "kream-yeolmu",
-    steps: ["국내몰·크림 시세 수집", "마진 계산", "결제카드 배정", "후보 확정", "등록·주문"] },
-  { id: "store", name: "스토어", role: "스토어 소싱", hair: "#1f2937", shirt: "#22c55e", skin: "#e8b88a", tab: "sourcing",
-    steps: ["스마트스토어 후보 수집", "속성 입력", "상세 연결", "상품 등록", "승인 확인"] },
-  { id: "photo", name: "픽셀", role: "사진", hair: "#a16207", shirt: "#ec4899", skin: "#f6d3b0",
-    steps: ["참고사진 수집", "테스트 3장", "대표 OK", "생성 (비용 한도)", "판독기 검수", "업로드 폴더"] },
-  { id: "detail", name: "카피", role: "상세페이지", hair: "#3f2a1d", shirt: "#06b6d4", skin: "#f0c49b",
-    steps: ["상품정보 정리", "문구 작성", "이미지컷 기획", "공통블록 결합", "업로드"] },
-  { id: "blog", name: "블리", role: "블로그", hair: "#7c2d12", shirt: "#f97316", skin: "#f7d6b4", tab: "blog",
-    steps: ["상품 선정", "제목·본문·태그", "사진 배치", "발행", "유입 확인"] },
-  { id: "ads", name: "애드", role: "광고", hair: "#0f172a", shirt: "#eab308", skin: "#e6b487",
-    steps: ["광고 상품 선정", "예산 설정", "캠페인 등록", "효과 확인", "조정"] },
-  { id: "bot", name: "봇찌", role: "스토어봇", hair: "#475569", shirt: "#64748b", skin: "#efc59c",
-    steps: ["스크립트 누락 상품 찾기", "대량수정 파일", "사방넷 업로드", "연동 확인"] },
-  { id: "veloa", name: "벨라", role: "벨로아컴퍼니", hair: "#3b2416", shirt: "#a7b3a1", skin: "#f3cfa8",
-    steps: ["거래처·소싱 건 확인", "서류 정리", "벨로아 ERP 기록", "보고"] }
+  { id: "books", name: "장부", role: "재무관리 (ERP·사방넷 주문·매입매출)", hair: "#111", shirt: "#20b486", skin: "#e9bb8f", tab: "sales",
+    steps: ["사방넷 주문 가져오기", "매입 연결(원가)", "매출·매입 기록", "정산 확인", "반품·취소 반영", "월 마감·부가세"],
+    tabs: ["sales", "purchases", "returns", "channels", "tax", "reports", "documents"],
+    projects: ["예약: 매일 07:47 아침 매출·정산 정리 → ERP", "롯데온·11번가 판매자센터 다시 로그인 (정산 자동 반영용)", "사방넷 클레임 8건 ERP 반품 등록 확인", "홈택스 1~6월 매입자료 → 1기 부가세"] },
+  { id: "stock", name: "바코", role: "재고관리 (바코드·선입선출)", hair: "#2b1d14", shirt: "#3c96ff", skin: "#f2c9a0", tab: "stock",
+    steps: ["바코드 등록", "입고일·매입가 입력", "라벨 출력·부착", "선입선출 출고 −1", "실사 마감·사방넷 대조"],
+    tabs: ["stock", "purchases"],
+    projects: ["재고 바코드 작업 (쇼핑몰 PC2 — 스캐너·라벨프린터)", "라벨 도우미: 입고일 줄(sub2) 인쇄 수정", "예약: 매주 월 10:30 재고정합성 리마인드", "재고정리: 품절 728 미반영 원인, 재입고 107, 수동확인 29"] },
+  { id: "rex", name: "렉스몬드", role: "렉스몬드의 모든 일 (사진 소싱·AI 썸네일)", hair: "#333", shirt: "#f59e0b", skin: "#eec39a", tab: "rex-sourcing",
+    steps: ["상품 소싱", "구글링 사진 수집", "(필요 시) AI 썸네일", "매입 기록", "재고·품절 확인"],
+    tabs: ["rex-sourcing", "purchases"],
+    projects: ["예약: 매일 09:20 렉스몬드 매입 → ERP", "예약: 3시간마다 소싱 매입가 링크 확인", "로우나몬드 포토 판독기 (첫 시험 대기)", "톰브라운 AI 사진 49개 (쇼핑몰 PC2)", "사방넷 원가 6,400건 업로드 (테스트 3건 먼저)", "렉스몬드 재고정합성 점검 (일시중지·완전품절)"] },
+  { id: "musinsa", name: "무신사", role: "무신사의 모든 일", hair: "#1f2937", shirt: "#111827", skin: "#e8b88a", tab: "kream-yeolmu",
+    steps: ["세일 상품 수집", "크림 시세 비교", "결제카드 배정", "매입", "기록"],
+    tabs: ["kream-yeolmu", "settings"],
+    projects: ["로우나 리셀 도우미 (무신사·크림 전용 확장)", "무신사 신발 세일 → 크림 비교", "결제카드 표 (ERP '채널·카드')", "확인 필요: 알림 기준(마진 원/%), 매입 부가세 공제(세무사)"] },
+  { id: "kream", name: "크림", role: "크림 관련 모든 일 (열무 크림도매)", hair: "#4a2a12", shirt: "#ef4444", skin: "#f1c7a1", tab: "kream-yeolmu",
+    steps: ["도매 리스트 읽기", "크림 시세 조회(95점 제외)", "마진 계산", "매입·판매입찰", "정산"],
+    tabs: ["kream-yeolmu"],
+    projects: ["열무 크림도매 (열무·무우 등 도매 리스트)", "열무 크림도매 도우미 (메인 PC 크롬에 설치 필요)", "11/9 이전 계산분 다시 조회 (95점 기준 변경)", "확인 필요: 크림 보관·빠른배송 수수료"] },
+  { id: "blog", name: "블리", role: "블로그·SNS (로우나명품 홍보)", hair: "#7c2d12", shirt: "#f97316", skin: "#f7d6b4", tab: "blog",
+    steps: ["상품 선정", "블로그 글 작성", "SNS 게시물", "발행·게시", "유입 확인"],
+    tabs: ["blog"],
+    projects: ["예약: 매일 15:37 블로그 자동 글쓰기 (지금 클라우드 실행 → PC로 옮기기 필요)", "글 안에 마케팅 링크 필수", "다음 대상: 셀린느 → 프라다 → 미우미우"] },
+  { id: "ads", name: "애드", role: "쇼핑몰별 가격·CM쿠폰·광고", hair: "#0f172a", shirt: "#eab308", skin: "#e6b487",
+    steps: ["몰별 가격 점검", "어긋난 가격 수정파일", "CM쿠폰 설정", "광고 운영", "효과 확인"],
+    tabs: ["channels", "pricing"],
+    projects: ["예약: 매일 09:23 사방넷 몰별가격 아침 자동 점검", "몰별 가격 1,540상품 수정파일 (sabang_mismatch_261105.csv 첨부 대기)", "몰별 가격 81개 추가 수정파일 업로드", "스토어봇 가격식 2주 효과 비교 (11/9)", "에이블리 블프 기획전 신청 (마감 11/11)"] }
 ];
 
 /* ---------- 데이터 ---------- */
@@ -163,12 +167,11 @@ function bossInfo(p) {
 /* ---------- 팀·자리 ---------- */
 var W = 480, H = 270, CORR = 150, MIDX = 240;
 var TEAMS = [
-  { name: "운영팀", ids: ["stock", "books", "sync"], x: 10, y: 52, rug: ["#bcd7ef", "#a6c6e4", "#86acd2"] },
-  { name: "소싱팀", ids: ["rex", "domestic", "store"], x: 294, y: 52, rug: ["#f5cfae", "#eebd95", "#dba077"] },
-  { name: "콘텐츠팀", ids: ["photo", "detail", "blog"], x: 10, y: 162, rug: ["#c4e6cf", "#acd9bb", "#8cc39f"] },
-  { name: "마케팅·지원팀", ids: ["ads", "bot", "veloa"], x: 294, y: 162, rug: ["#ddd0f0", "#cbbbe6", "#ae9bd3"] }
+  { name: "운영팀", ids: ["books", "stock"], x: 10, y: 52, rug: ["#bcd7ef", "#a6c6e4", "#86acd2"] },
+  { name: "소싱팀", ids: ["rex", "musinsa", "kream"], x: 294, y: 52, rug: ["#f5cfae", "#eebd95", "#dba077"] },
+  { name: "홍보·가격팀", ids: ["blog", "ads"], x: 10, y: 162, rug: ["#c4e6cf", "#acd9bb", "#8cc39f"] }
 ];
-var HAIRSTYLE = { stock: "short", books: "bob", sync: "long", rex: "cap", domestic: "short", store: "bun", photo: "long", detail: "bob", blog: "bun", ads: "spiky", bot: "cap", veloa: "long" };
+var HAIRSTYLE = { stock: "short", books: "bob", rex: "cap", musinsa: "short", kream: "bun", blog: "long", ads: "spiky" };
 var SEAT = {};
 TEAMS.forEach(function (t) { t.ids.forEach(function (id, k) { var dx = t.x + 8 + k * 58; SEAT[id] = { dx: dx, dy: t.y + 40, x: dx + 23, y: t.y + 36, wy: t.y + 8, team: t }; }); });
 /* 대표석: 가운데 위 — 대표 신소희 + 옆자리 다정 */
@@ -423,8 +426,9 @@ function card(p) {
     '<div class="of-bubble">💬 ' + esc(inf.bubble) + (r.updatedAt ? ' <small>· ' + esc(ago(r.updatedAt)) + "</small>" : "") + "</div>" + stats +
     "<h4>업무 단계</h4><ol class=\"of-steps\">" + steps + "</ol>" +
     (inf.todo ? '<h4>다음 할 일</h4><p class="of-todo">' + esc(inf.todo) + "</p>" : "") +
+    (p.projects && p.projects.length ? '<h4>연관 프로젝트</h4><ul class="of-log">' + p.projects.map(function (x) { return "<li>📁 " + esc(x) + "</li>"; }).join("") + "</ul>" : "") +
     "<h4>최근 기록</h4>" + log +
-    (p.tab && !KIOSK && ERP.pages[p.tab] ? '<button class="btn sm" data-ofgo="' + esc(p.tab) + '">' + esc(ERP.pages[p.tab].title) + " 열기</button>" : "") + "</div>";
+    (!KIOSK ? '<div style="display:flex;gap:6px;flex-wrap:wrap">' + (p.tabs || (p.tab ? [p.tab] : [])).filter(function (t) { return ERP.pages[t]; }).map(function (t) { return '<button class="btn sm" data-ofgo="' + esc(t) + '">' + esc(ERP.pages[t].title) + " 열기</button>"; }).join("") + "</div>" : "") + "</div>";
 }
 function ticker() {
   var all = [];
@@ -508,7 +512,7 @@ if (KIOSK) {
 }
 
 /* Claude가 작업 기록을 남길 때 쓰는 함수 — 대표 계정 브라우저에서만 저장됨
-   ERP.officeLog("photo", { step: 3, status: "work", note: "11장 재생성 중", todo: "판독기 검수", text: "톰브라운 11장 생성 시작" }) */
+   ERP.officeLog("rex", { step: 2, status: "work", note: "11장 재생성 중", todo: "판독기 검수", text: "톰브라운 11장 생성 시작" }) */
 ERP.officeLog = async function (id, o) {
   var g = await S.sb.from("app_settings").select("value").eq("key", KEY).maybeSingle();
   if (g.error) throw g.error;
