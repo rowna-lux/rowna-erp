@@ -17,7 +17,10 @@ function mallMin() { return S.SET.kream_mall_min == null ? 30 : num(S.SET.kream_
 function mallMax() { return S.SET.kream_mall_max == null ? 30 : num(S.SET.kream_mall_max); }
 function mallBrandsStr() { return S.SET.kream_mall_brands == null ? MALL_BRANDS : String(S.SET.kream_mall_brands); }
 function mallBrands() { return mallBrandsStr().split(/[,\n]/).map(function (s) { return s.trim(); }).filter(Boolean); }
-function mallVat() { return !!S.SET.kream_mall_vat_deduct; }   /* 기본: 국내몰 카드 매입은 매입세액 공제 안 됨으로 보수 계산 */
+function mallVat() { return S.SET.kream_mall_vat_deduct == null ? true : !!S.SET.kream_mall_vat_deduct; }   /* 기본: 국내 매입이라 매입세액 공제됨 (대표님 확인 2026-11-10) */
+/* 크림 보관판매 보관료: 월 3,000원 (대표님 확인 2026-11-10) × 예상 보관 개월 — 매입가에 더해 계산 */
+function storMonths() { return S.SET.kream_storage_months == null ? 1 : num(S.SET.kream_storage_months); }
+function storFee() { return 3000 * storMonths(); }
 var DECISIONS = ["검토", "매입", "보류", "제외"];
 function rate() { return S.SET.kream_fee_rate == null ? 0.06 : Number(S.SET.kream_fee_rate); }
 function cap() { return S.SET.kream_fee_cap == null ? 300000 : num(S.SET.kream_fee_cap); }
@@ -41,7 +44,7 @@ function assignCards(list) {
     });
 }
 function cost(it) { var w = num(it.wholesalePrice); if (!isMall(it.supplier)) return w; var b = preCard(it); if (mallCards().length) return b - ((CARD[it.id] || {}).save || 0); return Math.round(b * (1 - mallDisc("card"))); }
-function calc(it) { var p = premium(it), wh = cost(it); if (isMall(it.supplier) && !mallVat()) wh = wh * 1.1;   /* kream()은 매입가÷1.1을 빼므로 ×1.1 = 매입가 전액을 원가로 */
+function calc(it) { var p = premium(it), wh = cost(it); if (isMall(it.supplier) && !mallVat()) wh = wh * 1.1; wh = num(wh) + storFee();   /* kream()은 매입가÷1.1을 빼므로 ×1.1 = 매입가 전액을 원가로 */
   return C.kream(it.kreamPrice, wh, p ? 0.03 : rate(), cap(), p ? 20000 : base()); }
 function items() { return ERP.list("kream_wholesale").filter(function (x) { return (x.supplier || "열무") === SUP(); }); }
 /* 거래 속도: 최근 체결 5건 날짜로 한 달 거래 수 추정 */
@@ -108,8 +111,8 @@ function mallNote(w) {
   var dis = w ? "" : " disabled", f = function (id, label, val, extra) { return '<div class="fd"><label for="' + id + '">' + label + '</label><input id="' + id + '" ' + (extra || 'type="number" step="0.1"') + ' value="' + esc(String(val)) + '"' + dis + "></div>"; };
   return '<div class="panel"><h2>국내몰 매입 조건</h2><div class="fg narrow">' +
     f("km-grade", "등급 할인 %", num(S.SET.kream_mall_grade)) + f("km-coupon", "쿠폰 할인 % (장바구니·상품 쿠폰)", num(S.SET.kream_mall_coupon)) + f("km-card", "카드 청구할인·적립 %", num(S.SET.kream_mall_card)) +
-    f("km-min", "할인율 몇 % 이상만", mallMin(), 'type="number"') + f("km-max", "한 번에 확인할 상품 수", mallMax(), 'type="number"') +
-    '<div class="fd"><label for="km-vat">매입 부가세</label><select class="ctl" id="km-vat"' + dis + '><option value="0"' + (mallVat() ? "" : " selected") + '>공제 안 됨 (보수적)</option><option value="1"' + (mallVat() ? " selected" : "") + ">공제됨</option></select></div></div>" +
+    f("km-stor", "보관판매 예상 보관 개월 (월 3,000원)", storMonths(), 'type="number"') + f("km-min", "할인율 몇 % 이상만", mallMin(), 'type="number"') + f("km-max", "한 번에 확인할 상품 수", mallMax(), 'type="number"') +
+    '<div class="fd"><label for="km-vat">매입 부가세</label><select class="ctl" id="km-vat"' + dis + '><option value="1"' + (mallVat() ? " selected" : "") + '>공제됨 (국내 매입)</option><option value="0"' + (mallVat() ? "" : " selected") + ">공제 안 됨</option></select></div></div>" +
     '<div class="fd"><label for="km-cards">결제 카드표 — 한 줄에 카드명, 무신사 할인·적립 %, 월 한도(원, 0=무제한), 이번 달 이미 받은 혜택(원). 적어 두면 위 ‘카드 %’ 대신 이 표로 상품마다 남은 한도 안에서 가장 많이 깎이는 카드를 자동 배정해요.</label><textarea id="km-cards" class="ctl" rows="6" placeholder="디어쇼퍼, 5, 200000, 0"' + dis + ">" + esc(String(S.SET.kream_mall_cards || "")) + "</textarea></div>" +
     '<div class="fd"><label for="km-brands">이 브랜드만 크림에서 확인 (쉼표로 구분, 비우면 전부)</label><textarea id="km-brands" class="ctl" rows="2"' + dis + ">" + esc(mallBrandsStr()) + "</textarea></div>" +
     '<p class="note">실제 매입가 = 목록 세일가 × (1−등급 할인) × (1−쿠폰) − 카드 혜택(카드표가 있으면 남은 월 한도 안에서 자동 배정, 없으면 카드 % 적용). 쿠폰은 상품마다 적용 여부가 달라 평균값으로 넣어 주세요. 정확한 금액은 무신사 상품 페이지의 회원 최저가로 확인. 매입 부가세 ‘공제 안 됨’이면 매입가 전액을 원가로 계산해요. 크림은 한 상품씩 10~12초 간격으로 열고, 차단·경고 화면이 보이면 바로 멈춰요. 스마트스토어 속성 작업과 도우미를 같이 쓰니 동시에 돌리지 마세요.</p></div>';
@@ -121,7 +124,7 @@ function feeNote(w) {
 function bind(root) {
   var kl = root.querySelector("#k-list"); if (kl) kl.onchange = function () { v.kList = kl.value; ERP.render(); };
   var kk = root.querySelector("#k-kind"); if (kk) kk.onchange = function () { v.kSup = kk.value === "mall" ? Object.keys(MALLS)[0] : "열무"; v.kList = ""; ERP.render(); };
-  [["km-grade", "kream_mall_grade"], ["km-coupon", "kream_mall_coupon"], ["km-card", "kream_mall_card"], ["km-min", "kream_mall_min"], ["km-max", "kream_mall_max"]].forEach(function (a) { var el = root.querySelector("#" + a[0]); if (el) el.onchange = async function () { await ERP.saveSetting(a[1], num(el.value)); ERP.render(); }; });
+  [["km-stor", "kream_storage_months"], ["km-grade", "kream_mall_grade"], ["km-coupon", "kream_mall_coupon"], ["km-card", "kream_mall_card"], ["km-min", "kream_mall_min"], ["km-max", "kream_mall_max"]].forEach(function (a) { var el = root.querySelector("#" + a[0]); if (el) el.onchange = async function () { await ERP.saveSetting(a[1], num(el.value)); ERP.render(); }; });
   var kv = root.querySelector("#km-vat"); if (kv) kv.onchange = async function () { await ERP.saveSetting("kream_mall_vat_deduct", kv.value === "1"); ERP.render(); };
   var kcd = root.querySelector("#km-cards"); if (kcd) kcd.onchange = async function () { await ERP.saveSetting("kream_mall_cards", kcd.value.trim()); ERP.render(); };
   var kbr = root.querySelector("#km-brands"); if (kbr) kbr.onchange = async function () { await ERP.saveSetting("kream_mall_brands", kbr.value.trim()); ERP.render(); };
