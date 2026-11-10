@@ -7,7 +7,7 @@
 var ERP = window.ERP, U = ERP.U, esc = U.esc, S = ERP.S;
 var BLOG = "https://blog.naver.com/shinmy6", STORE = "https://smartstore.naver.com/lowna/products/";
 var ROWS = null, SEL = [], V = { q: "", brand: "", page: 1, edit: null };
-async function load() { if (ROWS) return ROWS; var r = await fetch("data/blog_items.json?v=1027z"); var j = await r.json(); ROWS = j.rows.map(function (a) { return { ch: a[0], code: a[1], name: a[2], cat: a[3], brand: a[4], sold: a[5] || 0, imgs: a[6] || [] }; }); return ROWS; }
+async function load() { if (ROWS) return ROWS; var j = await ERP.loadFile("blog_items"); ROWS = j.rows.map(function (a) { return { ch: a[0], code: a[1], name: a[2], cat: a[3], brand: a[4], sold: a[5] || 0, imgs: a[6] || [] }; }); return ROWS; }
 function posts() { return (S.SET.blog_posts || []).slice(); }
 async function savePosts(p) { await ERP.saveSetting("blog_posts", p); }
 function used() { var m = {}; posts().forEach(function (p) { if (p.status === "발행") (p.items || []).forEach(function (i) { m[i.ch] = p.date; }); }); return m; }

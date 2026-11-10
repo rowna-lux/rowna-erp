@@ -9,7 +9,7 @@ var ERP = window.ERP, U = ERP.U, esc = U.esc, KEY = "rowna-ssattr-v1";
 function st() { try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { return {}; } }
 function save(s) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {} }
 var T = null, running = false, stopReq = false, HV2 = false, HV25 = false;   /* HV2: 도우미 2.4 이상 */
-async function targets() { if (T) return T; var r = await fetch("data/ss_targets.json?v=" + Date.now()); var j = await r.json(); T = j.rows.map(function (a) { return { ch: a[0], code: a[1], name: a[2], cat: a[3], brand: a[4], sold: a[5] }; }); return T; }
+async function targets() { if (T) return T; var j = await ERP.loadFile("ss_targets"); T = j.rows.map(function (a) { return { ch: a[0], code: a[1], name: a[2], cat: a[3], brand: a[4], sold: a[5] }; }); return T; }
 
 function clean(x) { return String(x || "").replace(/\s+/g, " ").replace(/\s*추천$/, "").trim(); }   /* 네이버가 붙이는 '추천' 표시는 떼고 봄 */
 function parseAttrs(html) {
