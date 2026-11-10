@@ -146,7 +146,7 @@ function render() {
 function head(n) {
   var w = ERP.canWrite("price_items");
   var h = '<div class="head sc-head"><div><h1>스마트스토어 소싱</h1><p>칸을 눌러 바로 입력 · Enter/Tab/방향키 이동 · 여러 칸 Ctrl+V · 칸을 벗어나면 자동 저장 · 흰 칸=입력, 회색=자동계산, 분홍=핵심 결과</p></div><div class="tools"><button class="btn" data-act="scrail">' + (document.body.classList.contains("rail-hide") ? "메뉴 보이기" : "메뉴 숨기고 넓게") + '</button>' +
-    (w ? '<button class="btn pri" data-act="scsave" title="지금 바로 저장 (Ctrl+S) · 입력하면 자동으로도 저장돼요">💾 저장</button>' : "") + ('<button class="btn' + (v.scCols ? " pri" : "") + '" data-act="sccols">열 숨기기·보이기' + (LAY.h.length ? " (" + LAY.h.length + "개 숨김)" : "") + "</button>") + (w ? '<button class="btn" data-act="scattrdiag" title="스마트스토어 상품속성 자동입력 준비: 수정 화면 구조 진단">속성 진단</button><button class="btn" data-act="sccafe" title="메투 카페 여주메니아 판매글 주소를 넣으면 상품 정보를 채워요">메투 글 추가</button><button class="btn" data-act="scautofill" title="링크는 있는데 빈칸이 있는 줄을 자동으로 채워요">링크로 빈칸 채우기</button><button class="btn" data-act="sccheck" title="모든 링크의 가격·재고를 지금 확인해요(ERP 창이 켜져 있으면 3시간마다 자동)">가격·재고 지금 확인</button>' + AUTO.badge() : "") + (w ? '<button class="btn" data-act="scimport">소싱폼 엑셀 올리기</button>' : "") + '<button class="btn" data-act="scexport">엑셀로 받기</button>' + (w ? '<button class="btn" data-act="scsold" id="scso" disabled title="왼쪽 줄 번호를 누른 뒤 사용">줄 번호 눌러 품절 표시</button>' : "") + (ERP.canWrite("price_items") ? '<button class="btn danger" data-act="scdel" id="scdel" disabled>선택 줄 삭제</button>' : "") + "</div></div>";
+    (w ? '<button class="btn pri" data-act="scsave" title="지금 바로 저장 (Ctrl+S) · 입력하면 자동으로도 저장돼요">💾 저장</button><button class="btn" data-act="scundo" title="방금 고친 것 되돌리기 (Ctrl+Z)">↶ 되돌리기</button><button class="btn" data-act="scredo" title="되돌린 것 다시 실행 (Ctrl+Y)">↷</button>' : "") + ('<button class="btn' + (v.scCols ? " pri" : "") + '" data-act="sccols">열 숨기기·보이기' + (LAY.h.length ? " (" + LAY.h.length + "개 숨김)" : "") + "</button>") + (w ? '<button class="btn" data-act="scattrdiag" title="스마트스토어 상품속성 자동입력 준비: 수정 화면 구조 진단">속성 진단</button><button class="btn" data-act="sccafe" title="메투 카페 여주메니아 판매글 주소를 넣으면 상품 정보를 채워요">메투 글 추가</button><button class="btn" data-act="scautofill" title="링크는 있는데 빈칸이 있는 줄을 자동으로 채워요">링크로 빈칸 채우기</button><button class="btn" data-act="sccheck" title="모든 링크의 가격·재고를 지금 확인해요(ERP 창이 켜져 있으면 3시간마다 자동)">가격·재고 지금 확인</button>' + AUTO.badge() : "") + (w ? '<button class="btn" data-act="scimport">소싱폼 엑셀 올리기</button>' : "") + '<button class="btn" data-act="scexport">엑셀로 받기</button>' + (w ? '<button class="btn" data-act="scsold" id="scso" disabled title="왼쪽 줄 번호를 누른 뒤 사용">줄 번호 눌러 품절 표시</button>' : "") + (ERP.canWrite("price_items") ? '<button class="btn danger" data-act="scdel" id="scdel" disabled>선택 줄 삭제</button>' : "") + "</div></div>";
   if (n) h += '<div class="tools filters">' + ERP.chips("data-view", "scF=" + v.scF, [["scF=all", "전체 " + n.all], ["scF=change", "가격 변경 필요 " + n.change], ["scF=warn", "손해·저마진 " + n.warn], ["scF=link", "매입가 변동 " + n.link], ["scF=nocost", "원가 없음 " + n.nocost]]) + '<input class="ctl search" data-search="scQ" type="search" aria-label="검색" placeholder="품번·브랜드·상품명·매입처·코드" value="' + esc(v.scQ) + '">' + (v.scSort ? '<button class="btn sm" data-act="scunsort">정렬 해제</button>' : "") + "</div>";
   return h;
 }
@@ -181,6 +181,19 @@ function saveCfg(o) { return ERP.saveSetting("price_settings", o); }
 
 /* ---------- 저장 (줄 단위, 디바운스) ---------- */
 var pending = {}, timers = {};
+/* ---------- 되돌리기 (Ctrl+Z) / 다시 실행 (Ctrl+Y, Ctrl+Shift+Z) ---------- */
+var UNDO = [], REDO = [];
+function cur(id) { return pending[id] || ERP.DATA.price_items.get(id); }
+function snapOf(ids) { return ids.map(function (id) { var it = cur(id); return it ? JSON.parse(JSON.stringify(it)) : null; }).filter(Boolean); }
+function remember(ids) { var sn = snapOf(ids); if (!sn.length) return; UNDO.push(sn); if (UNDO.length > 100) UNDO.shift(); REDO.length = 0; }
+function restore(from, to, label) {
+  var sn = from.pop(); if (!sn) { ERP.toast(label === "undo" ? "더 되돌릴 작업이 없어요." : "다시 실행할 작업이 없어요."); return; }
+  to.push(snapOf(sn.map(function (x) { return x.id; })));
+  sn.forEach(function (it) { ERP.DATA.price_items.set(it.id, it); queueSave(it); });
+  ERP.render(); ERP.toast(label === "undo" ? "되돌렸어요 (" + sn.length + "줄)" : "다시 실행했어요 (" + sn.length + "줄)");
+}
+ERP.acts.scundo = function () { restore(UNDO, REDO, "undo"); };
+ERP.acts.scredo = function () { restore(REDO, UNDO, "redo"); };
 function queueSave(it) { pending[it.id] = it; clearTimeout(timers[it.id]); timers[it.id] = setTimeout(function () { flush(it.id); }, 500); }
 async function flush(id) {
   var it = pending[id]; if (!it) return; delete pending[id];
@@ -205,6 +218,7 @@ function commitCell(span) {
   var col = COLS[+td.dataset.ci], it = Object.assign({}, pending[it0.id] || it0), val = parseIn(col, span.tagName === "SELECT" ? span.value : span.textContent);
   var old = get(it, col.k); if ((old == null ? "" : old) === (val == null ? "" : val)) { if (span.tagName !== "SELECT") span.textContent = inVal(col, old); return; }
   if (col.k === "x.marginSet" && val != null && (val < 0.01 || val > 0.30)) { ERP.toast("적용마진은 1~30% 사이로 넣어 주세요."); span.textContent = inVal(col, old); return; }
+  remember([it.id]);
   setv(it, col.k, val);
   if (col.k === "buyLink") { /* 링크 바뀌면 AI 확인값 초기화 */ it.extra = Object.assign({}, it.extra || {}, { linkPrice: null, linkCheckedAt: null }); }
   ERP.DATA.price_items.set(it.id, it); queueSave(it);
@@ -239,6 +253,7 @@ async function onPaste(e, span) {
   var ids = trs.map(function (t) { return t.dataset.id; }).concat(Object.keys(pending).length ? [] : []);
   if (need > 0) { var list = rows(); ids = list.map(function (x) { return x.id; }); }
   var changed = 0;
+  remember(grid.map(function (c, ri) { return ids[r0 + ri]; }).filter(Boolean));
   grid.forEach(function (cells, ri) {
     var id = ids[r0 + ri]; var it0 = id && ERP.DATA.price_items.get(id); if (!it0) return; var it = Object.assign({}, pending[id] || it0);
     var V = vis(), p0 = V.indexOf(ci0);
@@ -296,14 +311,28 @@ ERP.acts.scrail = function () { var on = !document.body.classList.contains("rail
 try { if (localStorage.getItem("rowna-sc-rail")) document.body.classList.add("rail-hide"); } catch (e) {}
 ERP.acts.scunsort = function () { v.scSort = null; ERP.render(); };
 function soBtn() { var b = document.getElementById("scso"); if (!b) return; var it = selected && ERP.DATA.price_items.get(selected); b.disabled = !it; b.textContent = !it ? "줄 번호 눌러 품절 표시" : ((it.extra || {}).linkStatus === "품절" ? "선택 줄 품절 해제" : "선택 줄 품절로 표시"); }
-ERP.acts.scsold = function () { var it0 = selected && ERP.DATA.price_items.get(selected); if (!it0) return; var it = Object.assign({}, pending[it0.id] || it0), x = Object.assign({}, it.extra || {}), on = x.linkStatus !== "품절"; x.linkStatus = on ? "품절" : "정상"; x.soldManual = on; x.soldManualAt = new Date().toISOString(); it.extra = x; if (on) it.status = "품절"; else if (it.status === "품절") it.status = "판매중"; ERP.DATA.price_items.set(it.id, it); queueSave(it); ERP.toast(on ? "품절로 표시했어요." : "품절을 해제했어요."); ERP.render(); };
+ERP.acts.scsold = function () { var it0 = selected && ERP.DATA.price_items.get(selected); if (!it0) return; remember([it0.id]); var it = Object.assign({}, pending[it0.id] || it0), x = Object.assign({}, it.extra || {}), on = x.linkStatus !== "품절"; x.linkStatus = on ? "품절" : "정상"; x.soldManual = on; x.soldManualAt = new Date().toISOString(); it.extra = x; if (on) it.status = "품절"; else if (it.status === "품절") it.status = "판매중"; ERP.DATA.price_items.set(it.id, it); queueSave(it); ERP.toast(on ? "품절로 표시했어요." : "품절을 해제했어요."); ERP.render(); };
 ERP.acts.scsave = async function () {
   var a = document.activeElement; if (a && a.classList && a.classList.contains("ce")) commitCell(a);
   var ids = Object.keys(pending); ids.forEach(function (id) { clearTimeout(timers[id]); });
   await Promise.all(ids.map(function (id) { return flush(id); }));
   ERP.toast(ids.length ? ids.length + "줄 저장했어요." : "모두 저장돼 있어요.");
 };
-document.addEventListener("keydown", function (e) { if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S") && document.querySelector("table.sheet")) { e.preventDefault(); ERP.acts.scsave(); } });
+document.addEventListener("keydown", function (e) {
+  if (!(e.ctrlKey || e.metaKey) || !document.querySelector("table.sheet")) return;
+  var k = (e.key || "").toLowerCase();
+  if (k === "s") { e.preventDefault(); ERP.acts.scsave(); return; }
+  if (k !== "z" && k !== "y") return;
+  var t = document.activeElement, isCell = t && t.classList && t.classList.contains("ce"), td = isCell && t.closest("td"), tr = td && t.closest("tr");
+  if (!isCell && t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return; /* 일반 입력칸은 브라우저 기본 되돌리기 */
+  e.preventDefault();
+  if (isCell && k === "z" && !e.shiftKey) { /* 고치는 중인 칸은 먼저 원래 값으로 */
+    var col = COLS[+td.dataset.ci], it = tr && cur(tr.dataset.id);
+    if (it && t.textContent !== inVal(col, get(it, col.k))) { t.textContent = inVal(col, get(it, col.k)); ERP.toast("고치던 칸을 원래대로 돌렸어요."); return; }
+    t.blur();
+  }
+  if (k === "y" || e.shiftKey) ERP.acts.scredo(); else ERP.acts.scundo();
+});
 window.addEventListener("beforeunload", function (e) { if (Object.keys(pending).length) { e.preventDefault(); e.returnValue = ""; } });
 ERP.acts.scdel = async function (btn) { if (!selected) return; var it = ERP.DATA.price_items.get(selected); if (!btn.dataset.arm) { btn.dataset.arm = "1"; btn.textContent = "‘" + ((it && (calc(it).finalName || it.sku)) || "").slice(0, 18) + "’ 삭제할까요? 한 번 더"; return; } if (await ERP.remove("price_items", selected)) ERP.toast("삭제했어요."); selected = null; };
 ERP.acts.scaddkey = function (btn) { var key = btn.dataset.key, inp = document.querySelector('[data-newkey="' + key + '"]'), name = inp && inp.value.trim(); if (!name) return; var o = Object.assign({}, cfg()), m = Object.assign({}, o[key] || {}); m[name] = 0; o[key] = m; saveCfg(o); };
