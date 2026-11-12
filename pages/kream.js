@@ -101,6 +101,7 @@ function render() {
     '<select class="ctl" id="k-sup" aria-label="도매처">' + sups.map(function (x) { return "<option" + (x === SUP() ? " selected" : "") + ">" + esc(x) + "</option>"; }).join("") + (mall ? "" : '<option value="__new">+ 도매처 추가</option>') + "</select>" +
     (dates.length ? '<select class="ctl" id="k-list" aria-label="리스트 날짜">' + dates.map(function (d) { return "<option" + (d === v.kList ? " selected" : "") + ' value="' + d + '">' + d.replace(/-/g, ".") + " 리스트</option>"; }).join("") + "</select>" : "") +
     (w ? (mall ? '<button class="btn pri" data-act="kreammall">🛒 ' + esc(MALLS[SUP()].label) + " 불러오기</button>" : '<button class="btn pri" data-act="kreamphoto">📷 리스트 사진 올리기</button>') + (list.length ? '<button class="btn" data-act="kreamfetch">크림 시세 다시 가져오기</button>' : "") + '<button class="btn" data-act="kreamadd">+ 직접 추가</button>' : "") + (list.length ? '<button class="btn" data-act="kreamexport">엑셀 내보내기</button>' : "") + "</div></div>";
+  if (queue().length) h += '<div class="panel"><b>📱 휴대폰에서 올린 리스트 사진 ' + queue().length + '장 대기 중</b> — ' + (helperOn() ? '이 PC에서 지금 읽는 중이에요.' : 'PC1 ERP(로우나 도우미 켜짐)가 켜져 있으면 1~2분 안에 자동으로 읽어서 넣어요.') + '</div>';
   if (!list.length) return h + '<div class="panel empty"><b>' + esc(SUP()) + (mall ? " 후보가 아직 없어요</b>" + (w ? "‘🛒 불러오기’를 누르면 세일 목록 1장을 열어 조건에 맞는 상품만 담고, 크림에서 한 상품씩(10~12초 간격) 확인해요." : "") : ' 도매 리스트가 아직 없어요</b>' + (w ? "‘📷 리스트 사진 올리기’로 도매처가 보낸 사진을 올리면 표를 읽고 크림 시세까지 채워요." : "")) + "</div>" + feeNote(w);
   h += '<div class="tiles">' + ERP.tile("리스트 전체", T.qty + "개", won(T.whole) + "원 · 전부 사면 예상 이익 " + won(T.real) + "원") + ERP.tile("추천 수량만 사면", T.recQty + "개", won(T.recWhole) + "원 → 이익 " + won(T.recReal) + "원", "hl") +
     ERP.tile("예산 " + won(budget) + "원 안에서", pick.qty + "개", won(pick.whole) + "원 → 이익 " + won(pick.real) + "원<br><small>" + esc(pick.lines.join(" · ")) + "</small>") + ERP.tile("매입 결정", T.buyQty + "개", won(T.buyWhole) + "원 · 예상 이익 " + won(T.buyReal) + "원") + "</div>";
@@ -319,27 +320,68 @@ async function fetchKream(rows, opt) {
   ERP.render(); ERP.toast("크림 확인을 마쳤어요.");
 }
 ERP.acts.kreamfetch = function () { var list = items().filter(function (x) { return x.listDate === v.kList; }); if (!list.length) return; if (!isMall(SUP()) && !wholesaleOn()) { ERP.toast("‘로우나 열무 크림도매 도우미’ 확장을 설치해야 빠른배송·일반배송·95점을 나눠 읽어요 (ERP 저장소 tools/kream-wholesale-helper)."); return; } fetchKream(list, isMall(SUP()) ? { gap: [10, 12], chan: "R" } : { chan: "W" }); };
+/* 사진 → 표 읽기(ChatGPT, '로우나 도우미') → 도매 리스트 저장 → 크림 시세. pics = [{data: dataURL, name}] */
+async function importPhotos(pics, sup, day) {
+  var made = [];
+  for (var i = 0; i < pics.length; i++) {
+    ERP.toast("사진 읽는 중 " + (i + 1) + "/" + pics.length + " (20~60초)");
+    try {
+      var r = await ocrList(pics[i].data), vat = r.vatIncluded !== false;
+      (r.items || []).forEach(function (x) {
+        var price = num(x.wholesalePrice); if (!price || !(x.sku || x.name)) return;
+        made.push({ id: U.uid(), supplier: sup, listDate: day, brand: String(x.brand || "").trim(), sku: String(x.sku || "").trim(), name: String(x.name || "").trim(), kreamUrl: x.kreamUrlUnsure ? "" : String(x.kreamUrl || "").trim(), size: String(x.size || "F").trim() || "F", qty: num(x.qty) || 1, wholesalePrice: vat ? price : Math.round(price * 1.1), kreamPrice: null, kreamRecent: "", decision: "검토", memo: (vat ? "" : "사진 도매가 VAT 별도 → ×1.1 반영 · ") + "사진: " + pics[i].name, extra: { ocr: { skuUnsure: !!x.skuUnsure, urlUnsure: !!x.kreamUrlUnsure, rawUrl: x.kreamUrl || "", file: pics[i].name } } });
+      });
+    } catch (e) { ERP.toast("⚠ " + pics[i].name + ": " + e.message); }
+  }
+  if (!made.length) { ERP.toast("사진에서 상품 줄을 찾지 못했어요."); return 0; }
+  var rowsDb = made.map(function (o) { return ERP.toRow("kream_wholesale", o); });
+  try { await ERP.saveBatch("kream_wholesale", rowsDb); rowsDb.forEach(function (r) { ERP.applyRow("kream_wholesale", r); }); } catch (e) { ERP.toast(ERP.errMsg(e)); return 0; }
+  v.kSup = sup; v.kList = day; ERP.render(); ERP.toast(made.length + "줄을 넣었어요. 이제 크림에서 한 상품씩 확인해요 (상품당 10~30초).");
+  if (wholesaleOn()) fetchKream(made, { chan: "W" }); else ERP.toast("크림 시세는 ‘로우나 열무 크림도매 도우미’를 켠 뒤 [크림 시세 다시 가져오기]로 채워 주세요.");
+  return made.length;
+}
+function fileToData(f) { return new Promise(function (res, rej) { var r = new FileReader(); r.onload = function () { res(r.result); }; r.onerror = rej; r.readAsDataURL(f); }); }
+/* 휴대폰(도우미 없음): 사진을 저장소에 올려 두면 PC1 ERP(도우미 켜짐)가 1분 안에 알아서 읽어서 넣음 (대표님 지시 2026-11-12) */
+var QKEY = "kream_photo_queue";
+function queue() { return Array.isArray(S.SET[QKEY]) ? S.SET[QKEY] : []; }
+async function queuePhotos(files, sup, day) {
+  var Q = queue().slice(), n = 0;
+  for (var i = 0; i < files.length; i++) {
+    ERP.toast("사진 올리는 중 " + (i + 1) + "/" + files.length);
+    try {
+      var data = await shrink(files[i]), blob = await (await fetch(data)).blob(), path = "kream-queue/" + day + "/" + U.uid() + ".jpg";
+      var up = await S.sb.storage.from("evidence").upload(path, blob, { contentType: "image/jpeg", upsert: false }); if (up.error) throw up.error;
+      Q.push({ path: path, name: files[i].name, sup: sup, day: day, at: new Date().toISOString() }); n++;
+    } catch (e) { ERP.toast("⚠ " + files[i].name + ": " + ERP.errMsg(e)); }
+  }
+  if (n) { await ERP.saveSetting(QKEY, Q); ERP.render(); ERP.toast("사진 " + n + "장을 올렸어요. PC1 ERP가 켜져 있으면 1~2분 안에 읽어서 리스트에 넣어요."); }
+}
+var qBusy = false;
+async function drainQueue() {
+  if (qBusy || !helperOn()) return; var Q = queue(); if (!Q.length) return;
+  qBusy = true;
+  try {
+    var by = {};
+    Q.forEach(function (q) { var k = q.sup + "|" + q.day; (by[k] = by[k] || []).push(q); });
+    for (var k in by) {
+      var pics = [];
+      for (var i = 0; i < by[k].length; i++) { var d = await S.sb.storage.from("evidence").download(by[k][i].path); if (d.error) continue; pics.push({ data: await fileToData(d.data), name: by[k][i].name + " (휴대폰)" }); }
+      if (pics.length) await importPhotos(pics, by[k][0].sup, by[k][0].day);
+      var done = by[k].map(function (q) { return q.path; });
+      await ERP.saveSetting(QKEY, queue().filter(function (q) { return done.indexOf(q.path) < 0; }));
+      await S.sb.storage.from("evidence").remove(done);
+    }
+  } finally { qBusy = false; }
+}
+setInterval(function () { try { if (S.SET && queue().length) drainQueue(); } catch (e) {} }, 60 * 1000);
 ERP.acts.kreamphoto = function () {
-  if (!helperOn()) { ERP.toast("크롬 확장 ‘로우나 도우미’가 꺼져 있어요. 설치 후 새로고침(F5)해 주세요."); return; }
   var inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*"; inp.multiple = true;
   inp.onchange = async function () {
     var files = Array.prototype.slice.call(inp.files || []); if (!files.length) return;
-    var made = [], day = U.today(), sup = SUP();
-    for (var i = 0; i < files.length; i++) {
-      ERP.toast("사진 읽는 중 " + (i + 1) + "/" + files.length + " (20~60초)");
-      try {
-        var r = await ocrList(await shrink(files[i])), vat = r.vatIncluded !== false;
-        (r.items || []).forEach(function (x) {
-          var price = num(x.wholesalePrice); if (!price || !(x.sku || x.name)) return;
-          made.push({ id: U.uid(), supplier: sup, listDate: day, brand: String(x.brand || "").trim(), sku: String(x.sku || "").trim(), name: String(x.name || "").trim(), kreamUrl: x.kreamUrlUnsure ? "" : String(x.kreamUrl || "").trim(), size: String(x.size || "F").trim() || "F", qty: num(x.qty) || 1, wholesalePrice: vat ? price : Math.round(price * 1.1), kreamPrice: null, kreamRecent: "", decision: "검토", memo: (vat ? "" : "사진 도매가 VAT 별도 → ×1.1 반영 · ") + "사진: " + files[i].name, extra: { ocr: { skuUnsure: !!x.skuUnsure, urlUnsure: !!x.kreamUrlUnsure, rawUrl: x.kreamUrl || "", file: files[i].name } } });
-        });
-      } catch (e) { ERP.toast("⚠ " + files[i].name + ": " + e.message); }
-    }
-    if (!made.length) { ERP.toast("사진에서 상품 줄을 찾지 못했어요."); return; }
-    var rowsDb = made.map(function (o) { return ERP.toRow("kream_wholesale", o); });
-    try { await ERP.saveBatch("kream_wholesale", rowsDb); rowsDb.forEach(function (r) { ERP.applyRow("kream_wholesale", r); }); } catch (e) { ERP.toast(ERP.errMsg(e)); return; }
-    v.kList = day; ERP.render(); ERP.toast(made.length + "줄을 넣었어요. 이제 크림에서 한 상품씩 확인해요 (상품당 10~30초).");
-    if (wholesaleOn()) fetchKream(made, { chan: "W" }); else ERP.toast("크림 시세는 ‘로우나 열무 크림도매 도우미’를 켠 뒤 [크림 시세 다시 가져오기]로 채워 주세요.");
+    var day = U.today(), sup = SUP();
+    if (!helperOn()) { await queuePhotos(files, sup, day); return; }
+    var pics = []; for (var i = 0; i < files.length; i++) { try { pics.push({ data: await shrink(files[i]), name: files[i].name }); } catch (e) { ERP.toast("⚠ " + e.message); } }
+    await importPhotos(pics, sup, day);
   };
   inp.click();
 };
