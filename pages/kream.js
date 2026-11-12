@@ -333,6 +333,12 @@ async function importPhotos(pics, sup, day) {
       });
     } catch (e) { ERP.toast("⚠ " + pics[i].name + ": " + e.message); }
   }
+  /* 같은 사진을 두 번 올려도 중복 안 들어가게: 같은 공급처·날짜에 (크림링크 또는 품번)·사이즈·도매가가 같으면 건너뜀 */
+  var dkey = function (o) { return [o.kreamUrl || String(o.sku).toUpperCase().replace(/[^A-Z0-9]/g, ""), String(o.size).toUpperCase(), num(o.wholesalePrice)].join("|"); };
+  var had = {}; ERP.list("kream_wholesale").forEach(function (x) { if ((x.supplier || "열무") === sup && x.listDate === day) had[dkey(x)] = 1; });
+  var before = made.length; made = made.filter(function (o) { var k = dkey(o); if (had[k]) return false; had[k] = 1; return true; });
+  if (before && !made.length) { ERP.toast("이미 올린 리스트예요 (" + before + "줄 모두 중복이라 안 넣었어요)."); return 0; }
+  if (before > made.length) ERP.toast((before - made.length) + "줄은 이미 있어서 뺐어요.");
   if (!made.length) { ERP.toast("사진에서 상품 줄을 찾지 못했어요."); return 0; }
   var rowsDb = made.map(function (o) { return ERP.toRow("kream_wholesale", o); });
   try { await ERP.saveBatch("kream_wholesale", rowsDb); rowsDb.forEach(function (r) { ERP.applyRow("kream_wholesale", r); }); } catch (e) { ERP.toast(ERP.errMsg(e)); return 0; }
