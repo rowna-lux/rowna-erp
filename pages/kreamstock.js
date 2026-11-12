@@ -4,7 +4,7 @@
    - 추천가 2개: ① 최근 체결가 기준(기본, 같은 옵션 최근 5건 중간값) ② 최저가 맞추기. 체결이 3건 미만이면 ①을 최저가로 바꾸고 표시
    - 보판: 보관료 월 3,000원 × 개월 / 일반판매: 택배비 기본 3,500원(합배송은 0원으로 직접 수정)
    - 수수료: 크림 판매자 Level1 (calc.js kream())
-   - 시세: 하루 2번(09시·21시) 자동 + 새로고침 버튼, 바뀌면 변동 알림
+   - 시세: 전체는 하루 2번(09시·21시) 자동, 보판 상품은 10분마다(설정) + 새로고침 버튼, 바뀌면 변동 알림
    - 크림 조회는 전용 확장 ‘로우나재고 크림 도우미’(통로 rownaS, tools/kream-stock-helper)로만 — 다른 도우미와 안 겹침 */
 (function () {
 "use strict";
@@ -111,7 +111,7 @@ function render() {
   h += '<div class="tiles">' + ERP.tile(tab === "bo" ? "보판 재고" : "일반판매 재고", T0.qty + "개", "매입가 합계 " + won(T0.cost) + "원") + ERP.tile("체결가 기준으로 팔면", won(T0.a) + "원", "예상 실이익 합계", "hl") + ERP.tile("최저가 맞추면", won(T0.b) + "원", "예상 실이익 합계") + "</div>";
   h += '<div class="table-wrap"><table style="min-width:1400px"><thead><tr><th>상품</th><th>크림 상품·사이즈</th><th class="r">수량</th><th class="r">평균 매입가</th>' + (tab === "nm" ? '<th class="r">택배비</th>' : "") + '<th class="r">보판가(빠른)</th><th class="r">일반가</th><th class="r">최근 체결</th><th class="r">추천가① 체결 기준<br><small>실이익 · 이익률</small></th><th class="r">추천가② 최저가 맞추기<br><small>실이익 · 이익률</small></th><th class="r">손익분기</th><th>확인</th></tr></thead><tbody>' + (body || '<tr><td colspan="12" class="empty">' + (tab === "bo" ? "재고실사에서 위치가 KREAM인 재고가 없어요" : "보유 재고가 없어요") + "</td></tr>") + "</tbody></table></div>";
   h += '<p class="note">' + (tab === "bo" ? "보판: 매입가 + 보관료 월 3,000원 × " + months() + "개월" : "일반판매: 매입가 + 택배비(기본 3,500원, 합배송이면 0원으로 고쳐 주세요)") + " · 수수료 크림 Level1(기본 2,500원 + 6%, 샤넬·에르메스 가방 20,000원 + 3%, 최대 30만원) · 실이익 = 판매가÷1.1 − 수수료 − (매입가+비용)÷1.1 · 95점은 같은 옵션·같은 가격만 빼요 · 시세는 ERP가 켜져 있으면 매일 09시·21시에 자동으로 다시 확인해요" +
-    ' · 보판 보관 개월 <input class="cell-in num" style="width:44px" type="number" id="ks-mon" value="' + months() + '"></p>';
+    ' · 보판 상품 가격 확인 <input class="cell-in num" style="width:44px" type="number" id="ks-every" value="' + boEvery() + '">분마다(0이면 끔, 짧을수록 차단 위험↑)' + (D().lastBo ? ' 마지막 ' + esc(new Date(D().lastBo).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })) : '') + ' · 보판 보관 개월 <input class="cell-in num" style="width:44px" type="number" id="ks-mon" value="' + months() + '"></p>';
   return h;
 }
 function bind(root) {
@@ -120,6 +120,7 @@ function bind(root) {
   root.querySelectorAll("[data-ksship]").forEach(function (el) { el.onchange = async function () { var d = D(); d.ship[el.dataset.ksship] = num(el.value); await save(d); ERP.render(); }; });
   root.querySelectorAll("[data-kspick]").forEach(function (el) { el.onchange = async function () { if (!el.value) return; var d = D(), k = el.dataset.kspick; d.map[k] = Object.assign({}, d.map[k], { pid: el.value }); delete CAND[k]; await save(d); ERP.render(); }; });
   root.querySelectorAll("[data-ksfind]").forEach(function (b) { b.onclick = function () { find(b.dataset.ksfind); }; });
+  var ev = root.querySelector("#ks-every"); if (ev) ev.onchange = async function () { var d = D(); d.boEvery = Math.max(0, num(ev.value)); await save(d); ERP.render(); };
   var mo = root.querySelector("#ks-mon"); if (mo) mo.onchange = async function () { var d = D(); d.months = num(mo.value) || 1; await save(d); ERP.render(); };
 }
 ERP.acts.ksbo = function () { v.ksTab = "bo"; ERP.render(); };
@@ -135,10 +136,10 @@ async function find(k) {
 }
 
 /* 새로고침: 크림 상품 하나씩(도우미가 6~10초 간격), 같은 상품은 한 번만 열고 사이즈별로 나눠 계산 */
-async function refresh(auto) {
+async function refresh(auto, only) {
   if (busy) return; if (!on()) { if (!auto) ERP.toast("‘로우나재고 크림 도우미’ 확장을 켜 주세요 (tools/kream-stock-helper)"); return; }
   busy = true; ERP.render();
-  var d = D(), all = rows("bo").concat(rows("nm")), byPid = {}, keys = [];
+  var d = D(), all = only === "bo" ? rows("bo") : rows("bo").concat(rows("nm")), byPid = {}, keys = [];
   all.forEach(function (r) { if (!r.pid) return; if (!byPid[r.pid]) { byPid[r.pid] = []; keys.push(r.pid); } if (!byPid[r.pid].some(function (q) { return q.key === r.key; })) byPid[r.pid].push(r); });
   var changes = [];
   for (var i = 0; i < keys.length; i++) {
@@ -155,14 +156,16 @@ async function refresh(auto) {
     });
     if (i % 5 === 4) await save(d);
   }
-  d.alerts = d.alerts.concat(changes).slice(-200); if (auto) d.lastAuto = Date.now(); else d.lastManual = Date.now();
+  d.alerts = d.alerts.concat(changes).slice(-200); if (only === "bo") d.lastBo = Date.now(); else if (auto) d.lastAuto = Date.now(); else d.lastManual = Date.now(); if (!only) d.lastBo = Date.now();
   await save(d); busy = false; ERP.render();
   ERP.toast("크림 시세 확인 끝" + (changes.length ? " · 변동 " + changes.length + "건" : ""));
   if (changes.length && "Notification" in window && Notification.permission === "granted") try { new Notification("로우나재고 크림 시세 변동 " + changes.length + "건", { body: changes.slice(0, 3).map(function (c) { return c.text; }).join("\n") }); } catch (e) {}
 }
 /* 하루 2번 자동(09시·21시): ERP 화면이 켜져 있으면 10분마다 확인해서 지난 시각 이후 안 돌았으면 돌림 */
 function lastSlot() { var n = new Date(), s = new Date(n); s.setMinutes(0, 0, 0); if (n.getHours() >= 21) s.setHours(21); else if (n.getHours() >= 9) s.setHours(9); else { s.setDate(s.getDate() - 1); s.setHours(21); } return s.getTime(); }
-setInterval(function () { try { if (!S.SET || !S.SET[KEY] || busy || !on()) return; if ((D().lastAuto || 0) < lastSlot()) refresh(true); } catch (e) {} }, 10 * 60 * 1000);
+/* 보판 상품은 판매 가격 확인용으로 따로 N분마다(기본 10분, 0이면 끔) 다시 확인 → 바뀌면 변동 알림 (대표님 지시 2026-11-12) */
+function boEvery() { var x = D().boEvery; return x == null ? 10 : num(x); }
+setInterval(function () { try { if (!S.SET || !S.SET[KEY] || busy || !on()) return; var d = D(); if ((d.lastAuto || 0) < lastSlot()) refresh(true); else if (boEvery() > 0 && Date.now() - (d.lastBo || 0) >= boEvery() * 60000) refresh(true, "bo"); } catch (e) {} }, 60 * 1000);
 
 ERP.page({ id: "kream-stock", title: "로우나재고 크림", wide: true, roles: ["owner", "accountant", "staff", "ai"], render: render, bind: bind, badge: function () { return D().alerts.filter(function (a) { return !a.seen; }).length || ""; } });
 })();
