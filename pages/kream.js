@@ -223,6 +223,7 @@ var BLOCK_RE = /비정상적인 (접근|요청)|접근이 (차단|제한)|Access
 async function pageSafe(opt, chan) { var p = await (chan === "R" ? askR : chan === "W" ? askW : ask)("page", opt); if (BLOCK_RE.test(String((p && p.text) || "").slice(0, 3000))) throw new Error("차단·경고 화면이 보여서 멈췄어요 (" + String(opt.url).split("?")[0] + ")"); return p; }
 function knorm(s) { return String(s || "").toUpperCase().replace(/[\s\-_.\/]/g, ""); }
 function kloose(s) { return knorm(s).replace(/O/g, "0").replace(/[IL]/g, "1").replace(/B/g, "8").replace(/S/g, "5").replace(/Z/g, "2"); }
+function kdist(a, b) { var d = [], i, j; for (i = 0; i <= a.length; i++) { d[i] = [i]; } for (j = 1; j <= b.length; j++) d[0][j] = j; for (i = 1; i <= a.length; i++) for (j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); return d[a.length][b.length]; }
 function ksame(a, b) { if (!a || !b) return 0; if (knorm(a) === knorm(b)) return 2; if (kloose(a) === kloose(b)) return 1; return 0; }
 /* 사이즈 비교: "7" = "UK 7", "F"·"ONE SIZE" = 전체 */
 function szn(x) { return String(x || "").toUpperCase().replace(/\s/g, ""); }
@@ -269,6 +270,8 @@ async function kreamLookup(sku, url, chan) {
   if (id) hit = await check(id, "리스트 링크");
   if (!hit && sku) await search(sku, "품번 검색");
   if (!hit && sku.split(/[\s\-]/).length > 1) await search(sku.split(/[\s\-]/).slice(0, 2).join("-"), "품번 앞부분 검색");
+  /* 사진 글자 오인식(1YGV9Y↔1VG9Y, FACCG↔FACQC 등): 리스트에 붙은 크림 링크 상품의 모델번호와 3글자 이내로만 다르면 같은 상품으로 보고 품번을 크림 것으로 고침 */
+  if (!hit && best && best.via === "리스트 링크" && best.model && kdist(knorm(best.model), knorm(sku)) <= 3) { hit = best; hit.ocrFixed = best.model; }
   var r = hit || best || {}; r.verified = !!hit; r.exact = !!(hit && hit.match === 2); r.tried = tried; r.checkedAt = new Date().toISOString(); return r;
 }
 ERP.helperAsk = ask; ERP.helperOn = helperOn;   /* 소싱 메뉴(메투 카페)에서도 같이 씀 */
@@ -307,6 +310,7 @@ async function fetchKream(rows, opt) {
         if (ba.fast || ba.normal) { ref = ba.fast || ba.normal; o.extra.kreamBasis = { fast: ba.fast, normal: ba.normal, bid: ba.bid, trade: md, by: ba.fast ? "빠른배송·사업자" : "일반배송", full: !!k.full }; }
         else { var mp = k.price && x95.indexOf(k.price) < 0 ? k.price : null; ref = md && mp ? Math.min(md, mp) : (md || mp); o.extra.kreamBasis = { by: "최근 체결가(빠른·일반 판매가 못 읽음" + (k.asksRead ? "" : " — 리셀 도우미 필요") + ")" }; }
         o.kreamPrice = ref || null; o.kreamUrl = k.url || o.kreamUrl;
+        if (k.ocrFixed) { o.extra.skuOcr = o.sku; o.sku = k.ocrFixed; }
         o.kreamRecent = (ba.fast || ba.normal ? "빠른 " + (ba.fast ? Number(ba.fast).toLocaleString() : "-") + " · 일반 " + (ba.normal ? Number(ba.normal).toLocaleString() : "-") + " · 바로판매 " + (ba.bid ? Number(ba.bid).toLocaleString() : "-") + (k.p95 && k.p95.length ? " · 95점 제외 " + k.p95.length + "건" : "") + " | " : "") + sizeTrades(k, it.size).filter(function (t) { return x95.indexOf(t.price) < 0; }).slice(0, 5).map(function (t) { return t.date + " " + Number(t.price).toLocaleString(); }).join(" · ");
         o.kreamCheckedAt = new Date().toISOString();
         if (!o.name && k.name) o.name = k.name;
