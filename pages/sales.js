@@ -49,6 +49,9 @@ function render() {
 function bind(root) { var fp = root.querySelector("#f-plat"); if (fp) fp.onchange = function () { v.platform = fp.value; ERP.render(); }; }
 
 /* 입력창 */
+/* 매입처: 개인·중고·리셀 플랫폼(당근·크림 등)에서 산 건 세금계산서가 없어 매입세액 공제 안 됨 (대표님 2026-11-12) */
+var BUY_FROM = [["렉스몬드", 1], ["도매처", 1], ["백화점", 1], ["무신사", 1], ["당근", 0], ["크림", 0], ["번개장터", 0], ["중고나라", 0], ["솔드아웃", 0], ["후루츠패밀리", 0], ["개인", 0]];
+function noVat(v) { v = String(v || "").replace(/\s/g, ""); return !!v && /당근|크림|kream|번개|중고|솔드아웃|후루츠|개인|리셀/i.test(v); }
 function open(s) {
   var isNew = !s, fd = ERP.fd, sel = ERP.sel;
   s = s || { id: U.uid(), date: U.today(), orderTime: "", platformId: "", productName: "", itemCode: "", brand: "", category: "", salePrice: "", cost: "", settledAmount: "", settleStatus: "미확인", adjustment: 0, shippingFee: num(S.SET.default_shipping_fee), etcAmount: 0, vatCreditable: true, deferredStatus: null, deferredFinalAmount: 0, sabangOrderNo: "", mallOrderNo: "", source: "manual", purchaseId: "", memo: "", extra: {} };
@@ -58,6 +61,7 @@ function open(s) {
     '</div><div class="sect">금액</div><div class="fg">' + fd("판매가", "salePrice", "number", s.salePrice) + fd("배송비(내가 부담)", "shippingFee", "number", s.shippingFee) + sel("정산 상태", "settleStatus", ["확정", "예상", "미확인"], settleOf(s)) + fd("실제 정산액(확정일 때)", "settledAmount", "number", s.settledAmount) + fd("조정금액(+/−)", "adjustment", "number", s.adjustment) + fd("기타 수입", "etcAmount", "number", s.etcAmount) + sel("후정산 광고비", "deferredStatus", [["", "예상치 사용"], ["확정", "확정 금액 입력"]], s.deferredStatus || "") + fd("확정 광고비", "deferredFinalAmount", "number", s.deferredFinalAmount) +
     '</div><div class="sect">원가 · 매입 연결</div><div class="fg"><div class="fd full"><label for="i-purchaseId">재고에서 연결 (선택하면 원가가 자동으로 들어가요)</label><select id="i-purchaseId" name="purchaseId"><option value="">연결 안 함</option>' + stock.slice(0, 400).map(function (p) { return '<option value="' + esc(p.id) + '"' + (p.id === s.purchaseId ? " selected" : "") + ">" + esc(p.date + " · " + (p.itemCode || "") + " " + (p.option || "") + " · " + won(C.effCost(p)) + "원") + "</option>"; }).join("") + "</select></div>" +
     fd("원가", "cost", "number", s.cost) + '<div class="fd chk"><input type="checkbox" id="i-vatCreditable" name="vatCreditable"' + (s.vatCreditable !== false ? " checked" : "") + '><label for="i-vatCreditable">매입세액 공제 대상</label></div>' +
+    '<div class="fd"><label for="i-buyFrom">매입처 <small class="muted">당근·크림 등 개인 거래면 공제 체크가 자동으로 풀려요</small></label><input id="i-buyFrom" name="buyFrom" list="buyFromList" value="' + esc(((s.extra || {}).buyFrom) || "") + '" placeholder="예: 렉스몬드, 당근, 크림"><datalist id="buyFromList">' + BUY_FROM.map(function (x) { return '<option value="' + esc(x[0]) + '">' + (x[1] ? "공제 됨" : "공제 안 됨") + "</option>"; }).join("") + "</datalist></div>" +
     '</div><div class="sect">주문번호 · 메모</div><div class="fg">' + fd("사방넷 주문번호", "sabangOrderNo", "text", s.sabangOrderNo) + fd("쇼핑몰 주문번호", "mallOrderNo", "text", s.mallOrderNo) + fd("메모", "memo", "text", s.memo || "", "full") + '</div><div class="preview" id="pv"></div>' + (isNew || !ERP.docsBlock ? "" : ERP.docsBlock("sale", s.id, s.itemCode));
   ERP.openDrawer(isNew ? "매출 추가" : "매출 수정", f, "sales", s, isNew);
 }
@@ -67,9 +71,11 @@ ERP.forms.sales = {
     var upd = function () { var o = ERP.readForm(body, rec), d = ERP.derive(o); U.$("pv").innerHTML = "<div><span>수수료</span><b>" + won(d.fee) + "</b></div><div><span>정산액" + (d.st === "확정" ? "" : " (추정)") + "</span><b>" + won(d.settled) + "</b></div>" + (d.isDef ? "<div><span>후정산 광고비</span><b>" + won(d.defApplied) + "</b></div>" : "") + (d.vatLoss ? "<div><span>공제 못 받는 부가세</span><b>" + won(d.vatLoss) + "</b></div>" : "") + "<div><span>마진</span><b>" + (d.hasCost ? won(d.margin) : "원가 필요") + "</b></div><div><span>마진율</span><b>" + (d.hasCost ? pct(d.rate) : "–") + "</b></div>"; };
     body.addEventListener("input", upd); body.addEventListener("change", upd); upd();
     var ps = body.querySelector("#i-purchaseId"); ps.addEventListener("change", function () { var p = ERP.DATA.purchases.get(ps.value); if (p) { body.querySelector("#i-cost").value = Math.round(C.effCost(p)); var vc = body.querySelector("#i-vatCreditable"); if (vc) vc.checked = !(p.extra && p.extra.buyType === "personal"); if (!body.querySelector("#i-itemCode").value) body.querySelector("#i-itemCode").value = p.itemCode || ""; upd(); } });
+    var bf = body.querySelector("#i-buyFrom"); if (bf) bf.addEventListener("change", function () { var vc = body.querySelector("#i-vatCreditable"); if (vc && noVat(bf.value)) { vc.checked = false; upd(); ERP.toast(bf.value + " 매입은 매입세액 공제가 안 돼서 체크를 풀었어요"); } });
     if (ERP.bindDocLinks) ERP.bindDocLinks(body);
   },
   commit: async function (body, o, st) {
+    o.extra = Object.assign({}, (st.rec && st.rec.extra) || {}, o.extra || {}); if (o.buyFrom != null) { o.extra.buyFrom = String(o.buyFrom).trim(); if (noVat(o.extra.buyFrom)) o.vatCreditable = false; } delete o.buyFrom;
     if (!o.date || !o.platformId) throw new Error("날짜와 쇼핑몰을 입력해 주세요.");
     o.deferredStatus = o.deferredStatus || null;
     var lp = o.purchaseId ? ERP.DATA.purchases.get(o.purchaseId) : null; if (lp && lp.extra && lp.extra.buyType === "personal") o.vatCreditable = false;
