@@ -22,7 +22,16 @@ function waitComplete(tabId, ms) {
 function grab() {
   var meta = {}; document.querySelectorAll("meta[property],meta[name]").forEach(function (m) { meta[m.getAttribute("property") || m.getAttribute("name")] = m.content; });
   var links = []; document.querySelectorAll("a[href]").forEach(function (a) { if (links.length < 1500) links.push({ href: a.href, text: (a.innerText || "").trim().slice(0, 200) }); });
-  return { url: location.href, title: document.title, text: document.body ? document.body.innerText : "", links: links, meta: meta };
+  /* 숨은 요약 탭(체결 / 판매 입찰 / 구매 입찰): 백그라운드 탭에서도 읽힘. 빠른배송·사업자 줄은 가격 옆 아이콘(svg) */
+  var kg = [];
+  document.querySelectorAll(".transaction_history_summary__content").forEach(function (c) {
+    if (kg.length >= 3) return;
+    kg.push(Array.prototype.map.call(c.querySelectorAll(".transaction_history_summary__content__item"), function (it) {
+      var opt = it.querySelector(".transaction_history_summary__content__item_option"), pr = it.querySelector(".transaction_history_summary__content__item_price");
+      return { opt: opt ? opt.textContent.trim() : "", price: pr ? Number(pr.textContent.replace(/[^\d]/g, "")) : 0, fast: !!(pr && pr.querySelector("svg")) };
+    }));
+  });
+  return { url: location.href, title: document.title, text: document.body ? document.body.innerText : "", links: links, meta: meta, kg: kg };
 }
 /* 상품 페이지 깊게 읽기 (페이지 안에서 실행) */
 async function deepRead() {
@@ -69,6 +78,8 @@ async function openPage(o) {
   p = p || { url: o.url, text: "", links: [], meta: {} };
   if (/kream\.co\.kr\/products\/\d+/.test(o.url) && p.text) {
     try { var d = await chrome.scripting.executeScript({ target: { tabId: tabId }, func: deepRead }); p.kream = d && d[0] && d[0].result; } catch (e) { p.kream = { step: "깊게 읽기 실패: " + e.message }; }
+    /* 백그라운드 탭에서 거래내역 창이 안 열리면 요약 탭(kg)으로 대신 계산 */
+    if (!(p.kream && p.kream.full) && p.kg && p.kg.length) { p.kream = p.kream || {}; p.kream.groups = p.kg; }
   }
   return p;
 }

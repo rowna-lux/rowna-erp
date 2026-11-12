@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "로우나 열무 크림도매 도우미",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "로우나 ERP '열무 크림도매' 전용. 크림 상세페이지의 거래 내역(체결·판매입찰·구매입찰)과 95점 목록까지 읽어요. 다른 도우미와 통로·대기줄·작업 탭이 모두 따로예요.",
   "permissions": ["tabs", "scripting", "storage"],
   "host_permissions": ["https://kream.co.kr/*"],
