@@ -57,6 +57,12 @@ function summarize(p, size) {
   var t = p.text || "", k = p.kream || {}, fu = k.full;
   var r = { at: new Date().toISOString(), name: String(p.title || "").replace(/\s*정품 안심 거래\s*\|\s*KREAM\s*$/, "").trim(), model: ((t.match(/모델번호\s*\n*\s*([^\n]+)/) || [])[1] || "").trim(), size: size, img: ((p.meta || {})["og:image"] || "") };
   var tc = t.match(/\n거래\s+([\d,.]+)(만)?\s*\n/) || []; r.tc = tc[1] ? Math.round(Number(tc[1].replace(/,/g, "")) * (tc[2] ? 10000 : 1)) : 0;
+  if (!fu && p.kg && p.kg.length >= 2) {
+    /* 요약 탭(사이즈 페이지라 그 옵션만, 상위 5건) + 본문 거래 내역(날짜) */
+    var tt = [], i0 = t.indexOf("거래일"), j0 = t.indexOf("거래 내역 더보기");
+    if (i0 >= 0) { var seg = t.slice(i0 + 3, j0 > i0 ? j0 : i0 + 1500), re = /([^\n]+)\n([\d,]+)원\n([^\n]+)/g, mm; while ((mm = re.exec(seg)) && tt.length < 10) tt.push({ opt: mm[1].trim(), price: priceOf(mm[2]), tail: mm[3].trim() }); }
+    fu = { asks: p.kg[1] || [], bids: p.kg[2] || [], trades: tt.length ? tt : (p.kg[0] || []).map(function (x) { return { opt: x.opt, price: x.price, tail: "" }; }) };
+  }
   if (!fu) { r.err = "거래 내역을 못 읽었어요" + (k.step ? " (" + k.step + ")" : ""); return r; }
   /* 95점: 같은 옵션(사이즈)·같은 가격인 판매입찰만 1건씩 뺌 */
   var x95 = (k.p95 || []).filter(function (q) { return !q.opt || same(size, q.opt) || free(q.opt); }).map(function (q) { return q.price; }), left = x95.slice(), n95 = 0;
@@ -141,7 +147,7 @@ async function refresh(auto, only) {
   if (busy) return; if (!on()) { if (!auto) ERP.toast("‘로우나재고 크림 도우미’ 확장을 켜 주세요 (tools/kream-stock-helper)"); return; }
   busy = true; ERP.render();
   var d = D(), all = only === "bo" ? rows("bo") : rows("bo").concat(rows("nm")), byPid = {}, keys = [];
-  all.forEach(function (r) { if (!r.pid) return; if (!byPid[r.pid]) { byPid[r.pid] = []; keys.push(r.pid); } if (!byPid[r.pid].some(function (q) { return q.key === r.key; })) byPid[r.pid].push(r); });
+  all.forEach(function (r) { if (!r.pid) return; var u = r.pid + (free(r.size) ? "" : "?size=" + encodeURIComponent(r.size)); if (!byPid[u]) { byPid[u] = []; keys.push(u); } if (!byPid[u].some(function (q) { return q.key === r.key; })) byPid[u].push(r); });
   var changes = [];
   for (var i = 0; i < keys.length; i++) {
     var pid = keys[i]; ERP.toast("크림 시세 확인 " + (i + 1) + "/" + keys.length);
