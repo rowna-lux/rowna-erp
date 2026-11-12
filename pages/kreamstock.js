@@ -55,7 +55,7 @@ function same(want, got) { if (free(want)) return true; return szn(want) === szn
 function priceOf(t) { return Number(String(t).replace(/[^\d]/g, "")) || 0; }
 function summarize(p, size) {
   var t = p.text || "", k = p.kream || {}, fu = k.full;
-  var r = { at: new Date().toISOString(), name: String(p.title || "").replace(/\s*정품 안심 거래\s*\|\s*KREAM\s*$/, "").trim(), model: ((t.match(/모델번호\s*\n*\s*([^\n]+)/) || [])[1] || "").trim(), size: size };
+  var r = { at: new Date().toISOString(), name: String(p.title || "").replace(/\s*정품 안심 거래\s*\|\s*KREAM\s*$/, "").trim(), model: ((t.match(/모델번호\s*\n*\s*([^\n]+)/) || [])[1] || "").trim(), size: size, img: ((p.meta || {})["og:image"] || "") };
   var tc = t.match(/\n거래\s+([\d,.]+)(만)?\s*\n/) || []; r.tc = tc[1] ? Math.round(Number(tc[1].replace(/,/g, "")) * (tc[2] ? 10000 : 1)) : 0;
   if (!fu) { r.err = "거래 내역을 못 읽었어요" + (k.step ? " (" + k.step + ")" : ""); return r; }
   /* 95점: 같은 옵션(사이즈)·같은 가격인 판매입찰만 1건씩 뺌 */
@@ -98,7 +98,8 @@ function render() {
     function pcell(P, price, note) { if (!price) return '<td class="r">–</td>'; return '<td class="r num"><b>' + won(price) + "</b>" + (note ? '<small class="muted">' + esc(note) + "</small>" : "") + (P ? '<small class="' + (P.real < 0 ? "neg" : "") + '">' + won(P.real) + " · " + pct(P.rate) + "</small>" : '<small class="muted">매입가 없음</small>') + "</td>"; }
     var link = r.pid ? '<a href="https://kream.co.kr/products/' + esc(r.pid) + '" target="_blank" rel="noopener">크림 #' + esc(r.pid) + " ↗</a>" : "";
     var cand = CAND[r.key] ? '<select class="ctl" data-kspick="' + esc(r.key) + '"><option value="">후보 선택 (색상·하드웨어 꼭 확인)</option>' + CAND[r.key].map(function (o) { return '<option value="' + esc(o.id) + '">' + esc(o.text) + "</option>"; }).join("") + "</select>" : "";
-    return "<tr><td class=\"name\"><b>" + esc(it.brand || "") + "</b> " + esc(it.name || "") + '<small class="num">' + esc(it.model || "") + " · " + esc(it.opt || "옵션 없음") + "</small>" + (px && px.name ? '<small class="muted">크림: ' + esc(px.name) + (px.model ? " (" + esc(px.model) + ")" : "") + "</small>" : "") + "</td>" +
+    var img = it.photo || (D().map[r.key] || {}).img || (px && px.img) || "";
+    return "<tr><td style=\"width:64px\">" + (img ? '<img src="' + esc(img) + '" alt="" loading="lazy" style="width:56px;height:56px;object-fit:cover;border-radius:8px;background:#f3f3f3">' : '<div style="width:56px;height:56px;border-radius:8px;background:#f1f1f1;display:flex;align-items:center;justify-content:center;font-size:10px;color:#999">사진<br>없음</div>') + "</td><td class=\"name\"><b>" + esc(it.brand || "") + "</b> " + esc(it.name || "") + '<small class="num">' + esc(it.model || "") + " · " + esc(it.opt || "옵션 없음") + "</small>" + (px && px.name ? '<small class="muted">크림: ' + esc(px.name) + (px.model ? " (" + esc(px.model) + ")" : "") + "</small>" : "") + "</td>" +
       '<td><input class="cell-in num" style="width:90px" placeholder="크림 번호" data-kspid="' + esc(r.key) + '" value="' + esc(r.pid) + '"> <input class="cell-in" style="width:64px" placeholder="사이즈" data-kssz="' + esc(r.key) + '" value="' + esc(r.size) + '"><small>' + link + (r.pid ? "" : ' <button class="btn sm" data-ksfind="' + esc(r.key) + '">크림 찾기</button>') + "</small>" + cand + "</td>" +
       '<td class="r num">' + r.qty + "</td><td class=\"r num\">" + (r.cost == null ? "–" : won(r.cost)) + (r.noCost ? '<small class="muted">매입가 없는 ' + r.noCost + "개</small>" : "") + "</td>" +
       (tab === "nm" ? '<td class="r"><input class="cell-in num" style="width:70px" type="number" data-ksship="' + esc(r.key) + '" value="' + extra(r, "nm") + '"></td>' : "") +
@@ -109,7 +110,7 @@ function render() {
       '<td><small class="num muted">' + (px && px.at ? esc(new Date(px.at).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })) : "") + (px && px.n95 ? "<br>95점 " + px.n95 + "건 뺌" : "") + "</small></td></tr>";
   }).join("");
   h += '<div class="tiles">' + ERP.tile(tab === "bo" ? "보판 재고" : "일반판매 재고", T0.qty + "개", "매입가 합계 " + won(T0.cost) + "원") + ERP.tile("체결가 기준으로 팔면", won(T0.a) + "원", "예상 실이익 합계", "hl") + ERP.tile("최저가 맞추면", won(T0.b) + "원", "예상 실이익 합계") + "</div>";
-  h += '<div class="table-wrap"><table style="min-width:1400px"><thead><tr><th>상품</th><th>크림 상품·사이즈</th><th class="r">수량</th><th class="r">평균 매입가</th>' + (tab === "nm" ? '<th class="r">택배비</th>' : "") + '<th class="r">보판가(빠른)</th><th class="r">일반가</th><th class="r">최근 체결</th><th class="r">추천가① 체결 기준<br><small>실이익 · 이익률</small></th><th class="r">추천가② 최저가 맞추기<br><small>실이익 · 이익률</small></th><th class="r">손익분기</th><th>확인</th></tr></thead><tbody>' + (body || '<tr><td colspan="12" class="empty">' + (tab === "bo" ? "재고실사에서 위치가 KREAM인 재고가 없어요" : "보유 재고가 없어요") + "</td></tr>") + "</tbody></table></div>";
+  h += '<div class="table-wrap"><table style="min-width:1400px"><thead><tr><th>사진</th><th>상품</th><th>크림 상품·사이즈</th><th class="r">수량</th><th class="r">평균 매입가</th>' + (tab === "nm" ? '<th class="r">택배비</th>' : "") + '<th class="r">보판가(빠른)</th><th class="r">일반가</th><th class="r">최근 체결</th><th class="r">추천가① 체결 기준<br><small>실이익 · 이익률</small></th><th class="r">추천가② 최저가 맞추기<br><small>실이익 · 이익률</small></th><th class="r">손익분기</th><th>확인</th></tr></thead><tbody>' + (body || '<tr><td colspan="13" class="empty">' + (tab === "bo" ? "재고실사에서 위치가 KREAM인 재고가 없어요" : "보유 재고가 없어요") + "</td></tr>") + "</tbody></table></div>";
   h += '<p class="note">' + (tab === "bo" ? "보판: 매입가 + 보관료 월 3,000원 × " + months() + "개월" : "일반판매: 매입가 + 택배비(기본 3,500원, 합배송이면 0원으로 고쳐 주세요)") + " · 수수료 크림 Level1(기본 2,500원 + 6%, 샤넬·에르메스 가방 20,000원 + 3%, 최대 30만원) · 실이익 = 판매가÷1.1 − 수수료 − (매입가+비용)÷1.1 · 95점은 같은 옵션·같은 가격만 빼요 · 시세는 ERP가 켜져 있으면 매일 09시·21시에 자동으로 다시 확인해요" +
     ' · 보판 상품 가격 확인 <input class="cell-in num" style="width:44px" type="number" id="ks-every" value="' + boEvery() + '">분마다(0이면 끔, 짧을수록 차단 위험↑)' + (D().lastBo ? ' 마지막 ' + esc(new Date(D().lastBo).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })) : '') + ' · 보판 보관 개월 <input class="cell-in num" style="width:44px" type="number" id="ks-mon" value="' + months() + '"></p>';
   return h;
@@ -146,7 +147,7 @@ async function refresh(auto, only) {
     var pid = keys[i]; ERP.toast("크림 시세 확인 " + (i + 1) + "/" + keys.length);
     var p; try { p = await page("https://kream.co.kr/products/" + pid); } catch (e) { ERP.toast("⚠ " + e.message); if (/차단|꺼져/.test(e.message)) break; continue; }
     byPid[pid].forEach(function (r) {
-      var old = d.px[r.key], nw = summarize(p, r.size); d.px[r.key] = nw;
+      var old = d.px[r.key], nw = summarize(p, r.size); d.px[r.key] = nw; if (nw.img) d.map[r.key] = Object.assign({}, d.map[r.key], { img: nw.img });
       if (old && !old.err && !nw.err) {
         var nm = ((r.it.brand || "") + " " + (r.it.model || "") + (r.size ? " " + r.size : "")).trim(), parts = [];
         [["fast", "보판가"], ["normal", "일반가"]].forEach(function (f) { var a = old[f[0]], b = nw[f[0]]; if (a !== b && (!a || !b || Math.abs(b - a) / a >= 0.02)) parts.push(f[1] + " " + (a ? won(a) : "없음") + " → " + (b ? won(b) : "없음")); });
