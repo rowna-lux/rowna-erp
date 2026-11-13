@@ -264,11 +264,11 @@ function parseSearch(p) {
   var seen = {}, out = []; (p.links || []).forEach(function (a) { var id = (String(a.href).match(/kream\.co\.kr\/products\/(\d+)/) || [])[1]; if (id && !seen[id]) { seen[id] = 1; out.push({ id: id, text: a.text }); } });
   return out.slice(0, 6);
 }
-async function kreamLookup(sku, url, chan, name) {
+async function kreamLookup(sku, url, chan, name, sz) {
   sku = String(sku || "").trim(); var tried = [], best = null, hit = null, seen = {};
   async function check(pid, via) {
     if (!pid || tried.indexOf(pid) >= 0) return null; tried.push(pid);
-    var d = parseProduct(await pageSafe({ url: "https://kream.co.kr/products/" + pid, waitFor: "모델번호|발매가", minLen: 300 }, chan));
+    var d = parseProduct(await pageSafe({ url: "https://kream.co.kr/products/" + pid + (sz ? "?size=" + encodeURIComponent(sz) : ""), waitFor: "모델번호|발매가", minLen: 300 }, chan));
     d.via = via; d.match = ksame(d.model, sku); seen[pid] = d; if (!best || d.match > best.match) best = d; return d.match ? d : null;
   }
   async function search(q, via) { var c = parseSearch(await pageSafe({ url: "https://kream.co.kr/search?keyword=" + encodeURIComponent(q), waitFor: "관심|검색 결과가 없습니다", minLen: 200 }, chan)).slice(0, 3); for (var k = 0; k < c.length && !hit; k++) hit = await check(c[k].id, via); }
@@ -312,15 +312,19 @@ async function fetchKream(rows, opt) {
     if (i && opt && opt.gap) { var sec = opt.gap[0] + Math.random() * (opt.gap[1] - opt.gap[0]); ERP.toast("차단 방지로 " + Math.round(sec) + "초 쉬는 중 · 다음 " + (i + 1) + "/" + keys.length); await new Promise(function (r) { setTimeout(r, sec * 1000); }); }
     var g = bySku[keys[i]], f = g[0]; g.forEach(function (it) { busy[it.id] = 1; }); ERP.render();
     ERP.toast("크림 확인 중 " + (i + 1) + "/" + keys.length + " · " + (f.brand || "") + " " + (f.sku || ""));
-    var k; try { k = await kreamLookup(f.sku, f.kreamUrl, opt && opt.chan, ((f.brand || "") + " " + (f.name || "")).trim()); } catch (e) { k = { error: e.message }; if (/멈췄|멈춤|꺼져/.test(e.message)) { g.forEach(function (it) { delete busy[it.id]; }); ERP.toast("⚠ " + e.message); break; } }
+    var k; try { k = await kreamLookup(f.sku, f.kreamUrl, opt && opt.chan, ((f.brand || "") + " " + (f.name || "")).trim(), (g.filter(function (x) { return !szFree(x.size); })[0] || {}).size); } catch (e) { k = { error: e.message }; if (/멈췄|멈춤|꺼져/.test(e.message)) { g.forEach(function (it) { delete busy[it.id]; }); ERP.toast("⚠ " + e.message); break; } }
     /* 사이즈별로 크림 페이지(?size=XL)를 따로 열어 그 사이즈의 판매입찰·체결·구매입찰만 읽음 (2026-11-13 대표님 지시) */
     if (k && !k.error && k.verified && k.url) {
       k.bySize = {}; var szs = []; g.forEach(function (it) { if (!szFree(it.size) && szs.indexOf(it.size) < 0) szs.push(it.size); });
       for (var si = 0; si < szs.length; si++) {
         var sz = szs[si];
+        if (si === 0) {   /* 첫 사이즈는 품번 확인 때 이미 ?size= 페이지로 읽었음 → 다시 안 엶 (속도) */
+          k.bySize[sz] = { asks: (k.asks || []).filter(function (a) { return szSame(sz, a.size); }), bids: (k.bids || []).filter(function (b) { return szSame(sz, b.size); }), trades: (k.trades || []).filter(function (t) { return szSame(sz, t.size); }), p95: k.p95 || [], sizeRead: true };
+          continue;
+        }
         try {
           ERP.toast("사이즈별 시세 읽는 중 · " + (f.sku || "") + " " + sz);
-          await new Promise(function (r) { setTimeout(r, 4000 + Math.random() * 3000); });
+          await new Promise(function (r) { setTimeout(r, 1500 + Math.random() * 1500); });
           var sp = await pageSafe({ url: String(k.url).split("?")[0] + "?size=" + encodeURIComponent(sz), waitFor: "모델번호|발매가", minLen: 300 }, opt && opt.chan);
           if (!(sp.kream && sp.kream.full) && sp.kg && sp.kg.length) { sp.kream = sp.kream || {}; sp.kream.groups = sp.kg; }
           var pr = parseProduct(sp), kg = sp.kg || [];
@@ -415,7 +419,7 @@ async function drainQueue() {
     }
   } finally { qBusy = false; }
 }
-setInterval(function () { try { if (S.SET && queue().length) drainQueue(); } catch (e) {} }, 60 * 1000);
+setInterval(function () { try { if (S.SET && queue().length) drainQueue(); } catch (e) {} }, 15 * 1000);   /* 휴대폰 사진 15초마다 확인 (속도) */
 ERP.acts.kreamphoto = function () {
   var inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*"; inp.multiple = true;
   inp.onchange = async function () {
