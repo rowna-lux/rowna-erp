@@ -47,6 +47,8 @@ function assignCards(list) {
 function cost(it) { var w = num(it.wholesalePrice); if (!isMall(it.supplier)) return w; var b = preCard(it); if (mallCards().length) return b - ((CARD[it.id] || {}).save || 0); return Math.round(b * (1 - mallDisc("card"))); }
 function calc(it) { var p = premium(it), wh = cost(it); if (isMall(it.supplier) && !mallVat()) wh = wh * 1.1; wh = num(wh) + storFee();   /* kream()은 매입가÷1.1을 빼므로 ×1.1 = 매입가 전액을 원가로 */
   return C.kream(it.kreamPrice, wh, p ? 0.03 : rate(), cap(), p ? 20000 : base()); }
+/* 이익률 8%가 나오는 매입가(협상 목표) */
+function tgt(it) { var sell = num(it.kreamPrice); if (!sell) return null; var p = premium(it), r = p ? 0.03 : rate(), b = p ? 20000 : base(), fee = Math.min(b + sell * r, (cap() || Infinity) / 1.1), w = 1.1 * (sell / 1.1 * 0.92 - fee) - storFee(); return w > 0 ? Math.floor(w / 1000) * 1000 : null; }
 function items() { return ERP.list("kream_wholesale").filter(function (x) { return (x.supplier || "열무") === SUP(); }); }
 /* 거래 속도: 최근 체결 5건 날짜로 한 달 거래 수 추정 */
 function tdate(s) { s = String(s || ""); var m = s.match(/^(\d{2})\/(\d{2})\/(\d{2})$/); if (m) return new Date(2000 + +m[1], +m[2] - 1, +m[3]); m = s.match(/(\d+)\s*(분|시간|일)\s*전/); if (m) return new Date(Date.now() - +m[1] * (m[2] === "분" ? 6e4 : m[2] === "시간" ? 36e5 : 864e5)); return null; }
@@ -85,9 +87,9 @@ function render() {
       var prod = i ? "" : '<td class="name" rowspan="' + g.length + '"><b>' + esc(f.brand || "") + "</b> " + esc(f.name || "") + '<small class="num">' + esc(f.sku || "") + (flags.skuUnsure ? ' <span class="pill p-warn" title="사진에서 글자가 흐려 확실하지 않아요">글자 확인</span>' : "") + "</small>" + (f.kreamUrl ? '<small><a href="' + esc(f.kreamUrl) + '" target="_blank" rel="noopener">크림에서 보기 ↗</a></small>' : "") + (((f.extra || {}).mall || {}).url ? '<small><a href="' + esc(f.extra.mall.url) + '" target="_blank" rel="noopener">' + esc(f.supplier) + " " + esc(String(f.extra.mall.disc || "")) + "% 세일 ↗</a></small>" : "") + "</td><td rowspan=\"" + g.length + "\">" + kcell(f) + "</td>";
       var trades = (k.trades || []).slice(0, 5).map(function (t) { return t.date.replace(/^26\//, "") + " " + won(t.price); }).join("<br>");
       return '<tr class="' + (it.decision === "제외" ? "off" : "") + '">' + prod + '<td class="click" data-edit="kream_wholesale:' + esc(it.id) + '" tabindex="0">' + esc(it.size || "F") + '</td><td class="r num">' + q + '</td><td class="r num">' + won(cost(it)) + (isMall(it.supplier) && cost(it) !== num(it.wholesalePrice) ? '<small class="muted">목록 ' + won(it.wholesalePrice) + "</small>" : "") + (CARD[it.id] ? '<small class="muted">' + esc(CARD[it.id].name) + " −" + won(CARD[it.id].save) + "</small>" : "") + '</td>' +
-        '<td class="r num">' + (KB(it).fast ? won(KB(it).fast) : "–") + '</td><td class="r num">' + (KB(it).normal ? won(KB(it).normal) : "–") + '</td><td class="r"><small class="num">' + (trades || "–") + '</small></td><td class="r num">' + (k.tradeCount != null && k.model ? U.esc(String(k.tradeCount)) + "건" : "–") + (sp ? '<small class="muted">월 ' + sp.perMonth + "건 추정</small>" : "") + "</td>" +
+        '<td class="r num">' + (KB(it).fast ? won(KB(it).fast) : "–") + '</td><td class="r num">' + (KB(it).normal ? won(KB(it).normal) : "–") + '</td><td class="r"><small class="num">' + (trades || "–") + '</small>' + (KB(it).trade && num(it.kreamPrice) > KB(it).trade * 1.08 ? '<span class="pill p-warn" title="계산 기준가(판매입찰)가 최근 체결 중간값보다 높아요 — 실제로 이 값에 안 팔릴 수 있음">체결가보다 ' + Math.round((num(it.kreamPrice) / KB(it).trade - 1) * 100) + "% 높음</span>" : "") + '</td><td class="r num">' + (k.tradeCount != null && k.model ? "전체 " + U.esc(String(k.tradeCount)) + "건" : "–") + (sp ? '<small class="muted">' + (k.sizeRead ? esc(it.size) + " " : "") + "월 " + sp.perMonth + "건 · 30일 " + sp.n30 + "건</small>" + (q > 1 && sp.perMonth ? '<small class="muted">' + q + "개 소진 약 " + (Math.round(q / sp.perMonth * 10) / 10) + "개월</small>" : "") : (k.model && !szFree(it.size) ? '<small class="muted">' + esc(it.size) + " 체결 없음</small>" : "")) + "</td>" +
         '<td class="r kp">' + (w ? '<input class="cell-in num" type="number" inputmode="numeric" aria-label="' + esc((f.brand || "") + " " + (it.size || "") + " 크림 기준가") + '" data-kp="' + esc(it.id) + '" value="' + (it.kreamPrice == null ? "" : Math.round(it.kreamPrice)) + '" placeholder="입력">' : '<span class="num">' + (it.kreamPrice == null ? "–" : won(it.kreamPrice)) + "</span>") + "</td>" +
-        '<td class="r num ' + (c && c.real < 0 ? "neg" : "") + '">' + (c ? won(c.real) : "–") + '</td><td class="r num">' + (c ? pct(c.rate) : "–") + '</td><td class="r num">' + (c ? won(c.breakeven) : "–") + "</td><td>" + vpill(c) + '</td><td class="r num"><b>' + (rq ? rq + "개" : "–") + "</b></td><td>" +
+        '<td class="r num ' + (c && c.real < 0 ? "neg" : "") + '">' + (c ? won(c.real) : "–") + '</td><td class="r num">' + (c ? pct(c.rate) : "–") + '</td><td class="r num">' + (c ? won(c.breakeven) : "–") + (c && tgt(it) ? '<small class="muted">8% 목표 ' + won(tgt(it)) + "</small>" : "") + "</td><td>" + vpill(c) + '</td><td class="r num"><b>' + (rq ? rq + "개" : "–") + "</b></td><td>" +
         (w ? '<select class="ctl sm" data-dec="' + esc(it.id) + '" aria-label="결정">' + DECISIONS.map(function (d) { return "<option" + (d === (it.decision || "검토") ? " selected" : "") + ">" + d + "</option>"; }).join("") + "</select>" : esc(it.decision || "검토")) + "</td></tr>";
     }).join("");
   }).join("");
@@ -228,7 +230,7 @@ function ksame(a, b) { if (!a || !b) return 0; if (knorm(a) === knorm(b)) return
 /* 사이즈 비교: "7" = "UK 7", "F"·"ONE SIZE" = 전체 */
 function szn(x) { return String(x || "").toUpperCase().replace(/\s/g, ""); }
 function szFree(x) { return !x || /^(F|FREE|TU|OS|ONESIZE)$/.test(szn(x)); }
-function szSame(a, b) { a = szn(a); b = szn(b); if (szFree(a) || szFree(b)) return szFree(a) && szFree(b) || szFree(a); return a === b || a.replace(/^[A-Z]+/, "") === b.replace(/^[A-Z]+/, ""); }
+function szSame(a, b) { a = szn(a); b = szn(b); if (szFree(a) || szFree(b)) return szFree(a) && szFree(b) || szFree(a); var na = a.replace(/^[A-Z]+/, ""), nb = b.replace(/^[A-Z]+/, ""); return a === b || (/^\d/.test(na) && na === nb); }   /* "UK7"="7" 은 같게, "XXL"≠"L" (2026-11-13 수정) */
 function parseProduct(p) {
   var t = p.text || "", m = p.meta || {}, model = ((t.match(/모델번호\s*\n*\s*([^\n]+)/) || [])[1] || "").trim();
   var trades = [], i = t.indexOf("거래일"), j = t.indexOf("거래 내역 더보기");
@@ -283,7 +285,7 @@ function shrink(file) {   /* 사진을 긴 변 2000px JPEG로 줄여서 보냄 (
   });
 }
 function median(a) { a = a.slice().sort(function (x, y) { return x - y; }); var n = a.length; return n ? (n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2) : null; }
-function sizeTrades(k, size) { var tr = k.trades || [], s = String(size || "").toUpperCase(); if (!s || /^(F|FREE|TU|OS|ONE ?SIZE)$/.test(s)) return tr; var m = tr.filter(function (t) { return szSame(size, t.size); }); return m.length ? m : tr; }
+function sizeTrades(k, size) { var tr = k.trades || [], s = String(size || "").toUpperCase(); if (!s || /^(F|FREE|TU|OS|ONE ?SIZE)$/.test(s)) return tr; return tr.filter(function (t) { return szSame(size, t.size); }); }   /* 다른 사이즈 거래는 절대 안 빌려 씀 */
 /* 계산 기준가: 빠른배송·사업자 최저 판매입찰가, 없으면 일반배송 — 95점·즉시구매가 대표값은 안 씀 */
 function basisPrices(k, size) {
   var all = k.asks || [], free = szFree(size);
@@ -300,18 +302,37 @@ async function fetchKream(rows, opt) {
     var g = bySku[keys[i]], f = g[0]; g.forEach(function (it) { busy[it.id] = 1; }); ERP.render();
     ERP.toast("크림 확인 중 " + (i + 1) + "/" + keys.length + " · " + (f.brand || "") + " " + (f.sku || ""));
     var k; try { k = await kreamLookup(f.sku, f.kreamUrl, opt && opt.chan); } catch (e) { k = { error: e.message }; if (/멈췄|멈춤|꺼져/.test(e.message)) { g.forEach(function (it) { delete busy[it.id]; }); ERP.toast("⚠ " + e.message); break; } }
+    /* 사이즈별로 크림 페이지(?size=XL)를 따로 열어 그 사이즈의 판매입찰·체결·구매입찰만 읽음 (2026-11-13 대표님 지시) */
+    if (k && !k.error && k.verified && k.url) {
+      k.bySize = {}; var szs = []; g.forEach(function (it) { if (!szFree(it.size) && szs.indexOf(it.size) < 0) szs.push(it.size); });
+      for (var si = 0; si < szs.length; si++) {
+        var sz = szs[si];
+        try {
+          ERP.toast("사이즈별 시세 읽는 중 · " + (f.sku || "") + " " + sz);
+          await new Promise(function (r) { setTimeout(r, 4000 + Math.random() * 3000); });
+          var sp = await pageSafe({ url: String(k.url).split("?")[0] + "?size=" + encodeURIComponent(sz), waitFor: "모델번호|발매가", minLen: 300 }, opt && opt.chan);
+          if (!(sp.kream && sp.kream.full) && sp.kg && sp.kg.length) { sp.kream = sp.kream || {}; sp.kream.groups = sp.kg; }
+          var pr = parseProduct(sp), kg = sp.kg || [];
+          var trs = (pr.trades || []).filter(function (t) { return szSame(sz, t.size); });
+          if (!trs.length && kg[0]) trs = kg[0].filter(function (t) { return szSame(sz, t.opt) && pr.p95.indexOf(t.price) < 0; }).map(function (t) { return { size: t.opt, price: t.price, date: "" }; });
+          var bds = pr.bids ? pr.bids : (kg[2] || []).map(function (b) { return { size: b.opt, price: b.price }; });
+          k.bySize[sz] = { asks: (pr.asks || []).filter(function (a) { return szSame(sz, a.size); }), bids: bds.filter(function (b) { return szSame(sz, b.size); }), trades: trs, p95: pr.p95 || [], sizeRead: true };
+        } catch (e) { k.bySize[sz] = { err: e.message }; if (/멈췄|멈춤|꺼져|차단/.test(e.message)) { ERP.toast("⚠ " + e.message); break; } }
+      }
+    }
     var out = [], logs = [];
     g.forEach(function (it) {
       delete busy[it.id];
-      var o = Object.assign({}, it, { extra: Object.assign({}, it.extra || {}, { kream: k }) });
+      var bs = k && k.bySize && k.bySize[it.size], kk = bs && bs.sizeRead ? Object.assign({}, k, bs, { bySize: undefined }) : k;
+      var o = Object.assign({}, it, { extra: Object.assign({}, it.extra || {}, { kream: kk }) });
       if (k && !k.error && k.verified) {
-        var x95 = k.p95 || [], tr = sizeTrades(k, it.size).filter(function (t) { return x95.indexOf(t.price) < 0; }).map(function (t) { return t.price; }), md = median(tr.slice(0, 5));
-        var ba = basisPrices(k, it.size), ref;
+        var x95 = kk.p95 || [], tr = sizeTrades(kk, it.size).filter(function (t) { return x95.indexOf(t.price) < 0; }).map(function (t) { return t.price; }), md = median(tr.slice(0, 5));
+        var ba = basisPrices(kk, it.size), ref;
         if (ba.fast || ba.normal) { ref = ba.fast || ba.normal; o.extra.kreamBasis = { fast: ba.fast, normal: ba.normal, bid: ba.bid, trade: md, by: ba.fast ? "빠른배송·사업자" : "일반배송", full: !!k.full }; }
-        else { var mp = k.price && x95.indexOf(k.price) < 0 ? k.price : null; ref = md && mp ? Math.min(md, mp) : (md || mp); o.extra.kreamBasis = { by: "최근 체결가(빠른·일반 판매가 못 읽음" + (k.asksRead ? "" : " — 리셀 도우미 필요") + ")" }; }
+        else { var mp = !szFree(it.size) ? null : k.price && x95.indexOf(k.price) < 0 ? k.price : null; ref = md && mp ? Math.min(md, mp) : (md || mp); o.extra.kreamBasis = { by: "최근 체결가(빠른·일반 판매가 못 읽음" + (k.asksRead ? "" : " — 리셀 도우미 필요") + ")" }; }
         o.kreamPrice = ref || null; o.kreamUrl = k.url || o.kreamUrl;
         if (k.ocrFixed) { o.extra.skuOcr = o.sku; o.sku = k.ocrFixed; }
-        o.kreamRecent = (ba.fast || ba.normal ? "빠른 " + (ba.fast ? Number(ba.fast).toLocaleString() : "-") + " · 일반 " + (ba.normal ? Number(ba.normal).toLocaleString() : "-") + " · 바로판매 " + (ba.bid ? Number(ba.bid).toLocaleString() : "-") + (k.p95 && k.p95.length ? " · 95점 제외 " + k.p95.length + "건" : "") + " | " : "") + sizeTrades(k, it.size).filter(function (t) { return x95.indexOf(t.price) < 0; }).slice(0, 5).map(function (t) { return t.date + " " + Number(t.price).toLocaleString(); }).join(" · ");
+        o.kreamRecent = (ba.fast || ba.normal ? "빠른 " + (ba.fast ? Number(ba.fast).toLocaleString() : "-") + " · 일반 " + (ba.normal ? Number(ba.normal).toLocaleString() : "-") + " · 바로판매 " + (ba.bid ? Number(ba.bid).toLocaleString() : "-") + (k.p95 && k.p95.length ? " · 95점 제외 " + k.p95.length + "건" : "") + " | " : "") + sizeTrades(kk, it.size).filter(function (t) { return x95.indexOf(t.price) < 0; }).slice(0, 5).map(function (t) { return t.date + " " + Number(t.price).toLocaleString(); }).join(" · ");
         o.kreamCheckedAt = new Date().toISOString();
         if (!o.name && k.name) o.name = k.name;
         logs.push({ sku: it.sku || it.name || "", size: it.size || "", kream_url: o.kreamUrl || "", last_trade: md, lowest_ask: o.kreamPrice, trades: o.kreamRecent, source: "helper" });
