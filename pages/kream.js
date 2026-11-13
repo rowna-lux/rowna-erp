@@ -505,7 +505,9 @@ function lss(k, v) { try { if (v === "" || v == null) localStorage.removeItem(k)
 function tgOn() { return !!(lsg(TGK.tok) && lsg(TGK.on) === "1"); }
 function tgLog(t) { var a = []; try { a = JSON.parse(lsg(TGK.log) || "[]"); } catch (e) {} a.unshift({ at: new Date().toISOString(), t: String(t).slice(0, 300) }); lss(TGK.log, JSON.stringify(a.slice(0, 40))); }
 async function tgApi(m, body) {
-  var r = await fetch("https://api.telegram.org/bot" + lsg(TGK.tok) + "/" + m, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  /* JSON 헤더를 쓰면 브라우저 사전요청(CORS)에 막혀서, 폼 형식으로 보냄 */
+  var fd = new URLSearchParams(); Object.keys(body || {}).forEach(function (k) { var x = body[k]; if (x != null) fd.append(k, typeof x === "object" ? JSON.stringify(x) : String(x)); });
+  var r = await fetch("https://api.telegram.org/bot" + lsg(TGK.tok) + "/" + m, { method: "POST", body: fd });
   var j = await r.json(); if (!j.ok) throw new Error("텔레그램: " + (j.description || r.status)); return j.result;
 }
 function th(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
@@ -595,6 +597,7 @@ async function tgRun() {   /* 리스트는 한 번에 하나씩(크림 차단 �
   try { while (TG.jobs.length) { var j = TG.jobs.shift(); try { await tgJob(j); } catch (e) { TG.err = e.message; tgLog("오류 " + e.message); await tgSend("⚠ 처리 중 오류: " + th(e.message)); } } } finally { TG.running = false; }
 }
 setInterval(function () { try { if (S.SET && tgOn()) tgPoll(); } catch (e) {} }, 5000);
+ERP.tgReport = tgReport;
 function tgPanel() {
   var on = tgOn(), has = !!lsg(TGK.tok), log = []; try { log = JSON.parse(lsg(TGK.log) || "[]"); } catch (e) {}
   return '<div class="panel"><h2>🤖 텔레그램 자동계산 봇 <small class="muted">(이 PC에서만 · PC1 권장)</small></h2>' +
