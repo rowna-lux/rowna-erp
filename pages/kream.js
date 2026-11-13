@@ -265,11 +265,11 @@ function parseSearch(p) {
   return out.slice(0, 6);
 }
 async function kreamLookup(sku, url, chan, name) {
-  sku = String(sku || "").trim(); var tried = [], best = null, hit = null;
+  sku = String(sku || "").trim(); var tried = [], best = null, hit = null, seen = {};
   async function check(pid, via) {
     if (!pid || tried.indexOf(pid) >= 0) return null; tried.push(pid);
     var d = parseProduct(await pageSafe({ url: "https://kream.co.kr/products/" + pid, waitFor: "모델번호|발매가", minLen: 300 }, chan));
-    d.via = via; d.match = ksame(d.model, sku); if (!best || d.match > best.match) best = d; return d.match ? d : null;
+    d.via = via; d.match = ksame(d.model, sku); seen[pid] = d; if (!best || d.match > best.match) best = d; return d.match ? d : null;
   }
   async function search(q, via) { var c = parseSearch(await pageSafe({ url: "https://kream.co.kr/search?keyword=" + encodeURIComponent(q), waitFor: "관심|검색 결과가 없습니다", minLen: 200 }, chan)).slice(0, 3); for (var k = 0; k < c.length && !hit; k++) hit = await check(c[k].id, via); }
   var id = (String(url || "").match(/products\/(\d+)/) || [])[1];
@@ -283,7 +283,7 @@ async function kreamLookup(sku, url, chan, name) {
     var nm = String(name).replace(/\s*-\s*\d{2}(FW|SS)\s*$/i, "").replace(/[^\w가-힣 .]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
     var c2 = parseSearch(await pageSafe({ url: "https://kream.co.kr/search?keyword=" + encodeURIComponent(nm), waitFor: "관심|검색 결과가 없습니다", minLen: 200 }, chan)).slice(0, 3);
     for (var q = 0; q < c2.length && !hit; q++) { var d2 = await check(c2[q].id, "상품명 검색"); if (d2) hit = d2; }
-    if (!hit && c2.length) { var nb = best && best.via === "상품명 검색" ? best : null; if (!nb) { tried.splice(tried.indexOf(c2[0].id), 1); nb = await check(c2[0].id, "상품명 검색") || best; } if (nb && nb.via === "상품명 검색") { hit = nb; hit.needConfirm = true; hit.cands = c2; } }
+    if (!hit && c2.length) { var nb = seen[c2[0].id]; if (nb) { hit = nb; hit.needConfirm = true; hit.cands = c2; } }
   }
   var r = hit || best || {}; r.verified = !!hit; r.exact = !!(hit && hit.match === 2); r.tried = tried; r.checkedAt = new Date().toISOString(); return r;
 }
