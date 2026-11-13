@@ -280,7 +280,7 @@ async function kreamLookup(sku, url, chan, name, sz) {
   if (!hit && best && best.via === "리스트 링크" && best.model && kdist(knorm(best.model), knorm(sku)) <= 3) { hit = best; hit.ocrFixed = best.model; }
   /* 리스트 품번이 사람 실수로 틀렸을 때: 상품명으로 크림 검색 → 첫 후보를 '사진 확인 필요'로 표시 (대표님이 사진 대조 후 확정해야 추천 수량이 나옴) */
   if (!hit && name) {
-    var nm = String(name).replace(/\s*-\s*\d{2}(FW|SS)\s*$/i, "").replace(/[^\w가-힣 .]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
+    var nm = String(name).replace(/\s*-\s*\d{2}(FW|SS)\s*$/i, "").replace(/[^\w가-힣 .]/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(function (w, i, a) { return a.indexOf(w) === i; }).slice(0, 6).join(" ");
     var c2 = parseSearch(await pageSafe({ url: "https://kream.co.kr/search?keyword=" + encodeURIComponent(nm), waitFor: "관심|검색 결과가 없습니다", minLen: 200 }, chan)).slice(0, 3);
     for (var q = 0; q < c2.length && !hit; q++) { var d2 = await check(c2[q].id, "상품명 검색"); if (d2) hit = d2; }
     if (!hit && c2.length) { var nb = seen[c2[0].id]; if (nb) { hit = nb; hit.needConfirm = true; hit.cands = c2; } }
@@ -359,6 +359,7 @@ async function fetchKream(rows, opt) {
   }
   ERP.render(); ERP.toast("크림 확인을 마쳤어요.");
 }
+ERP.kreamFetch = fetchKream;
 ERP.acts.kreamfetch = function () { var list = items().filter(function (x) { return x.listDate === v.kList; }); if (!list.length) return; if (!isMall(SUP()) && !wholesaleOn()) { ERP.toast("‘로우나 열무 크림도매 도우미’ 확장을 설치해야 빠른배송·일반배송·95점을 나눠 읽어요 (ERP 저장소 tools/kream-wholesale-helper)."); return; } fetchKream(list, isMall(SUP()) ? { gap: [10, 12], chan: "R" } : { chan: "W" }); };
 /* 사진 → 표 읽기(ChatGPT, '로우나 도우미') → 도매 리스트 저장 → 크림 시세. pics = [{data: dataURL, name}] */
 async function importPhotos(pics, sup, day) {
