@@ -53,7 +53,7 @@ function items() { return ERP.list("kream_wholesale").filter(function (x) { retu
 /* 거래 속도: 최근 체결 5건 날짜로 한 달 거래 수 추정 */
 function tdate(s) { s = String(s || ""); var m = s.match(/^(\d{2})\/(\d{2})\/(\d{2})$/); if (m) return new Date(2000 + +m[1], +m[2] - 1, +m[3]); m = s.match(/(\d+)\s*(분|시간|일)\s*전/); if (m) return new Date(Date.now() - +m[1] * (m[2] === "분" ? 6e4 : m[2] === "시간" ? 36e5 : 864e5)); return null; }
 function speed(k) { var tr = (k && k.trades) || []; if (!tr.length) return null; var ds = tr.map(function (t) { return tdate(t.date); }).filter(Boolean); if (!ds.length) return null; var old = Math.min.apply(null, ds), days = Math.max(1, (Date.now() - old) / 864e5), n30 = ds.filter(function (d) { return Date.now() - d <= 30 * 864e5; }).length; return { perMonth: Math.round(ds.length * 30 / days * 10) / 10, n30: n30, days: Math.round(days) }; }
-function recQty(it, c) { var k = (it.extra || {}).kream, sp = speed(k), q = isMall(it.supplier) ? 99 : num(it.qty); if (!c || c.verdict === "비추천" || !(k && k.verified)) return 0; if (!sp) return Math.min(q, 1); return Math.min(q, Math.max(1, Math.floor(sp.perMonth * (c.verdict === "추천" ? 1.5 : 1)))); }
+function recQty(it, c) { var k = (it.extra || {}).kream, sp = speed(k), q = isMall(it.supplier) ? 99 : num(it.qty); if (k && k.needConfirm && !(it.extra || {}).confirmed) return 0; if (!c || c.verdict === "비추천" || !(k && k.verified)) return 0; if (!sp) return Math.min(q, 1); return Math.min(q, Math.max(1, Math.floor(sp.perMonth * (c.verdict === "추천" ? 1.5 : 1)))); }
 function listDates() { var d = {}; items().forEach(function (x) { if (x.listDate) d[x.listDate] = 1; }); return Object.keys(d).sort().reverse(); }
 function vpill(c) { if (!c) return '<span class="pill p-mute">크림가 필요</span>'; return c.verdict === "추천" ? '<span class="pill p-good">✓ 추천</span>' : c.verdict === "검토" ? '<span class="pill p-warn">△ 검토</span>' : '<span class="pill p-crit">✕ 비추천</span>'; }
 
@@ -65,7 +65,9 @@ function kcell(it) {
   var k = (it.extra || {}).kream;
   if (!k) return '<span class="muted">' + (busy[it.id] ? "확인 중…" : "–") + "</span>";
   if (k.error) return '<span class="pill p-crit" title="' + esc(k.error) + '">확인 실패</span>';
-  return (k.verified ? (k.exact ? '<span class="pill p-good" title="크림 모델번호 ' + esc(k.model) + '">✅ 품번 일치</span>' : '<span class="pill p-warn" title="크림 모델번호 ' + esc(k.model) + ' (0/O·1/I 등 비슷한 글자 차이)">△ 거의 일치</span>') : '<span class="pill p-crit" title="크림에서 같은 모델번호를 못 찾았어요">⚠ 품번 다름</span>') +
+  var th = k.img ? '<img src="' + esc(String(k.img).split("?")[0] + "?type=m_webp") + '" referrerpolicy="no-referrer" alt="" loading="lazy" style="width:56px;height:56px;object-fit:cover;border-radius:6px;display:block;margin-bottom:4px">' : "";
+  if (k.needConfirm && !(it.extra || {}).confirmed) return th + '<span class="pill p-warn" title="리스트 품번으로는 못 찾아서 상품명으로 찾았어요. 리스트 사진과 같은 상품·색상인지 확인해 주세요">🔍 사진 확인 필요</span><small class="num">크림 ' + esc(k.model || "") + "</small>" + (k.url ? '<small><a href="' + esc(k.url) + '" target="_blank" rel="noopener">크림 상품 보기 ↗</a></small>' : "") + (ERP.canWrite("kream_wholesale") ? '<button class="btn sm" data-kconf="' + esc(it.id) + '">같은 상품 맞음</button> <button class="btn sm" data-kno="' + esc(it.id) + '">아님</button>' : "");
+  return th + (k.needConfirm ? '<span class="pill p-good">✅ 사진 확인함</span>' : "") + (k.verified ? (k.exact ? '<span class="pill p-good" title="크림 모델번호 ' + esc(k.model) + '">✅ 품번 일치</span>' : '<span class="pill p-warn" title="크림 모델번호 ' + esc(k.model) + ' (0/O·1/I 등 비슷한 글자 차이)">△ 거의 일치</span>') : '<span class="pill p-crit" title="크림에서 같은 모델번호를 못 찾았어요">⚠ 품번 다름</span>') +
     '<small class="num">' + esc(k.model || "") + "</small>";
 }
 var busy = {};
@@ -137,6 +139,8 @@ function bind(root) {
   var kb = root.querySelector("#k-base"); if (kb) kb.onchange = function () { ERP.saveSetting("kream_fee_base", num(kb.value)); ERP.render(); };
   var kbu = root.querySelector("#k-bud"); if (kbu) kbu.onchange = function () { ERP.saveSetting("kream_budget", num(kbu.value)); ERP.render(); };
   root.querySelectorAll("[data-kp]").forEach(function (el) { el.onchange = async function () { var it = ERP.DATA.kream_wholesale.get(el.dataset.kp); if (!it) return; var val = el.value === "" ? null : num(el.value); await savePrice(it, val, it.kreamRecent); }; });
+  root.querySelectorAll("[data-kconf]").forEach(function (el) { el.onclick = async function () { var it = ERP.DATA.kream_wholesale.get(el.dataset.kconf); if (!it) return; var k = (it.extra || {}).kream || {}; await ERP.save("kream_wholesale", Object.assign({}, it, { sku: k.model || it.sku, kreamUrl: k.url || it.kreamUrl, extra: Object.assign({}, it.extra, { confirmed: true, skuList: it.sku }) })); ERP.render(); }; });
+  root.querySelectorAll("[data-kno]").forEach(function (el) { el.onclick = async function () { var it = ERP.DATA.kream_wholesale.get(el.dataset.kno); if (!it) return; var x = Object.assign({}, it.extra); delete x.kream; delete x.kreamBasis; await ERP.save("kream_wholesale", Object.assign({}, it, { kreamPrice: null, kreamRecent: "", kreamUrl: "", extra: x })); ERP.toast("크림 링크를 직접 넣어 주세요 (행 사이즈 칸 클릭 → 크림 링크)."); ERP.render(); }; });
   root.querySelectorAll("[data-dec]").forEach(function (el) { el.onchange = function () { var it = ERP.DATA.kream_wholesale.get(el.dataset.dec); if (it) ERP.save("kream_wholesale", Object.assign({}, it, { decision: el.value })); }; });
   var r = root.querySelector("#k-rate"); if (r) r.onchange = function () { ERP.saveSetting("kream_fee_rate", num(r.value) / 100); ERP.render(); };
   var cp = root.querySelector("#k-cap"); if (cp) cp.onchange = function () { ERP.saveSetting("kream_fee_cap", num(cp.value)); ERP.render(); };
@@ -243,7 +247,7 @@ function parseProduct(p) {
   var asks = [], g = p.kream && p.kream.groups, left95 = p95.slice();
   if (g && g[1]) g[1].forEach(function (a) { var k95 = a.fast ? left95.indexOf(a.price) : -1; if (k95 >= 0) { left95.splice(k95, 1); return; } asks.push({ size: a.opt, price: a.price, fast: !!a.fast }); });
   var res = { url: String(p.url || "").split("?")[0], productId: (String(p.url || "").match(/products\/(\d+)/) || [])[1] || "", name: String(p.title || "").replace(/\s*정품 안심 거래\s*\|\s*KREAM\s*$/, "").trim(), nameEn: m["og:title"] || "", brand: m["product:brand"] || "",
-    model: model, price: Number(m["product:price:amount"]) || null, availability: m["product:availability"] || "", p95: p95, asks: asks, asksRead: !!(g && g[1]), tradeCount: tc[1] ? Math.round(Number(tc[1].replace(/,/g, "")) * (tc[2] ? 10000 : 1)) : 0, trades: trades, loggedIn: /로그아웃/.test(t.slice(0, 400)) };
+    img: m["og:image"] || "", model: model, price: Number(m["product:price:amount"]) || null, availability: m["product:availability"] || "", p95: p95, asks: asks, asksRead: !!(g && g[1]), tradeCount: tc[1] ? Math.round(Number(tc[1].replace(/,/g, "")) * (tc[2] ? 10000 : 1)) : 0, trades: trades, loggedIn: /로그아웃/.test(t.slice(0, 400)) };
   /* 열무 크림도매 도우미: 거래 내역 창 전체 목록 + 95점 목록(사이즈별). 95점과 사이즈·가격이 같은 빠른배송 판매입찰은 1건씩 뺌 */
   var fu = p.kream && p.kream.full;
   if (fu) {
@@ -260,7 +264,7 @@ function parseSearch(p) {
   var seen = {}, out = []; (p.links || []).forEach(function (a) { var id = (String(a.href).match(/kream\.co\.kr\/products\/(\d+)/) || [])[1]; if (id && !seen[id]) { seen[id] = 1; out.push({ id: id, text: a.text }); } });
   return out.slice(0, 6);
 }
-async function kreamLookup(sku, url, chan) {
+async function kreamLookup(sku, url, chan, name) {
   sku = String(sku || "").trim(); var tried = [], best = null, hit = null;
   async function check(pid, via) {
     if (!pid || tried.indexOf(pid) >= 0) return null; tried.push(pid);
@@ -274,6 +278,13 @@ async function kreamLookup(sku, url, chan) {
   if (!hit && sku.split(/[\s\-]/).length > 1) await search(sku.split(/[\s\-]/).slice(0, 2).join("-"), "품번 앞부분 검색");
   /* 사진 글자 오인식(1YGV9Y↔1VG9Y, FACCG↔FACQC 등): 리스트에 붙은 크림 링크 상품의 모델번호와 3글자 이내로만 다르면 같은 상품으로 보고 품번을 크림 것으로 고침 */
   if (!hit && best && best.via === "리스트 링크" && best.model && kdist(knorm(best.model), knorm(sku)) <= 3) { hit = best; hit.ocrFixed = best.model; }
+  /* 리스트 품번이 사람 실수로 틀렸을 때: 상품명으로 크림 검색 → 첫 후보를 '사진 확인 필요'로 표시 (대표님이 사진 대조 후 확정해야 추천 수량이 나옴) */
+  if (!hit && name) {
+    var nm = String(name).replace(/\s*-\s*\d{2}(FW|SS)\s*$/i, "").replace(/[^\w가-힣 .]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
+    var c2 = parseSearch(await pageSafe({ url: "https://kream.co.kr/search?keyword=" + encodeURIComponent(nm), waitFor: "관심|검색 결과가 없습니다", minLen: 200 }, chan)).slice(0, 3);
+    for (var q = 0; q < c2.length && !hit; q++) { var d2 = await check(c2[q].id, "상품명 검색"); if (d2) hit = d2; }
+    if (!hit && c2.length) { var nb = best && best.via === "상품명 검색" ? best : null; if (!nb) { tried.splice(tried.indexOf(c2[0].id), 1); nb = await check(c2[0].id, "상품명 검색") || best; } if (nb && nb.via === "상품명 검색") { hit = nb; hit.needConfirm = true; hit.cands = c2; } }
+  }
   var r = hit || best || {}; r.verified = !!hit; r.exact = !!(hit && hit.match === 2); r.tried = tried; r.checkedAt = new Date().toISOString(); return r;
 }
 ERP.helperAsk = ask; ERP.helperOn = helperOn;   /* 소싱 메뉴(메투 카페)에서도 같이 씀 */
@@ -301,7 +312,7 @@ async function fetchKream(rows, opt) {
     if (i && opt && opt.gap) { var sec = opt.gap[0] + Math.random() * (opt.gap[1] - opt.gap[0]); ERP.toast("차단 방지로 " + Math.round(sec) + "초 쉬는 중 · 다음 " + (i + 1) + "/" + keys.length); await new Promise(function (r) { setTimeout(r, sec * 1000); }); }
     var g = bySku[keys[i]], f = g[0]; g.forEach(function (it) { busy[it.id] = 1; }); ERP.render();
     ERP.toast("크림 확인 중 " + (i + 1) + "/" + keys.length + " · " + (f.brand || "") + " " + (f.sku || ""));
-    var k; try { k = await kreamLookup(f.sku, f.kreamUrl, opt && opt.chan); } catch (e) { k = { error: e.message }; if (/멈췄|멈춤|꺼져/.test(e.message)) { g.forEach(function (it) { delete busy[it.id]; }); ERP.toast("⚠ " + e.message); break; } }
+    var k; try { k = await kreamLookup(f.sku, f.kreamUrl, opt && opt.chan, ((f.brand || "") + " " + (f.name || "")).trim()); } catch (e) { k = { error: e.message }; if (/멈췄|멈춤|꺼져/.test(e.message)) { g.forEach(function (it) { delete busy[it.id]; }); ERP.toast("⚠ " + e.message); break; } }
     /* 사이즈별로 크림 페이지(?size=XL)를 따로 열어 그 사이즈의 판매입찰·체결·구매입찰만 읽음 (2026-11-13 대표님 지시) */
     if (k && !k.error && k.verified && k.url) {
       k.bySize = {}; var szs = []; g.forEach(function (it) { if (!szFree(it.size) && szs.indexOf(it.size) < 0) szs.push(it.size); });
