@@ -598,6 +598,17 @@ async function tgRun() {   /* 리스트는 한 번에 하나씩(크림 차단 �
 }
 setInterval(function () { try { if (S.SET && tgOn()) tgPoll(); } catch (e) {} }, 5000);
 ERP.tgReport = tgReport;
+/* 안전장치: 사진은 읽혔는데 크림 시세가 안 채워진 줄(최근 2일)이 있으면 1분마다 자동으로 다시 확인 (PC1·열무 도우미 켜진 곳만) */
+var autoBusy = false;
+setInterval(async function () {
+  try {
+    if (autoBusy || !S.SET || !wholesaleOn() || qBusy || TG.running) return;
+    var lo = U.shiftDay ? U.shiftDay(U.today(), -1) : U.today();
+    var rows = ERP.list("kream_wholesale").filter(function (x) { return !isMall(x.supplier) && (x.listDate || "") >= lo && x.kreamPrice == null && !(x.extra || {}).kream && !busy[x.id] && Date.now() - new Date(x.createdAt || 0) > 90 * 1000; });
+    if (!rows.length) return;
+    autoBusy = true; await fetchKream(rows, { chan: "W" }); tgNotifyRows(rows, {});
+  } catch (e) {} finally { autoBusy = false; }
+}, 60 * 1000);
 function tgPanel() {
   var on = tgOn(), has = !!lsg(TGK.tok), log = []; try { log = JSON.parse(lsg(TGK.log) || "[]"); } catch (e) {}
   return '<div class="panel"><h2>🤖 텔레그램 자동계산 봇 <small class="muted">(이 PC에서만 · PC1 권장)</small></h2>' +
