@@ -212,6 +212,8 @@ async function one(t, s, opts) {
     if (opts.dry) { row.status = "미리보기(저장 안 함)"; return row; }
     var preConv = null;
     if (needConv) { preConv = await convertOnly(origin); mk("변환"); }   /* 스마트에디터 변환은 따로 먼저(같이 하면 4분 넘어 시간 초과) */
+    if (preConv && !Object.keys(c.pick).length && !(HV25 ? cands.length : tp.reg.length)) {   /* 11/15 속도: 변환 단계에서 이미 저장까지 하므로, 넣을 속성·태그가 없으면 수정 화면을 한 번 더 열어 저장하지 않음(상품당 약 45초 절약) */
+      row.conv = preConv; row.status = preConv === "변환 완료" ? "저장 완료" : preConv.indexOf("변환 버튼 없음") === 0 ? "할 일 없음(이미 입력·변환됨)" : "일부 실패"; if (row.status === "일부 실패") row.err = preConv; return row; }
     var w = await writePage(origin, p.attrs, c.pick, HV25 ? cands : tp.reg, !!preConv && preConv === "변환 완료"); if (preConv) w.conv = preConv; if (w.tagReg) { row.tags = w.tagReg; row.tagInfo = w.tagInfo; } row.tagsNow = w.tagsNow; row.saveMsg = w.saveMsg; row.conv = w.conv; if (w.dialogs.length) row.saveMsg = w.dialogs.concat(row.saveMsg || []);
     mk("저장");
     var convBad = needConv && w.conv !== "변환 완료";
