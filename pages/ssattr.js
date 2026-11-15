@@ -248,7 +248,7 @@ ERP.acts.ssattrrun = async function (btn) {
   var mp = s.map || {}, hasO = function (t) { return !!(mp[t.ch] || t.origin); };   /* 11/8: 수정화면 번호를 아는 상품(바로 열림) 먼저, 검색으로 찾아야 하는 상품은 뒤로 */
   list = list.filter(hasO).concat(list.filter(function (t) { return !hasO(t); }));
   ERP.toast("상품속성 자동입력 시작: 남은 " + list.length + "개 중 " + (lim === Infinity ? "전부" : lim + "개"));
-  for (var i = 0; i < list.length && n < lim && !stopReq; i++) {
+  for (var i = 0; i < list.length && n < lim && !stopReq && lockMine(); i++) {
     var row = await one(list[i], s, {});
     if (row.status === "실패" && /오류 429|credits|quota/i.test(row.err || "")) { stopReq = true; ERP.toast("⚠ ChatGPT(OpenAI) 크레딧이 떨어져서 멈췄어요. 충전 후 다시 시작해 주세요."); return { n: n, left: list.length - i, stopped: true }; }   /* AI 크레딧 소진은 상품 실패가 아님 — 기록하지 않고 멈춤(10/31 53건 잘못 기록됨) */
     if (row.status === "실패" && /확장이 새로고침/.test(row.err || "")) { ERP.toast("도우미가 다시 켜져서 ERP를 새로고침해요."); setTimeout(function () { location.reload(); }, 1500); return { n: n, left: list.length - i, stopped: true }; }   /* 도우미 재시작은 상품 실패가 아님 — 기록하지 않고 새로고침 */
@@ -266,10 +266,12 @@ var autoOn = false, MYID = Math.random().toString(36).slice(2);
 function lockOk() {   /* ERP 탭이 여러 개 열려도 한 탭만 돌게 */
   try { var l = JSON.parse(localStorage.getItem("rowna-ssattr-lock") || "null"); return !l || l.id === MYID || Date.now() - l.ts > 120000; } catch (e) { return true; }
 }
-function lockBeat() { try { localStorage.setItem("rowna-ssattr-lock", JSON.stringify({ id: MYID, ts: Date.now() })); } catch (e) {} }
+function lockMine() { try { var l = JSON.parse(localStorage.getItem("rowna-ssattr-lock") || "null"); return !l || l.id === MYID || Date.now() - l.ts > 120000; } catch (e) { return true; } }   /* 11/15: 다른 탭이 잠금을 가져가면 이 탭은 물러남(옛 코드 탭이 계속 돌던 문제) */
+function lockBeat() { if (!lockMine()) { stopReq = true; return; } try { localStorage.setItem("rowna-ssattr-lock", JSON.stringify({ id: MYID, ts: Date.now() })); } catch (e) {} }
 ERP.acts.ssattrauto = async function () {
   if (autoOn) { ERP.toast("이미 자동 진행 중이에요."); return; }
   for (var lw = 0; !lockOk() && lw < 10; lw++) await new Promise(function (r) { setTimeout(r, 30000); });   /* 새로고침 직후엔 이전 화면의 표시가 2분간 남아 있어서 기다렸다가 시작 */
+  if (!lockOk() && /[?&]take=1/.test(location.search)) { try { localStorage.removeItem("rowna-ssattr-lock"); } catch (e) {} }   /* ?take=1: 다른 탭(옛 코드)에서 잠금을 강제로 넘겨받음 — 새 코드 탭은 잠금을 뺏기면 물러남 */
   if (!lockOk()) { ERP.toast("다른 ERP 탭에서 이미 자동 진행 중이라 이 탭은 쉬어요."); return; }
   lockBeat(); var beat = setInterval(lockBeat, 30000);
   try { if (navigator.locks && !window.__ssKeep) { window.__ssKeep = 1; navigator.locks.request("rowna-ssattr-keepalive", function () { return new Promise(function () {}); }); } } catch (e) {}   /* 크롬이 안 보는 탭을 얼려서(절전) 자동 작업이 멈추던 문제 — 잠금을 쥔 탭은 얼리지 않음 */
