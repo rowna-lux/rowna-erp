@@ -158,6 +158,7 @@ async function writePage(origin, attrs, pick, tags, skipConv) {   /* skipConv: �
   if (tags && tags.length && HV25) { opt.push(ops.length); ops.push({ op: "click", sel: "#anchor-tag .title-line" }); opt.push(ops.length); ops.push({ op: "wait", ms: 1200 });
     ta = ops.length; ops.push({ op: "tagAuto", sel: TAGSEL, values: tags, max: 10, chips: CHIPS, check: '[data-nclicks-code="sch.tagcheck"]', ms: 2500 }); opt.push(ops.length); ops.push({ op: "html", sel: CHIPS, max: 20000, tagChips: 1 }); }
   else if (tags && tags.length) { opt.push(ops.length); ops.push({ op: "click", sel: "#anchor-tag .title-line" }); opt.push(ops.length); ops.push({ op: "wait", ms: 1200 }); opt.push(ops.length); ops.push({ op: "selzAdd", sel: TAGSEL, values: tags, max: 10, mode: "create", chips: CHIPS + " .choice-label" }); opt.push(ops.length); ops.push({ op: "html", sel: CHIPS, max: 20000, tagChips: 1 }); }
+  opt.push(ops.length); ops.push({ op: "waitText", text: "상품속성 선택 테이블", ms: 8000 });   /* 11/15: 속성을 안 고르는 상품(이미 입력됨)은 0.8초 만에 확인용으로 읽어 '못 찾음'으로 일부 실패가 나던 문제 */
   ops.push({ op: "html", sel: "#attribute-table", max: 200000 });
   /* KC인증: 대표님 지시(10/28) — 'KC인증 없음 › KC 안전관리대상 아님'. KC 칸이 없는 카테고리는 건너뜀(선택 항목) */
   /* 처음 뜨는 '안전기준 준수' 안내창은 [확인]으로 닫고, KC인증 없음 › KC 안전관리대상 아님 선택 (대표님 지시 10/29) */
@@ -195,7 +196,7 @@ async function one(t, s, opts) {
     if (origin) p = await readPage(origin);
     else { p = await readViaSearch(t.ch); origin = row.origin = p.origin; s.map = s.map || {}; s.map[t.ch] = origin; save(s); }
     mk("읽기");
-    var needConv = /으로 변환하기/.test(p.text || ""), c = { pick: {}, why: "속성칸 없음" }, rex = null;
+    var needConv = /으로 변환하기/.test(p.text || ""), c = { pick: {}, why: p.attrs.length ? "속성 이미 입력됨" : "속성칸 없음" }, rex = null;
     if (p.attrs.length && p.attrs.some(function (a) { return !a.selected.length; })) {
       rex = await rexInfo(t.code); row.rex = rex.found ? rex.url : "못 찾음(" + rex.why + ")"; mk("렉스");
       c = await choose(t, p.attrs, rex); mk("AI속성");
