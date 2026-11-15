@@ -107,7 +107,7 @@ async function tagProbe(origin, cands, known) {   /* 저장하지 않는 시험:
 function viaSearchOps(ch) { return [{ op: "waitText", text: "상품목록", ms: 30000, gap: 0 }, { op: "wait", ms: 1500 },
   { op: "fill", sel: 'textarea[ng-model="vm.searchFormData.searchKeyword"]', value: String(ch) }, { op: "click", text: "검색", sel: null }, { op: "wait", ms: 3500 },
   { op: "click", sel: 'button[data-nclicks-code="itg.edit"]', retry: 8 },
-  { op: "waitText", text: "상품속성", ms: 30000 }, { op: "wait", ms: 1500 }, { op: "html", sel: "#attribute-table", max: 200000 }, { op: "text" },
+  { op: "waitText", text: "상품속성", ms: 30000 }, { op: "waitText", text: "상품속성 선택 테이블", ms: 8000 }, { op: "html", sel: "#attribute-table", max: 200000 }, { op: "text" },
   { op: "click", sel: "#anchor-tag .title-line" }, { op: "wait", ms: 1200 }, { op: "html", sel: "#anchor-tag", max: 60000 }]; }
 async function readViaSearch(ch) {
   var r = await ERP.helperAsk("act", { url: "https://sell.smartstore.naver.com/#/products/origin-list", visible: true, ops: viaSearchOps(ch) });
@@ -118,8 +118,8 @@ async function readViaSearch(ch) {
 }
 function editUrl(origin) { return "https://sell.smartstore.naver.com/#/products/edit/" + origin; }
 async function readPage(origin) {
-  var r = await ERP.helperAsk("act", { url: editUrl(origin), ops: [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "wait", ms: 800 }, { op: "html", sel: "#attribute-table", max: 200000 }, { op: "text" },
-    { op: "click", sel: "#anchor-tag .title-line" }, { op: "wait", ms: 1200 }, { op: "html", sel: "#anchor-tag", max: 60000 }] });
+  var r = await ERP.helperAsk("act", { url: editUrl(origin), ops: [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "waitText", text: "상품속성 선택 테이블", ms: 8000 }, { op: "html", sel: "#attribute-table", max: 200000 }, { op: "text" },
+    { op: "click", sel: "#anchor-tag .title-line" }, { op: "wait", ms: 1200 }, { op: "html", sel: "#anchor-tag", max: 60000 }] });   /* 11/15: 신발·옷 등 속성표가 늦게 그려지는 상품에서 0.8초 만에 읽어 '속성칸 없음'으로 잘못 넘어가던 문제 — 속성표 글자가 보일 때까지(최대 8초) 기다림 */
   var ok = r.results[0] && r.results[0].ok, html = r.results[2] && r.results[2].html || "", text = (r.results[3] && r.results[3].text) || "";
   if (!ok) throw new Error(/존재하지|없는 상품/.test(text) ? "수정 화면 없음(번호 확인 필요)" : "상품속성 화면을 못 찾음");
   var tagHtml = (r.results[6] && r.results[6].ok && r.results[6].html) || null;   /* 태그 칸을 열어 기존 태그도 같이 읽음(페이지 한 번 덜 엶) */
