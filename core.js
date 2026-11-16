@@ -210,8 +210,9 @@ async function afterLogin() {
   if (pr.error) { renderLogin("login", ERP.errMsg(pr.error)); return; }
   S.profile = pr.data || { role: "pending", email: S.user.email };
   if (S.profile.role === "pending") { renderPending(); return; }
-  $("root").innerHTML = '<div class="shell"><aside class="rail"><div class="brand" id="brand-home" role="button" tabindex="0" title="홈으로" style="cursor:pointer"><div class="mark">RN</div><div><b>로우나 ERP</b><small>LOWNA LUXURY</small></div></div><nav class="nav" id="nav" aria-label="메뉴"></nav><div class="rail-foot"><div id="sync"><span class="dot"></span>연결 중</div><div>' + esc(S.profile.email || S.user.email) + " · " + esc(ERP.ROLE_NAME[S.profile.role] || S.profile.role) + '</div><button class="linkbtn" id="logout">로그아웃</button><div>v' + esc(CFG.APP_VERSION || "") + '</div></div></aside><main class="main" id="main"><div class="panel empty"><b>불러오는 중</b>매출·매입 기록을 가져오고 있어요.</div></main></div>';
+  $("root").innerHTML = '<div class="shell"><aside class="rail"><div class="brand" id="brand-home" role="button" tabindex="0" title="홈으로" style="cursor:pointer"><div class="mark">RN</div><div><b>로우나 ERP</b><small>LOWNA LUXURY</small></div></div><button class="menu-btn" id="menu-btn" aria-label="메뉴 열기" aria-expanded="false">☰ 메뉴</button><nav class="nav" id="nav" aria-label="메뉴"></nav><div class="rail-foot"><div id="sync"><span class="dot"></span>연결 중</div><div>' + esc(S.profile.email || S.user.email) + " · " + esc(ERP.ROLE_NAME[S.profile.role] || S.profile.role) + '</div><button class="linkbtn" id="logout">로그아웃</button><div>v' + esc(CFG.APP_VERSION || "") + '</div></div></aside><main class="main" id="main"><div class="panel empty"><b>불러오는 중</b>매출·매입 기록을 가져오고 있어요.</div></main></div>';
   $("logout").onclick = function () { S.sb.auth.signOut(); };
+  var mb = $("menu-btn"); if (mb) mb.onclick = function () { var on = document.body.classList.toggle("navopen"); mb.setAttribute("aria-expanded", on ? "true" : "false"); mb.textContent = on ? "✕ 닫기" : "☰ 메뉴"; };
   var bh = $("brand-home"); if (bh) { var goHome = function () { ERP.go("home"); window.scrollTo(0, 0); }; bh.onclick = goHome; bh.onkeydown = function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goHome(); } }; }
   renderNav();
   try { await ERP.loadAll(); subscribe(); }
@@ -254,7 +255,7 @@ function renderNav() {
   nav.querySelectorAll("button[data-tab]").forEach(function (b) { b.onclick = function () { ERP.go(b.dataset.tab); window.scrollTo(0, 0); }; });
 }
 ERP.renderNav = renderNav;
-ERP.go = function (tab, opts) { ERP.view.tab = tab; Object.assign(ERP.view, opts || {}); try { localStorage.setItem("rowna-erp-view", JSON.stringify({ tab: tab })); } catch (e) {} ERP.render(); };
+ERP.go = function (tab, opts) { document.body.classList.remove("navopen"); var mb = document.getElementById("menu-btn"); if (mb) mb.textContent = "☰ 메뉴"; ERP.view.tab = tab; Object.assign(ERP.view, opts || {}); try { localStorage.setItem("rowna-erp-view", JSON.stringify({ tab: tab })); } catch (e) {} ERP.render(); };
 ERP.render = function () {
   if (!S.profile || !$("main")) return;
   var ids = MENU.filter(function (m) { return m.id && allowed(m); }).map(function (m) { return m.id; });
