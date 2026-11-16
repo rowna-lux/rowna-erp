@@ -561,8 +561,11 @@ function tgSend(text, extra) { if (!lsg(TGK.chat)) return Promise.resolve(null);
 function tgEdit(msg, text) { if (!msg) return tgSend(text); return tgApi("editMessageText", { chat_id: lsg(TGK.chat), message_id: msg.message_id, text: text, parse_mode: "HTML", disable_web_page_preview: true }).catch(function () { return null; }); }
 async function tgPhoto(fid) {
   var f = await tgApi("getFile", { file_id: fid });
-  var r = await fetch("https://api.telegram.org/file/bot" + lsg(TGK.tok) + "/" + f.file_path); if (!r.ok) throw new Error("사진 내려받기 실패 " + r.status);
-  var b = await r.blob(); return await shrink(new File([b], "tg.jpg", { type: b.type || "image/jpeg" }));
+  var url = "https://api.telegram.org/file/bot" + lsg(TGK.tok) + "/" + f.file_path, b;
+  try { var r = await fetch(url); if (!r.ok) throw new Error("사진 내려받기 실패 " + r.status); b = await r.blob(); }
+  catch (e) {   /* 브라우저에선 텔레그램 파일 서버가 막힘 → 열무 크림도매 도우미(1.3.0+)가 대신 받음 */
+    var du = await askW("fetchimg", { url: url }); b = await (await fetch(du)).blob(); }
+  return await shrink(new File([b], "tg.jpg", { type: b.type || "image/jpeg" }));
 }
 var w0 = function (n) { return n == null || isNaN(n) ? "–" : Math.round(n).toLocaleString("ko-KR"); };
 /* 결과 메시지: 상품별 판단 + 리스트 전체(테이크올) 판단 */

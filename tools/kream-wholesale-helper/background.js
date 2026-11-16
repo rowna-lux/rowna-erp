@@ -64,7 +64,7 @@ async function deepRead() {
   return out;
 }
 async function openPage(o) {
-  var gap = 6000 + Math.random() * 4000, wait = lastOpen + gap - Date.now(); if (wait > 0) await sleep(wait);
+  var gap = 2500 + Math.random() * 1500,   /* 속도: 페이지 간격 6~10초 → 2.5~4초 (2026-11-16) */ wait = lastOpen + gap - Date.now(); if (wait > 0) await sleep(wait);
   var tabId = await workTab(); lastOpen = Date.now();
   await chrome.tabs.update(tabId, { url: o.url });
   await sleep(800); await waitComplete(tabId, 30000);
@@ -76,18 +76,39 @@ async function openPage(o) {
     await sleep(1000);
   }
   p = p || { url: o.url, text: "", links: [], meta: {} };
-  /* o.fast: 거래내역 창 전체 읽기(10~30초)를 건너뛰고 요약 탭만 읽음 → 3~5초 (2026-11-16) */
-  if (/kream\.co\.kr\/products\/\d+/.test(o.url) && p.text && !o.fast) {
-    try { var d = await chrome.scripting.executeScript({ target: { tabId: tabId }, func: deepRead }); p.kream = d && d[0] && d[0].result; } catch (e) { p.kream = { step: "깊게 읽기 실패: " + e.message }; }
+  if (/kream\.co\.kr\/products\/\d+/.test(o.url) && p.text) {
+    /* o.fast: 거래내역 창 전체 읽기(10~30초) 건너뛰고 요약 탭만 → 3~5초 (2026-11-16) */
+    if (!o.fast) { try { var d = await chrome.scripting.executeScript({ target: { tabId: tabId }, func: deepRead }); p.kream = d && d[0] && d[0].result; } catch (e) { p.kream = { step: "깊게 읽기 실패: " + e.message }; } }
     /* 백그라운드 탭에서 거래내역 창이 안 열리면 요약 탭(kg)으로 대신 계산 */
     if (!(p.kream && p.kream.full) && p.kg && p.kg.length) { p.kream = p.kream || {}; p.kream.groups = p.kg; }
   }
   return p;
 }
 chrome.runtime.onMessage.addListener(function (msg, sender, reply) {
+  /* 텔레그램 봇 사진 내려받기 (브라우저에선 텔레그램 파일 서버가 막혀서 도우미가 대신 받음, 2026-11-16) */
+  if (msg.type === "fetchimg") {
+    var u = String((msg.opt || {}).url || "");
+    if (!/^https:\/\/api\.telegram\.org\/file\//.test(u)) { reply({ ok: false, error: "텔레그램 사진만 받을 수 있어요" }); return; }
+    fetch(u).then(function (r) { if (!r.ok) throw new Error("사진 받기 실패 " + r.status); return r.arrayBuffer().then(function (ab) { var b = new Uint8Array(ab), s2 = ""; for (var i = 0; i < b.length; i += 0x8000) s2 += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); reply({ ok: true, data: "data:" + (r.headers.get("content-type") || "image/jpeg") + ";base64," + btoa(s2) }); }); }).catch(function (e) { reply({ ok: false, error: String(e && e.message || e) }); });
+    return true;
+  }
   if (msg.type !== "page") { reply({ ok: false, error: "열무 크림도매 도우미가 모르는 요청: " + msg.type }); return; }
   var host = ""; try { host = new URL(msg.opt.url).hostname; } catch (e) {}
   if (!/(^|\.)kream\.co\.kr$/.test(host)) { reply({ ok: false, error: "열무 크림도매 도우미는 크림만 열어요: " + host }); return; }
   queue = queue.then(function () { return openPage(msg.opt); }).then(function (d) { reply({ ok: true, data: d }); }, function (e) { reply({ ok: false, error: String(e && e.message || e) }); });
   return true;
 });
+
+
+// ── 소희봇 3대 통합: 폴더의 버전이 바뀌면 스스로 다시 켬 (2026-11-15) ──
+;(function () {
+  async function rownaChk() {
+    try {
+      var r = await fetch(chrome.runtime.getURL("manifest.json") + "?t=" + Date.now(), { cache: "no-store" });
+      var m = await r.json();
+      if (m.version && m.version !== chrome.runtime.getManifest().version) chrome.runtime.reload();
+    } catch (e) {}
+  }
+  rownaChk();
+  setInterval(rownaChk, 60000);
+})();
