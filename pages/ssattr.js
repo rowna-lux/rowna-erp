@@ -107,22 +107,22 @@ async function tagProbe(origin, cands, known) {   /* 저장하지 않는 시험:
 function viaSearchOps(ch) { return [{ op: "waitText", text: "상품목록", ms: 30000, gap: 0 }, { op: "wait", ms: 1500 },
   { op: "fill", sel: 'textarea[ng-model="vm.searchFormData.searchKeyword"]', value: String(ch) }, { op: "click", text: "검색", sel: null }, { op: "wait", ms: 3500 },
   { op: "click", sel: 'button[data-nclicks-code="itg.edit"]', retry: 8 },
-  { op: "waitText", text: "상품속성", ms: 30000 }, { op: "waitText", text: "상품속성 선택 테이블", ms: 8000 }, { op: "html", sel: "#attribute-table", max: 200000 }, { op: "text" },
+  { op: "waitText", text: "상품속성", ms: 30000 }, { op: "waitText", text: "상품속성 선택 테이블", ms: 8000 }, { op: "click", text: "속성 더 입력하기" }, { op: "wait", ms: 1500 }, { op: "html", sel: "#attribute-table", max: 200000 }, { op: "text" },
   { op: "click", sel: "#anchor-tag .title-line" }, { op: "wait", ms: 1200 }, { op: "html", sel: "#anchor-tag", max: 60000 }]; }
 async function readViaSearch(ch) {
   var r = await ERP.helperAsk("act", { url: "https://sell.smartstore.naver.com/#/products/origin-list", visible: true, ops: viaSearchOps(ch) });
-  var res = r.results, last = res[9] || {}, url = last.url || "", origin = (url.match(/products\/edit\/(\d+)/) || [])[1];
+  var res = r.results, last = res[11] || {}, url = last.url || "", origin = (url.match(/products\/edit\/(\d+)/) || [])[1];
   if (!origin) throw new Error("목록에서 수정 화면으로 못 들어감 (" + res.map(function (x, i) { return x && !x.ok ? i + ":" + (x.error || "실패") : ""; }).filter(Boolean).join(", ") + ")");
-  var th = res[12] && res[12].ok && res[12].html;
-  return { origin: origin, attrs: parseAttrs((res[8] || {}).html || ""), text: last.text || "", have: th ? parseChips(th) : null };
+  var th = res[14] && res[14].ok && res[14].html;
+  return { origin: origin, attrs: parseAttrs((res[10] || {}).html || ""), text: last.text || "", have: th ? parseChips(th) : null };
 }
 function editUrl(origin) { return "https://sell.smartstore.naver.com/#/products/edit/" + origin; }
 async function readPage(origin) {
-  var r = await ERP.helperAsk("act", { url: editUrl(origin), ops: [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "waitText", text: "상품속성 선택 테이블", ms: 8000 }, { op: "html", sel: "#attribute-table", max: 200000 }, { op: "text" },
+  var r = await ERP.helperAsk("act", { url: editUrl(origin), ops: [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "waitText", text: "상품속성 선택 테이블", ms: 8000 }, { op: "click", text: "속성 더 입력하기" }, { op: "wait", ms: 1500 }, { op: "html", sel: "#attribute-table", max: 200000 }, { op: "text" },
     { op: "click", sel: "#anchor-tag .title-line" }, { op: "wait", ms: 1200 }, { op: "html", sel: "#anchor-tag", max: 60000 }] });   /* 11/15: 신발·옷 등 속성표가 늦게 그려지는 상품에서 0.8초 만에 읽어 '속성칸 없음'으로 잘못 넘어가던 문제 — 속성표 글자가 보일 때까지(최대 8초) 기다림 */
-  var ok = r.results[0] && r.results[0].ok, html = r.results[2] && r.results[2].html || "", text = (r.results[3] && r.results[3].text) || "";
+  var ok = r.results[0] && r.results[0].ok, html = r.results[4] && r.results[4].html || "", text = (r.results[5] && r.results[5].text) || "";   /* 11/16 대표님 지시(빼먹지 말고 세세하게): '속성 더 입력하기'를 눌러 숨은 속성(조임방식·계절·사용대상·스타일 등)까지 읽음 */
   if (!ok) throw new Error(/존재하지|없는 상품/.test(text) ? "수정 화면 없음(번호 확인 필요)" : "상품속성 화면을 못 찾음");
-  var tagHtml = (r.results[6] && r.results[6].ok && r.results[6].html) || null;   /* 태그 칸을 열어 기존 태그도 같이 읽음(페이지 한 번 덜 엶) */
+  var tagHtml = (r.results[8] && r.results[8].ok && r.results[8].html) || null;   /* 태그 칸을 열어 기존 태그도 같이 읽음(페이지 한 번 덜 엶) */
   return { attrs: html ? parseAttrs(html) : [], text: text, have: tagHtml !== null ? parseChips(tagHtml) : null };
 }
 /* 스마트에디터 ONE 변환만 따로: 변환 → 등록 → 창 닫힘 → 저장 (상품당 1~2분) */
@@ -146,6 +146,7 @@ async function writePage(origin, attrs, pick, tags, skipConv) {   /* skipConv: �
     { op: "closed", ms: 20000, need: 5 }, { op: "switchBack" }, { op: "wait", ms: 3000 }];
   if (skipConv) ops.splice(2, 7);
   var C0 = skipConv ? -1 : 2;
+  opt.push(ops.length); ops.push({ op: "click", text: "속성 더 입력하기" }); opt.push(ops.length); ops.push({ op: "wait", ms: 1500 });   /* 11/16: 숨은 속성 칸을 펼쳐야 고를 수 있음 */
   var pk = Object.keys(pick); if (pk.length) { opt.push(ops.length); ops.push({ op: "waitText", text: pk[pk.length - 1], ms: 15000 }); }   /* 11/3: 속성표가 늦게 그려지는 상품(신발 등)에서 칸이 생기기 전에 체크해서 '항목 없음'이 나던 문제 — 마지막 속성 이름이 보일 때까지 기다림 */
   Object.keys(pick).forEach(function (k) { var a = attrs.filter(function (x) { return x.name === k; })[0];
     pick[k].forEach(function (v) {
@@ -201,7 +202,7 @@ async function one(t, s, opts) {
       rex = await rexInfo(t.code); row.rex = rex.found ? rex.url : "못 찾음(" + rex.why + ")"; mk("렉스");
       c = await choose(t, p.attrs, rex); mk("AI속성");
     }
-    row.pick = c.pick; row.why = c.why; row.v = 5;
+    row.pick = c.pick; row.why = c.why; row.v = 6;
     var tp = { have: p.have || [], reg: [] }, cands = [];
     if (HV25) {   /* 2.5: 태그 확인을 저장 화면에서 같이(페이지 1번 덜 엶) */
       if (!p.have || p.have.length < 10) { try { cands = await makeTags(t, rex, p.have || []); } catch (e) { row.tagErr = e.message; } }
@@ -241,15 +242,16 @@ ERP.acts.ssattrrun = async function (btn) {
   running = true; stopReq = false; var s = st(), done = {}; (s.log || []).forEach(function (x) { if (x.v >= 2 && /저장 완료|할 일 없음|건너뜀/.test(x.status)) done[x.ch] = Math.max(done[x.ch] || 0, x.v); });
   var SHOE = /신발|화$|화>|샌들|슬리퍼|부츠|힐|로퍼|스니커즈|뮬|플랫/;   /* 신발은 굽높이 규칙(v3) 전에 한 것을 한 번 더 봄 */
   var nf = {}; (s.log || []).forEach(function (x) { if (x.status === "실패" || x.status === "일부 실패") nf[x.ch] = (nf[x.ch] || 0) + 1; });   /* 실패·일부 실패 상품은 따로 모아 두고, 전체를 다 한 뒤 한 번에 다시 함(대표님 지시 10/30) */
-  var list = (await targets()).filter(function (t) { var d = done[t.ch] || 0; return !(d >= 5) && !nf[t.ch]; }), n = 0, fails = 0;
-  if (btn && btn.dataset && btn.dataset.redo) { list = (await targets()).filter(function (t) { return (done[t.ch] || 0) > 0 && done[t.ch] < 5 && !nf[t.ch]; }); }
-  if (btn && btn.dataset && btn.dataset.fails) { list = (await targets()).filter(function (t) { return !((done[t.ch] || 0) >= 5) && nf[t.ch]; }); }   /* 실패 모음 다시 하기 */   /* 예전 기준으로 한 상품의 빈 칸 다시 채우기 */
+  var list = (await targets()).filter(function (t) { var d = done[t.ch] || 0; return !(d >= 6) && !nf[t.ch]; }), n = 0, fails = 0;
+  if (btn && btn.dataset && btn.dataset.redo) { list = (await targets()).filter(function (t) { return (done[t.ch] || 0) > 0 && done[t.ch] < 6 && !nf[t.ch]; }); }
+  if (btn && btn.dataset && btn.dataset.fails) { list = (await targets()).filter(function (t) { return !((done[t.ch] || 0) >= 6) && nf[t.ch]; }); }   /* 실패 모음 다시 하기 */   /* 예전 기준으로 한 상품의 빈 칸 다시 채우기 */
   if (btn && btn.dataset && btn.dataset.sold) { list = list.filter(function (t) { return t.sold > 0; }); lim = Infinity; }
   var WIN = /패딩|다운|코트|무스탕|머플러|목도리|니트|스웨터|가디건|카디건|캐시미어|울(?!트)|에코퍼|리얼퍼|퍼 |플리스|후리스|장갑|비니|귀마개|부츠|어그|점퍼|파카|발라클라바/;   /* 11/7 대표님 지시: 겨울 상품 먼저 */
   var isW = function (t) { return WIN.test((t.name || "") + " " + (t.cat || "")); };
   list = list.filter(isW).concat(list.filter(function (t) { return !isW(t); }));
   var mp = s.map || {}, hasO = function (t) { return !!(mp[t.ch] || t.origin); };   /* 11/8: 수정화면 번호를 아는 상품(바로 열림) 먼저, 검색으로 찾아야 하는 상품은 뒤로 */
   list = list.filter(hasO).concat(list.filter(function (t) { return !hasO(t); }));
+  list = list.filter(function (t) { return !done[t.ch]; }).concat(list.filter(function (t) { return !!done[t.ch]; }));   /* 11/16: 숨은 속성까지 다시 채우기(v6) — 아직 안 한 상품 먼저, 예전에 한 상품은 뒤에서 다시 */
   ERP.toast("상품속성 자동입력 시작: 남은 " + list.length + "개 중 " + (lim === Infinity ? "전부" : lim + "개"));
   for (var i = 0; i < list.length && n < lim && !stopReq && lockMine(); i++) {
     var row = await one(list[i], s, {});
