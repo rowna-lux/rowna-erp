@@ -46,14 +46,19 @@ function assignCards(list) {
 }
 function cost(it) { var w = num(it.wholesalePrice); if (!isMall(it.supplier)) return w; var b = preCard(it); if (mallCards().length) return b - ((CARD[it.id] || {}).save || 0); return Math.round(b * (1 - mallDisc("card"))); }
 function calc(it) { var p = premium(it), wh = cost(it); if (isMall(it.supplier) && !mallVat()) wh = wh * 1.1; wh = num(wh) + storFee();   /* kream()은 매입가÷1.1을 빼므로 ×1.1 = 매입가 전액을 원가로 */
-  return C.kream(it.kreamPrice, wh, p ? 0.03 : rate(), cap(), p ? 20000 : base()); }
+  var c = C.kream(it.kreamPrice, wh, p ? 0.03 : rate(), cap(), p ? 20000 : base()); if (!c) return c;
+  /* 크림은 거래량이 핵심 (대표님 지시 2026-11-16): 이익률이 좋아도 그 사이즈 한 달 거래가 1건 미만이거나 누적 거래 5건 미만이면 '추천'을 '검토'로 낮춤 */
+  var k = (it.extra || {}).kream || {}, sp = speed(k); c.vol = sp ? sp.perMonth : 0; c.tc = k.tradeCount || 0;
+  c.volGrade = !sp || sp.perMonth < 1 ? "거의 없음" : sp.perMonth < 3 ? "적음" : sp.perMonth < 10 ? "보통" : "많음";
+  if (c.verdict === "추천" && (c.vol < 1 || (c.tc && c.tc < 5))) { c.verdict = "검토"; c.thin = true; }
+  return c; }
 /* 이익률 8%가 나오는 매입가(협상 목표) */
 function tgt(it) { var sell = num(it.kreamPrice); if (!sell) return null; var p = premium(it), r = p ? 0.03 : rate(), b = p ? 20000 : base(), fee = Math.min(b + sell * r, (cap() || Infinity) / 1.1), w = 1.1 * (sell / 1.1 * 0.92 - fee) - storFee(); return w > 0 ? Math.floor(w / 1000) * 1000 : null; }
 function items() { return ERP.list("kream_wholesale").filter(function (x) { return (x.supplier || "열무") === SUP(); }); }
 /* 거래 속도: 최근 체결 5건 날짜로 한 달 거래 수 추정 */
 function tdate(s) { s = String(s || ""); var m = s.match(/^(\d{2})\/(\d{2})\/(\d{2})$/); if (m) return new Date(2000 + +m[1], +m[2] - 1, +m[3]); m = s.match(/(\d+)\s*(분|시간|일)\s*전/); if (m) return new Date(Date.now() - +m[1] * (m[2] === "분" ? 6e4 : m[2] === "시간" ? 36e5 : 864e5)); return null; }
-function speed(k) { var tr = (k && k.trades) || []; if (!tr.length) return null; var ds = tr.map(function (t) { return tdate(t.date); }).filter(Boolean); if (!ds.length) return null; var old = Math.min.apply(null, ds), days = Math.max(1, (Date.now() - old) / 864e5), n30 = ds.filter(function (d) { return Date.now() - d <= 30 * 864e5; }).length; return { perMonth: Math.round(ds.length * 30 / days * 10) / 10, n30: n30, days: Math.round(days) }; }
-function recQty(it, c) { var k = (it.extra || {}).kream, sp = speed(k), q = isMall(it.supplier) ? 99 : num(it.qty); if (k && k.needConfirm && !(it.extra || {}).confirmed) return 0; if (!c || c.verdict === "비추천" || !(k && k.verified)) return 0; if (!sp) return Math.min(q, 1); return Math.min(q, Math.max(1, Math.floor(sp.perMonth * (c.verdict === "추천" ? 1.5 : 1)))); }
+function speed(k) { var tr = (k && k.trades) || []; if (!tr.length) return null; var ds = tr.map(function (t) { return tdate(t.date); }).filter(Boolean); if (!ds.length) return null; var old = Math.min.apply(null, ds), days = Math.max(30, (Date.now() - old) / 864e5), n30 = ds.filter(function (d) { return Date.now() - d <= 30 * 864e5; }).length; return { perMonth: Math.round(ds.length * 30 / days * 10) / 10, n30: n30, days: Math.round(days) }; }
+function recQty(it, c) { var k = (it.extra || {}).kream, sp = speed(k), q = isMall(it.supplier) ? 99 : num(it.qty); if (k && k.needConfirm && !(it.extra || {}).confirmed) return 0; if (!c || c.verdict === "비추천" || !(k && k.verified)) return 0; if (!sp) return Math.min(q, 1); return Math.min(q, Math.max(1, Math.floor(sp.perMonth))); }   /* 한 달 안에 팔 수 있는 만큼만 */
 function listDates() { var d = {}; items().forEach(function (x) { if (x.listDate) d[x.listDate] = 1; }); return Object.keys(d).sort().reverse(); }
 function vpill(c) { if (!c) return '<span class="pill p-mute">크림가 필요</span>'; return c.verdict === "추천" ? '<span class="pill p-good">✓ 추천</span>' : c.verdict === "검토" ? '<span class="pill p-warn">△ 검토</span>' : '<span class="pill p-crit">✕ 비추천</span>'; }
 
@@ -536,6 +541,7 @@ function tgReport(rows, meta, sec) {
     else {
       body.push("도매 " + w0(cost(it)) + " → 보판 " + w0(b.fast) + " / 일반 " + w0(b.normal) + (b.trade ? " · 체결 " + w0(b.trade) : ""));
       body.push("기준 " + w0(it.kreamPrice) + "(" + th(b.by || "") + ") → 개당 <b>" + (c.real >= 0 ? "+" : "") + w0(c.real) + "</b> (" + (c.rate * 100).toFixed(1) + "%)");
+      body.push("거래량 <b>" + th(c.volGrade) + "</b>" + (c.tc ? " (누적 " + c.tc + "건)" : "") + (c.thin ? " ⚠ 거래가 적어 이익률과 상관없이 소량만" : ""));
       body.push((sp ? (k.sizeRead ? th(it.size) + " " : "") + "월 " + sp.perMonth + "건" + (q > 1 && sp.perMonth ? " · " + q + "개 소진 " + (Math.round(q / sp.perMonth * 10) / 10) + "개월" : "") : "최근 체결 없음") + " · 추천 " + (rq || 0) + "개" + (tgt(it) ? " · 8% 목표가 " + w0(tgt(it)) : ""));
       if (b.trade && (b.fast || b.normal) > b.trade * 1.08) body.push("⚠ 판매입찰이 최근 체결가보다 " + Math.round(((b.fast || b.normal) / b.trade - 1) * 100) + "% 높음 → 체결가로 계산 (이 가격엔 잘 안 팔림)");
     }
