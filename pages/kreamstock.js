@@ -27,7 +27,11 @@ function D() { var d = S.SET[KEY]; if (!d || typeof d !== "object") d = {}; ["ma
 async function save(d) { var res = await S.sb.from("app_settings").upsert({ key: KEY, value: d }); if (res.error) ERP.toast(ERP.errMsg(res.error)); else S.SET[KEY] = d; }
 function months() { return D().months == null ? 1 : num(D().months); }
 function SHIP() { return 3500; }
-function rate() { return S.SET.kream_fee_rate == null ? 0.06 : Number(S.SET.kream_fee_rate); }
+/* 크림 판매자 등급 수수료 (크림 FAQ, 2026.3.2 적용 · 대표님 제공): 기본 2,500원(프리미엄 20,000원) + 등급 %, 모두 VAT 별도, VAT 포함 최대 30만원 */
+var KREAM_LEVELS = { 1: [0.06, 0.03], 2: [0.0585, 0.029], 3: [0.057, 0.028], 4: [0.056, 0.027], 5: [0.055, 0.026] };
+function klevel() { return num(S.SET.kream_level) || 1; }
+function rate() { return S.SET.kream_level ? KREAM_LEVELS[klevel()][0] : S.SET.kream_fee_rate == null ? 0.06 : Number(S.SET.kream_fee_rate); }
+function premRate() { return KREAM_LEVELS[klevel()][1]; }
 function cap() { return S.SET.kream_fee_cap == null ? 300000 : num(S.SET.kream_fee_cap); }
 function base() { return S.SET.kream_fee_base == null ? 2500 : num(S.SET.kream_fee_base); }
 function premium(it) { var b = String(it.brand || "").toUpperCase(), t = (it.name || "") + " " + (it.model || ""); return /^(CH|HM|CHANEL|HERMES|샤넬|에르메스)$/.test(b) && /백|BAG|가방|토트|숄더|클러치|버킨|켈리|AS\d{4}/i.test(t); }
@@ -78,8 +82,8 @@ function summarize(p, size) {
 function median(a) { a = a.slice().sort(function (x, y) { return x - y; }); var n = a.length; return n ? (n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2) : null; }
 
 /* ---------- 계산 ---------- */
-function extra(r, tab) { if (tab === "bo") return 3000 * months(); var s = D().ship[r.key]; return s == null || s === "" ? SHIP() : num(s); }
-function profit(r, tab, sell) { if (!sell || r.cost == null) return null; var p = premium(r.it), c = C.kream(sell, r.cost + extra(r, tab), p ? 0.03 : rate(), cap(), p ? 20000 : base()); return c; }
+function extra(r, tab) { if (tab === "bo") return 3000 * Math.max(0, months() - 1);   /* 첫 30일 무료 */ var s = D().ship[r.key]; return s == null || s === "" ? SHIP() : num(s); }
+function profit(r, tab, sell) { if (!sell || r.cost == null) return null; var p = premium(r.it), c = C.kream(sell, r.cost + extra(r, tab), p ? premRate() : rate(), cap(), p ? 20000 : base()); return c; }
 function rec(r, tab) {
   var x = D().px[r.key]; if (!x || x.err) return null;
   var low = tab === "bo" ? (x.fast || x.normal) : (x.normal || x.fast), lowBy = tab === "bo" ? (x.fast ? "보판" : "일반") : (x.normal ? "일반" : "보판");

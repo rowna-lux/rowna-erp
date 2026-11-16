@@ -21,9 +21,13 @@ function mallBrands() { return mallBrandsStr().split(/[,\n]/).map(function (s) {
 function mallVat() { return S.SET.kream_mall_vat_deduct == null ? true : !!S.SET.kream_mall_vat_deduct; }   /* 기본: 국내 매입이라 매입세액 공제됨 (대표님 확인 2026-11-10) */
 /* 크림 보관판매 보관료: 월 3,000원 (대표님 확인 2026-11-10) × 예상 보관 개월 — 매입가에 더해 계산 */
 function storMonths() { return S.SET.kream_storage_months == null ? 1 : num(S.SET.kream_storage_months); }
-function storFee() { return 3000 * storMonths(); }
+function storFee() { return 3000 * Math.max(0, storMonths() - 1); }   /* 창고 이용료 3,000원/건, 첫 30일 무료 (크림 정책) */
 var DECISIONS = ["검토", "매입", "보류", "제외"];
-function rate() { return S.SET.kream_fee_rate == null ? 0.06 : Number(S.SET.kream_fee_rate); }
+/* 크림 판매자 등급 수수료 (크림 FAQ, 2026.3.2 적용 · 대표님 제공): 기본 2,500원(프리미엄 20,000원) + 등급 %, 모두 VAT 별도, VAT 포함 최대 30만원 */
+var KREAM_LEVELS = { 1: [0.06, 0.03], 2: [0.0585, 0.029], 3: [0.057, 0.028], 4: [0.056, 0.027], 5: [0.055, 0.026] };
+function klevel() { return num(S.SET.kream_level) || 1; }
+function rate() { return S.SET.kream_level ? KREAM_LEVELS[klevel()][0] : S.SET.kream_fee_rate == null ? 0.06 : Number(S.SET.kream_fee_rate); }
+function premRate() { return KREAM_LEVELS[klevel()][1]; }
 function cap() { return S.SET.kream_fee_cap == null ? 300000 : num(S.SET.kream_fee_cap); }
 function base() { return S.SET.kream_fee_base == null ? 2500 : num(S.SET.kream_fee_base); }
 /* 크림 프리미엄 카테고리(샤넬·에르메스 가방, 롤렉스 등 시계): 기본 20,000원 + 3% */
@@ -46,14 +50,14 @@ function assignCards(list) {
 }
 function cost(it) { var w = num(it.wholesalePrice); if (!isMall(it.supplier)) return w; var b = preCard(it); if (mallCards().length) return b - ((CARD[it.id] || {}).save || 0); return Math.round(b * (1 - mallDisc("card"))); }
 function calc(it) { var p = premium(it), wh = cost(it); if (isMall(it.supplier) && !mallVat()) wh = wh * 1.1; wh = num(wh) + storFee();   /* kream()은 매입가÷1.1을 빼므로 ×1.1 = 매입가 전액을 원가로 */
-  var c = C.kream(it.kreamPrice, wh, p ? 0.03 : rate(), cap(), p ? 20000 : base()); if (!c) return c;
+  var c = C.kream(it.kreamPrice, wh, p ? premRate() : rate(), cap(), p ? 20000 : base()); if (!c) return c;
   /* 크림은 거래량이 핵심 (대표님 지시 2026-11-16): 이익률이 좋아도 그 사이즈 한 달 거래가 1건 미만이거나 누적 거래 5건 미만이면 '추천'을 '검토'로 낮춤 */
   var k = (it.extra || {}).kream || {}, sp = speed(k); c.vol = sp ? sp.perMonth : 0; c.tc = k.tradeCount || 0;
   c.volGrade = !sp || sp.perMonth < 1 ? "거의 없음" : sp.perMonth < 3 ? "적음" : sp.perMonth < 10 ? "보통" : "많음";
   if (c.verdict === "추천" && (c.vol < 1 || (c.tc && c.tc < 5))) { c.verdict = "검토"; c.thin = true; }
   return c; }
 /* 이익률 8%가 나오는 매입가(협상 목표) */
-function tgt(it) { var sell = num(it.kreamPrice); if (!sell) return null; var p = premium(it), r = p ? 0.03 : rate(), b = p ? 20000 : base(), fee = Math.min(b + sell * r, (cap() || Infinity) / 1.1), w = 1.1 * (sell / 1.1 * 0.92 - fee * 1.1) - storFee(); return w > 0 ? Math.floor(w / 1000) * 1000 : null; }
+function tgt(it) { var sell = num(it.kreamPrice); if (!sell) return null; var p = premium(it), r = p ? premRate() : rate(), b = p ? 20000 : base(), fee = Math.min(b + sell * r, (cap() || Infinity) / 1.1), w = 1.1 * (sell / 1.1 * 0.92 - fee * 1.1) - storFee(); return w > 0 ? Math.floor(w / 1000) * 1000 : null; }
 /* 예산(MOQ) 안 추천 조합: 이익률 × 거래량 가중(월 3건 미만이면 깎음) 순서로, 한 달 판매량(추천 수량)만큼 담음 */
 function pscore(x) { return x.c.rate * Math.min(1, (x.c.vol || 0) / 3 + 0.2); }
 function budgetPick(rows, budget) {
@@ -140,7 +144,7 @@ function mallNote(w) {
     '<p class="note">실제 매입가 = 목록 세일가 × (1−등급 할인) × (1−쿠폰) − 카드 혜택(카드표가 있으면 남은 월 한도 안에서 자동 배정, 없으면 카드 % 적용). 쿠폰은 상품마다 적용 여부가 달라 평균값으로 넣어 주세요. 정확한 금액은 무신사 상품 페이지의 회원 최저가로 확인. 매입 부가세 ‘공제 안 됨’이면 매입가 전액을 원가로 계산해요. 크림은 한 상품씩 10~12초 간격으로 열고, 차단·경고 화면이 보이면 바로 멈춰요. 스마트스토어 속성 작업과 도우미를 같이 쓰니 동시에 돌리지 마세요.</p></div>';
 }
 function feeNote(w) {
-  return mallNote(w) + '<div class="panel"><h2>계산 기준</h2><div class="fg narrow"><div class="fd"><label for="k-rate">크림 판매 수수료 % (부가세 별도)</label><input id="k-rate" type="number" step="0.1" value="' + (rate() * 100).toFixed(1) + '"' + (ERP.isOwner() ? "" : " disabled") + '></div><div class="fd"><label for="k-base">크림 기본 수수료(원, 부가세 별도)</label><input id="k-base" type="number" value="' + base() + '"' + (ERP.isOwner() ? "" : " disabled") + '></div><div class="fd"><label for="k-cap">수수료 최대 금액(원, 부가세 포함)</label><input id="k-cap" type="number" value="' + cap() + '"' + (ERP.isOwner() ? "" : " disabled") + '></div><div class="fd"><label for="k-bud">매입 예산(원)</label><input id="k-bud" type="number" value="' + (num(S.SET.kream_budget) || 10000000) + '"></div></div>' +
+  return mallNote(w) + '<div class="panel"><h2>계산 기준</h2><div class="fg narrow"><div class="fd"><label for="k-level">크림 판매자 등급</label><select id="k-level" class="ctl"' + (ERP.isOwner() ? "" : " disabled") + '>' + [1, 2, 3, 4, 5].map(function (l) { return '<option value="' + l + '"' + (l === klevel() ? " selected" : "") + ">Level " + l + " · " + (KREAM_LEVELS[l][0] * 100).toFixed(2).replace(/0$/, "") + "% (프리미엄 " + (KREAM_LEVELS[l][1] * 100).toFixed(1) + "%)</option>"; }).join("") + '</select></div><div class="fd"><label for="k-rate">크림 판매 수수료 % (부가세 별도)</label><input id="k-rate" type="number" step="0.1" value="' + (rate() * 100).toFixed(1) + '"' + (ERP.isOwner() ? "" : " disabled") + '></div><div class="fd"><label for="k-base">크림 기본 수수료(원, 부가세 별도)</label><input id="k-base" type="number" value="' + base() + '"' + (ERP.isOwner() ? "" : " disabled") + '></div><div class="fd"><label for="k-cap">수수료 최대 금액(원, 부가세 포함)</label><input id="k-cap" type="number" value="' + cap() + '"' + (ERP.isOwner() ? "" : " disabled") + '></div><div class="fd"><label for="k-bud">매입 예산(원)</label><input id="k-bud" type="number" value="' + (num(S.SET.kream_budget) || 10000000) + '"></div></div>' +
     '<p class="note">실이익 = 크림 판매가 ÷ 1.1 − 수수료(부가세 포함) − 도매가 ÷ 1.1 (도매 세금계산서 매입세액 공제, 크림 매출 부가세 반영). 판단: 이익률 8% 이상 추천 · 3~8% 검토 · 3% 미만 비추천. 크림 검수센터로 보내는 택배비는 빠져 있어요. 수수료 기준: 크림 FAQ ‘판매자 등급 및 수수료 기준(2026.3.2 적용)’ — Level 1 기본 2,500원 + 6.0%(부가세 별도, 부가세 포함 최대 30만원), 샤넬·에르메스 가방·고급시계는 프리미엄 20,000원 + 3%로 자동 계산. 등급이 오르면 % 칸을 고쳐 주세요.</p></div>';
 }
 function bind(root) {
@@ -159,6 +163,7 @@ function bind(root) {
   root.querySelectorAll("[data-ck]").forEach(function (el) { el.onchange = async function () { var it = ERP.DATA.kream_wholesale.get(el.dataset.ck); if (!it) return; var ex = Object.assign({}, it.extra); if (el.checked && !num(ex.buyQty)) ex.buyQty = num(it.qty); await ERP.save("kream_wholesale", Object.assign({}, it, { decision: el.checked ? "매입" : "검토", extra: ex })); ERP.render(); }; });
   root.querySelectorAll("[data-ckq]").forEach(function (el) { el.onchange = async function () { var it = ERP.DATA.kream_wholesale.get(el.dataset.ckq); if (!it) return; await ERP.save("kream_wholesale", Object.assign({}, it, { extra: Object.assign({}, it.extra, { buyQty: Math.max(1, num(el.value)) }) })); ERP.render(); }; });
   root.querySelectorAll("[data-dec]").forEach(function (el) { el.onchange = function () { var it = ERP.DATA.kream_wholesale.get(el.dataset.dec); if (it) ERP.save("kream_wholesale", Object.assign({}, it, { decision: el.value })); }; });
+  var kl = root.querySelector("#k-level"); if (kl) kl.onchange = function () { ERP.saveSetting("kream_level", num(kl.value)); ERP.render(); };
   var r = root.querySelector("#k-rate"); if (r) r.onchange = function () { ERP.saveSetting("kream_fee_rate", num(r.value) / 100); ERP.render(); };
   var cp = root.querySelector("#k-cap"); if (cp) cp.onchange = function () { ERP.saveSetting("kream_fee_cap", num(cp.value)); ERP.render(); };
 }
