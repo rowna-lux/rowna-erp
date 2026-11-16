@@ -224,7 +224,7 @@ ERP.forms.kream_wholesale = {
 };
 /* ---------- 크롬 확장 '로우나 크림 도우미' 연결 ---------- */
 var waits = {};
-window.addEventListener("message", function (e) { if (e.source !== window || !e.data || (e.data.rownaK !== "res" && e.data.rownaR !== "res" && e.data.rownaW !== "res")) return; var f = waits[e.data.id]; if (f) { delete waits[e.data.id]; f(e.data); } });
+window.addEventListener("message", function (e) { if (e.source !== window || !e.data || (e.data.rownaK !== "res" && e.data.rownaR !== "res" && e.data.rownaW !== "res" && e.data.rownaS !== "res")) return; var f = waits[e.data.id]; if (f) { delete waits[e.data.id]; f(e.data); } });
 function ask(type, payload) {
   return new Promise(function (res, rej) {
     if (!helperOn()) { rej(new Error("크롬 확장 ‘로우나 도우미’가 꺼져 있어요. 설치 후 ERP를 새로고침(F5)해 주세요.")); return; }
@@ -246,6 +246,14 @@ function askR(type, payload) {
     window.postMessage(Object.assign({ rownaR: "req", id: id, type: type }, payload), location.origin);
   });
 }
+function stockOn() { return document.documentElement.dataset.rownaStock === "1"; }
+function askS(type, payload) {
+  return new Promise(function (res, rej) {
+    if (!stockOn()) { rej(new Error("‘로우나재고 크림 도우미’가 꺼져 있어요.")); return; }
+    var id = U.uid(); waits[id] = function (d) { d.ok ? res(d.data) : rej(new Error(d.error || "실패")); };
+    window.postMessage(Object.assign({ rownaS: "req", id: id, type: type }, payload), location.origin);
+  });
+}
 /* ---------- 읽는 규칙 (ERP 안에 있어서 고치면 모든 PC에 바로 반영) ---------- */
 var OCR_PROMPT = [
   "이 이미지는 한국 명품 도매업체가 보낸 도매 리스트(표)입니다. 표의 상품 줄만 json(JSON)으로 옮기세요.",
@@ -265,7 +273,7 @@ async function ocrList(dataUrl) {
   return JSON.parse(r.content || "{}");
 }
 var BLOCK_RE = /비정상적인 (접근|요청)|접근이 (차단|제한)|Access Denied|자동입력 방지|보안 문자|too many requests|잠시 후 다시 시도/i;
-async function pageSafe(opt, chan) { var p = await (chan === "R" ? askR : chan === "W" ? askW : ask)("page", opt); if (BLOCK_RE.test(String((p && p.text) || "").slice(0, 3000))) throw new Error("차단·경고 화면이 보여서 멈췄어요 (" + String(opt.url).split("?")[0] + ")"); return p; }
+async function pageSafe(opt, chan) { var p = await (chan === "R" ? askR : chan === "W" ? askW : chan === "S" ? askS : ask)("page", opt); if (BLOCK_RE.test(String((p && p.text) || "").slice(0, 3000))) throw new Error("차단·경고 화면이 보여서 멈췄어요 (" + String(opt.url).split("?")[0] + ")"); return p; }
 function knorm(s) { return String(s || "").toUpperCase().replace(/[\s\-_.\/]/g, ""); }
 function kloose(s) { return knorm(s).replace(/O/g, "0").replace(/[IL]/g, "1").replace(/B/g, "8").replace(/S/g, "5").replace(/Z/g, "2"); }
 function kdist(a, b) { var d = [], i, j; for (i = 0; i <= a.length; i++) { d[i] = [i]; } for (j = 1; j <= b.length; j++) d[0][j] = j; for (i = 1; i <= a.length; i++) for (j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); return d[a.length][b.length]; }
@@ -347,12 +355,15 @@ function basisPrices(k, size) {
 async function fetchKream(rows, opt) {
   var bySku = {}, keys = [];
   rows.forEach(function (it) { var key = (it.sku || it.name || it.id) + "|" + (it.kreamUrl || ""); if (!bySku[key]) { bySku[key] = []; keys.push(key); } bySku[key].push(it); });
-  for (var i = 0; i < keys.length; i++) {
+  /* 속도: 켜져 있는 크림 도우미(열무·재고·리셀)를 같이 써서 여러 상품을 동시에 확인 (각 도우미는 자기 탭 1개씩, 2026-11-16) */
+  var chans = opt && opt.chans ? opt.chans : opt && opt.chan === "W" ? ["W"].concat(stockOn() ? ["S"] : [], resellOn() ? ["R"] : []) : [opt && opt.chan];
+  var next = 0, stopAll = false;
+  async function one(i, ch) {
     if (i && opt && opt.gap) { var sec = opt.gap[0] + Math.random() * (opt.gap[1] - opt.gap[0]); ERP.toast("차단 방지로 " + Math.round(sec) + "초 쉬는 중 · 다음 " + (i + 1) + "/" + keys.length); await new Promise(function (r) { setTimeout(r, sec * 1000); }); }
     var g = bySku[keys[i]], f = g[0]; g.forEach(function (it) { busy[it.id] = 1; }); ERP.render();
     ERP.toast("크림 확인 중 " + (i + 1) + "/" + keys.length + " · " + (f.brand || "") + " " + (f.sku || ""));
     if (opt && opt.onProgress) try { opt.onProgress(i + 1, keys.length, (f.brand || "") + " " + (f.sku || "")); } catch (e) {}
-    var k; try { k = await kreamLookup(f.sku, f.kreamUrl, opt && opt.chan, ((f.brand || "") + " " + (f.name || "")).trim(), (g.filter(function (x) { return !szFree(x.size); })[0] || {}).size); } catch (e) { k = { error: e.message }; if (/멈췄|멈춤|꺼져/.test(e.message)) { g.forEach(function (it) { delete busy[it.id]; }); ERP.toast("⚠ " + e.message); break; } }
+    var k; try { k = await kreamLookup(f.sku, f.kreamUrl, ch, ((f.brand || "") + " " + (f.name || "")).trim(), (g.filter(function (x) { return !szFree(x.size); })[0] || {}).size); } catch (e) { k = { error: e.message }; if (/멈췄|멈춤|꺼져/.test(e.message)) { g.forEach(function (it) { delete busy[it.id]; }); ERP.toast("⚠ " + e.message); stopAll = true; return; } }
     /* 사이즈별로 크림 페이지(?size=XL)를 따로 열어 그 사이즈의 판매입찰·체결·구매입찰만 읽음 (2026-11-13 대표님 지시) */
     if (k && !k.error && k.verified && k.url) {
       k.bySize = {}; var szs = []; g.forEach(function (it) { if (!szFree(it.size) && szs.indexOf(it.size) < 0) szs.push(it.size); });
@@ -365,7 +376,7 @@ async function fetchKream(rows, opt) {
         try {
           ERP.toast("사이즈별 시세 읽는 중 · " + (f.sku || "") + " " + sz);
           await new Promise(function (r) { setTimeout(r, 800 + Math.random() * 800); });
-          var sp = await pageSafe({ url: String(k.url).split("?")[0] + "?size=" + encodeURIComponent(sz), waitFor: "모델번호|발매가", minLen: 300, fast: true }, opt && opt.chan);
+          var sp = await pageSafe({ url: String(k.url).split("?")[0] + "?size=" + encodeURIComponent(sz), waitFor: "모델번호|발매가", minLen: 300, fast: true }, ch);
           if (!(sp.kream && sp.kream.full) && sp.kg && sp.kg.length) { sp.kream = sp.kream || {}; sp.kream.groups = sp.kg; }
           var pr = parseProduct(sp), kg = sp.kg || [];
           var trs = (pr.trades || []).filter(function (t) { return szSame(sz, t.size); });
@@ -402,6 +413,8 @@ async function fetchKream(rows, opt) {
     var rowsDb = out.map(function (o) { return ERP.toRow("kream_wholesale", o); });
     try { await ERP.saveBatch("kream_wholesale", rowsDb); rowsDb.forEach(function (r) { ERP.applyRow("kream_wholesale", r); }); if (logs.length) await S.sb.from("kream_price_log").insert(logs); } catch (e) { ERP.toast(ERP.errMsg(e)); }
   }
+  async function worker(ch) { while (!stopAll && next < keys.length) { var i = next++; try { await one(i, ch); } catch (e) { ERP.toast("⚠ " + e.message); } } }
+  await Promise.all(chans.slice(0, Math.max(1, Math.min(chans.length, keys.length))).map(worker));
   ERP.render(); ERP.toast("크림 확인을 마쳤어요.");
 }
 ERP.kreamFetch = fetchKream;
