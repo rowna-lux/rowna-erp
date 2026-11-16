@@ -117,7 +117,7 @@ function render() {
       var c = calc(it), q = num(it.qty), tot = c ? c.real * q : 0, k = (it.extra || {}).kream || {}, sp = speed(k), rq = recQty(it, c);
       T.qty += q; T.whole += cost(it) * q; T.real += tot;
       if (rq) { T.recQty += rq; T.recReal += c.real * rq; T.recWhole += cost(it) * rq; cand.push({ it: it, c: c, rq: rq }); }
-      if (it.decision === "매입") { T.buyQty += q; T.buyWhole += cost(it) * q; T.buyReal += tot; }
+      if (it.decision === "매입") { var bq = qqty(it); T.buyQty += bq; T.buyWhole += cost(it) * bq; T.buyReal += (c ? c.real : 0) * bq; }
       var flags = (it.extra || {}).ocr || {};
       var prod = i ? "" : '<td class="name" rowspan="' + g.length + '"><b>' + esc(f.brand || "") + "</b> " + esc(f.name || "") + '<small class="num">' + esc(f.sku || "") + (flags.skuUnsure ? ' <span class="pill p-warn" title="사진에서 글자가 흐려 확실하지 않아요">글자 확인</span>' : "") + "</small>" + (f.kreamUrl ? '<small><a href="' + esc(f.kreamUrl) + '" target="_blank" rel="noopener">크림에서 보기 ↗</a></small>' : "") + (((f.extra || {}).mall || {}).url ? '<small><a href="' + esc(f.extra.mall.url) + '" target="_blank" rel="noopener">' + esc(f.supplier) + " " + esc(String(f.extra.mall.disc || "")) + "% 세일 ↗</a></small>" : "") + "</td><td rowspan=\"" + g.length + "\">" + kcell(f) + "</td>";
       var trades = (k.trades || []).slice(0, 5).map(function (t) { return t.date.replace(/^26\//, "") + " " + won(t.price); }).join("<br>");

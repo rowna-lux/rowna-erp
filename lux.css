@@ -235,3 +235,4 @@ input,select,textarea,.ctl{background:rgba(8,20,42,.85)!important;border:1px sol
   .kc-foot{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:13px}
   .kc-foot input{width:64px}
 }
+@media (max-width:900px){.main::before{display:none!important}}
