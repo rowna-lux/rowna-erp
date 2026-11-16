@@ -355,14 +355,18 @@ async function fetchKream(rows, opt) {
       var bs = k && k.bySize && k.bySize[it.size], kk = bs && bs.sizeRead ? Object.assign({}, k, bs, { bySize: undefined }) : k;
       var o = Object.assign({}, it, { extra: Object.assign({}, it.extra || {}, { kream: kk }) });
       if (k && !k.error && k.verified) {
-        var x95 = kk.p95 || [], tr = sizeTrades(kk, it.size).filter(function (t) { return x95.indexOf(t.price) < 0; }).map(function (t) { return t.price; }), md = median(tr.slice(0, 5));
-        var ba = basisPrices(kk, it.size), ref;
+        /* 95점 시세 교란 제거 (대표님 지시 2026-11-16): 95점 판매가와 ±0.5%(최소 5천원) 안의 체결은 95점 거래로 보고 뺌.
+           보판(빠른배송) 기준이면 빠른배송 체결만으로 중간값(3건 이상일 때) — 일반배송 체결은 더 싸서 섞으면 낮아짐 */
+        var x95 = kk.p95 || [], near95 = function (p) { return x95.some(function (q) { return Math.abs(p - q) <= Math.max(5000, q * 0.005); }); };
+        var ba = basisPrices(kk, it.size), ref, trAll = sizeTrades(kk, it.size).filter(function (t) { return !near95(t.price); });
+        var trF = trAll.filter(function (t) { return t.fast; }), trUse = ba.fast && trF.length >= 3 ? trF : trAll;
+        var tr = trUse.map(function (t) { return t.price; }), md = median(tr.slice(0, 5));
         if (ba.fast || ba.normal) { var askP = ba.fast || ba.normal; ref = md && md < askP ? md : askP;   /* 최근 체결가가 판매입찰보다 낮으면 체결가로 계산 — 구매자는 차트(체결가)를 보고 사기 때문 (대표님 지시 2026-11-14) */
           o.extra.kreamBasis = { fast: ba.fast, normal: ba.normal, bid: ba.bid, trade: md, ask: askP, by: ref === md && md < askP ? "최근 체결가(판매입찰보다 낮음)" : ba.fast ? "빠른배송·사업자" : "일반배송", full: !!k.full }; }
         else { var mp = !szFree(it.size) ? null : k.price && x95.indexOf(k.price) < 0 ? k.price : null; ref = md && mp ? Math.min(md, mp) : (md || mp); o.extra.kreamBasis = { by: "최근 체결가(빠른·일반 판매가 못 읽음" + (k.asksRead ? "" : " — 리셀 도우미 필요") + ")" }; }
         o.kreamPrice = ref || null; o.kreamUrl = k.url || o.kreamUrl;
         if (k.ocrFixed) { o.extra.skuOcr = o.sku; o.sku = k.ocrFixed; }
-        o.kreamRecent = (ba.fast || ba.normal ? "빠른 " + (ba.fast ? Number(ba.fast).toLocaleString() : "-") + " · 일반 " + (ba.normal ? Number(ba.normal).toLocaleString() : "-") + " · 바로판매 " + (ba.bid ? Number(ba.bid).toLocaleString() : "-") + (k.p95 && k.p95.length ? " · 95점 제외 " + k.p95.length + "건" : "") + " | " : "") + sizeTrades(kk, it.size).filter(function (t) { return x95.indexOf(t.price) < 0; }).slice(0, 5).map(function (t) { return t.date + " " + Number(t.price).toLocaleString(); }).join(" · ");
+        o.kreamRecent = (ba.fast || ba.normal ? "빠른 " + (ba.fast ? Number(ba.fast).toLocaleString() : "-") + " · 일반 " + (ba.normal ? Number(ba.normal).toLocaleString() : "-") + " · 바로판매 " + (ba.bid ? Number(ba.bid).toLocaleString() : "-") + (k.p95 && k.p95.length ? " · 95점 제외 " + k.p95.length + "건" : "") + " | " : "") + trUse.slice(0, 5).map(function (t) { return t.date + " " + Number(t.price).toLocaleString(); }).join(" · ");
         o.kreamCheckedAt = new Date().toISOString();
         if (!o.name && k.name) o.name = k.name;
         logs.push({ sku: it.sku || it.name || "", size: it.size || "", kream_url: o.kreamUrl || "", last_trade: md, lowest_ask: o.kreamPrice, trades: o.kreamRecent, source: "helper" });
