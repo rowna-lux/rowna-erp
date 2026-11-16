@@ -146,6 +146,7 @@ async function writePage(origin, attrs, pick, tags, skipConv) {   /* skipConv: �
     { op: "closed", ms: 20000, need: 5 }, { op: "switchBack" }, { op: "wait", ms: 3000 }];
   if (skipConv) ops.splice(2, 7);
   var C0 = skipConv ? -1 : 2;
+  opt.push(ops.length); ops.push({ op: "waitText", text: "상품속성 선택 테이블", ms: 8000 });   /* 11/16: 표가 뜨기 전에 펼치기를 눌러 숨은 칸이 안 펼쳐지던 문제(항목 없음) */
   opt.push(ops.length); ops.push({ op: "click", text: "속성 더 입력하기" }); opt.push(ops.length); ops.push({ op: "wait", ms: 1500 });   /* 11/16: 숨은 속성 칸을 펼쳐야 고를 수 있음 */
   var pk = Object.keys(pick); if (pk.length) { opt.push(ops.length); ops.push({ op: "waitText", text: pk[pk.length - 1], ms: 15000 }); }   /* 11/3: 속성표가 늦게 그려지는 상품(신발 등)에서 칸이 생기기 전에 체크해서 '항목 없음'이 나던 문제 — 마지막 속성 이름이 보일 때까지 기다림 */
   Object.keys(pick).forEach(function (k) { var a = attrs.filter(function (x) { return x.name === k; })[0];
