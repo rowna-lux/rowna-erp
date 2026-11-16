@@ -202,7 +202,7 @@ async function one(t, s, opts) {
       rex = await rexInfo(t.code); row.rex = rex.found ? rex.url : "못 찾음(" + rex.why + ")"; mk("렉스");
       c = await choose(t, p.attrs, rex); mk("AI속성");
     }
-    row.pick = c.pick; row.why = c.why; row.v = 6;
+    row.pick = c.pick; row.why = c.why; row.v = 6; row.an = p.attrs.length; row.ae = p.attrs.filter(function (x) { return !x.selected.length; }).length;   /* 속성 칸 수 / 빈 칸 수(점검용) */
     var tp = { have: p.have || [], reg: [] }, cands = [];
     if (HV25) {   /* 2.5: 태그 확인을 저장 화면에서 같이(페이지 1번 덜 엶) */
       if (!p.have || p.have.length < 10) { try { cands = await makeTags(t, rex, p.have || []); } catch (e) { row.tagErr = e.message; } }
