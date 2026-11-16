@@ -272,7 +272,7 @@ function kdist(a, b) { var d = [], i, j; for (i = 0; i <= a.length; i++) { d[i] 
 function ksame(a, b) { if (!a || !b) return 0; if (knorm(a) === knorm(b)) return 2; if (kloose(a) === kloose(b)) return 1; return 0; }
 /* 사이즈 비교: "7" = "UK 7", "F"·"ONE SIZE" = 전체 */
 function szn(x) { return String(x || "").toUpperCase().replace(/\s/g, ""); }
-function szFree(x) { return !x || /^(F|FREE|TU|OS|ONESIZE)$/.test(szn(x)); }
+function szFree(x) { return !x || /^(F|FREE|TU|OS|ONESIZE|UNI|UNIQUE|U|UNISIZE)$/.test(szn(x)); }
 function szSame(a, b) { a = szn(a); b = szn(b); if (szFree(a) || szFree(b)) return szFree(a) && szFree(b) || szFree(a); var na = a.replace(/^[A-Z]+/, ""), nb = b.replace(/^[A-Z]+/, ""); return a === b || (/^\d/.test(na) && na === nb); }   /* "UK7"="7" 은 같게, "XXL"≠"L" (2026-11-13 수정) */
 function parseProduct(p) {
   var t = p.text || "", m = p.meta || {}, model = ((t.match(/모델번호\s*\n*\s*([^\n]+)/) || [])[1] || "").trim();
