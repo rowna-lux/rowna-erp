@@ -356,7 +356,7 @@ async function fetchKream(rows, opt) {
   var bySku = {}, keys = [];
   rows.forEach(function (it) { var key = (it.sku || it.name || it.id) + "|" + (it.kreamUrl || ""); if (!bySku[key]) { bySku[key] = []; keys.push(key); } bySku[key].push(it); });
   /* 속도: 켜져 있는 크림 도우미(열무·재고·리셀)를 같이 써서 여러 상품을 동시에 확인 (각 도우미는 자기 탭 1개씩, 2026-11-16) */
-  var chans = opt && opt.chans ? opt.chans : opt && opt.chan === "W" ? ["W"].concat(stockOn() ? ["S"] : [], resellOn() ? ["R"] : []) : [opt && opt.chan];
+  var chans = opt && opt.chans ? opt.chans : [opt && opt.chan];   /* 동시 확인은 크림 오류 페이지가 떠서 끔 (2026-11-16) */
   var next = 0, stopAll = false;
   async function one(i, ch) {
     if (i && opt && opt.gap) { var sec = opt.gap[0] + Math.random() * (opt.gap[1] - opt.gap[0]); ERP.toast("차단 방지로 " + Math.round(sec) + "초 쉬는 중 · 다음 " + (i + 1) + "/" + keys.length); await new Promise(function (r) { setTimeout(r, sec * 1000); }); }
