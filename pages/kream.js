@@ -396,7 +396,9 @@ async function importPhotos(pics, sup, day, opt) {
     ERP.toast("사진 읽는 중 " + (i + 1) + "/" + pics.length + " (20~60초)");
     try {
       var r = await ocrList(pics[i].data), vat = r.vatIncluded !== false; if (r.takeAll) meta.takeAll = true; if (r.supplier) meta.supplier = String(r.supplier).trim();
-      var sp = sup === "auto" ? (String(r.supplier || "").trim() || "열무") : sup;
+      /* 도매처: 열무(밀라노크리처) · 수고개(하이엔드부티크). 리스트 제목이 '무우'·밀라노크리처면 열무, 하이엔드부티크면 수고개 (대표님 2026-11-16) */
+      var SUP_ALIAS = { "무우": "열무", "밀라노크리처": "열무", "밀라노크리처 주식회사": "열무", "하이엔드부티크": "수고개" };
+      var sp0 = sup === "auto" ? (String(r.supplier || "").trim() || "열무") : sup, sp = SUP_ALIAS[sp0] || sp0;
       (r.items || []).forEach(function (x) {
         var price = num(x.wholesalePrice); if (!price || !(x.sku || x.name)) return;
         made.push({ id: U.uid(), supplier: sp, listDate: day, brand: String(x.brand || "").trim(), sku: String(x.sku || "").trim(), name: String(x.name || "").trim(), kreamUrl: x.kreamUrlUnsure ? "" : String(x.kreamUrl || "").trim(), size: String(x.size || "F").trim() || "F", qty: num(x.qty) || 1, wholesalePrice: vat ? price : Math.round(price * 1.1), kreamPrice: null, kreamRecent: "", decision: "검토", memo: (vat ? "" : "사진 도매가 VAT 별도 → ×1.1 반영 · ") + "사진: " + pics[i].name, extra: { ocr: { skuUnsure: !!x.skuUnsure, urlUnsure: !!x.kreamUrlUnsure, rawUrl: x.kreamUrl || "", file: pics[i].name } } });
