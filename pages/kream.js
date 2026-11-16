@@ -648,7 +648,10 @@ async function tgRun() {   /* 리스트는 한 번에 하나씩(크림 차단 �
   if (TG.running || !TG.jobs.length) return; TG.running = true;
   try { while (TG.jobs.length) { var j = TG.jobs.shift(); try { await tgJob(j); } catch (e) { TG.err = e.message; tgLog("오류 " + e.message); await tgSend("⚠ 처리 중 오류: " + th(e.message)); } } } finally { TG.running = false; }
 }
-setInterval(function () { try { if (S.SET && tgOn()) tgPoll(); } catch (e) {} }, 5000);
+/* 같은 PC에 ERP 탭이 여러 개면 한 탭만 봇을 처리 (중복 계산 방지) */
+var TG_TAB = Math.random().toString(36).slice(2);
+function tgLead() { var now = Date.now(), cur = {}; try { cur = JSON.parse(lsg("rowna_tg_lock") || "{}"); } catch (e) {} if (!cur.id || cur.id === TG_TAB || now - (cur.t || 0) > 15000) { lss("rowna_tg_lock", JSON.stringify({ id: TG_TAB, t: now })); return true; } return false; }
+setInterval(function () { try { if (S.SET && tgOn() && (TG.running || tgLead())) { if (TG.running) lss("rowna_tg_lock", JSON.stringify({ id: TG_TAB, t: Date.now() })); tgPoll(); } } catch (e) {} }, 5000);
 ERP.tgReport = tgReport;
 /* 안전장치: 사진은 읽혔는데 크림 시세가 안 채워진 줄(최근 2일)이 있으면 1분마다 자동으로 다시 확인 (PC1·열무 도우미 켜진 곳만) */
 var autoBusy = false;
