@@ -54,6 +54,14 @@ function calc(it) { var p = premium(it), wh = cost(it); if (isMall(it.supplier) 
   return c; }
 /* 이익률 8%가 나오는 매입가(협상 목표) */
 function tgt(it) { var sell = num(it.kreamPrice); if (!sell) return null; var p = premium(it), r = p ? 0.03 : rate(), b = p ? 20000 : base(), fee = Math.min(b + sell * r, (cap() || Infinity) / 1.1), w = 1.1 * (sell / 1.1 * 0.92 - fee) - storFee(); return w > 0 ? Math.floor(w / 1000) * 1000 : null; }
+/* 예산(MOQ) 안 추천 조합: 이익률 × 거래량 가중(월 3건 미만이면 깎음) 순서로, 한 달 판매량(추천 수량)만큼 담음 */
+function pscore(x) { return x.c.rate * Math.min(1, (x.c.vol || 0) / 3 + 0.2); }
+function budgetPick(rows, budget) {
+  var cand = [], pick = { qty: 0, whole: 0, real: 0, lines: [] };
+  rows.forEach(function (it) { var c = calc(it), rq = recQty(it, c); if (rq && c && c.real > 0) cand.push({ it: it, c: c, rq: rq }); });
+  cand.sort(function (a, b) { return pscore(b) - pscore(a); }).forEach(function (x) { var price = cost(x.it), n = Math.min(x.rq, Math.floor((budget - pick.whole) / price)); if (n > 0) { pick.qty += n; pick.whole += n * price; pick.real += n * x.c.real; pick.lines.push({ it: x.it, n: n, real: x.c.real, c: x.c }); } });
+  return pick;
+}
 function items() { return ERP.list("kream_wholesale").filter(function (x) { return (x.supplier || "열무") === SUP(); }); }
 /* 거래 속도: 최근 체결 5건 날짜로 한 달 거래 수 추정 */
 function tdate(s) { s = String(s || ""); var m = s.match(/^(\d{2})\/(\d{2})\/(\d{2})$/); if (m) return new Date(2000 + +m[1], +m[2] - 1, +m[3]); m = s.match(/(\d+)\s*(분|시간|일)\s*전/); if (m) return new Date(Date.now() - +m[1] * (m[2] === "분" ? 6e4 : m[2] === "시간" ? 36e5 : 864e5)); return null; }
@@ -102,7 +110,7 @@ function render() {
   }).join("");
   /* 예산 안에서 이익률 높은 순으로 추천수량만큼 담기 */
   var budget = num(S.SET.kream_budget) || 10000000, pick = { qty: 0, whole: 0, real: 0, lines: [] };
-  cand.sort(function (a, b) { return b.c.rate - a.c.rate; }).forEach(function (x) { var price = cost(x.it), n = Math.min(x.rq, Math.floor((budget - pick.whole) / price)); if (n > 0) { pick.qty += n; pick.whole += n * price; pick.real += n * x.c.real; pick.lines.push((x.it.brand || "") + " " + (x.it.name || x.it.sku || "").slice(0, 18) + " ×" + n); } });
+  cand.sort(function (a, b) { return pscore(b) - pscore(a); }).forEach(function (x) { var price = cost(x.it), n = Math.min(x.rq, Math.floor((budget - pick.whole) / price)); if (n > 0) { pick.qty += n; pick.whole += n * price; pick.real += n * x.c.real; pick.lines.push((x.it.brand || "") + " " + (x.it.name || x.it.sku || "").slice(0, 18) + " ×" + n); } });
   var sups = suppliers();
   var mall = KIND() === "mall";
   var h = '<div class="head"><div><h1>' + (mall ? "크림 리셀 소싱 (국내몰)" : "열무 크림도매") + '</h1><p>' + (mall ? "국내몰 세일 목록을 할인율 높은 순으로 읽어 크림 시세·거래량·이익과 비교해요 · " : "도매 리스트 사진을 올리면 크림 시세·거래량·이익을 자동으로 채워요 · ") + (mall ? (resellOn() ? '<span class="pill p-good">리셀 도우미 켜짐</span>' : '<span class="pill p-crit" title="국내몰은 전용 확장 ‘로우나 리셀 도우미’로만 돌아가요 (기존 도우미는 안 씀)">리셀 도우미 꺼짐</span>') : (helperOn() ? '<span class="pill p-good">사진 읽기 도우미 켜짐</span>' : '<span class="pill p-crit" title="사진 읽기(ChatGPT)는 크롬 확장 ‘로우나 도우미’로 해요">사진 읽기 도우미 꺼짐</span>') + ' ' + (wholesaleOn() ? '<span class="pill p-good">열무 크림도매 도우미 켜짐</span>' : '<span class="pill p-crit" title="크림 시세(빠른배송·일반배송·95점 제외)는 전용 확장 ‘로우나 열무 크림도매 도우미’로 읽어요">열무 크림도매 도우미 꺼짐</span>')) + '</p></div><div class="tools">' +
@@ -273,7 +281,7 @@ async function kreamLookup(sku, url, chan, name, sz) {
   sku = String(sku || "").trim(); var tried = [], best = null, hit = null, seen = {};
   async function check(pid, via) {
     if (!pid || tried.indexOf(pid) >= 0) return null; tried.push(pid);
-    var d = parseProduct(await pageSafe({ url: "https://kream.co.kr/products/" + pid + (sz ? "?size=" + encodeURIComponent(sz) : ""), waitFor: "모델번호|발매가", minLen: 300 }, chan));
+    var d = parseProduct(await pageSafe({ url: "https://kream.co.kr/products/" + pid + (sz ? "?size=" + encodeURIComponent(sz) : ""), waitFor: "모델번호|발매가", minLen: 300, fast: true }, chan));
     d.via = via; d.match = ksame(d.model, sku); seen[pid] = d; if (!best || d.match > best.match) best = d; return d.match ? d : null;
   }
   async function search(q, via) { var c = parseSearch(await pageSafe({ url: "https://kream.co.kr/search?keyword=" + encodeURIComponent(q), waitFor: "관심|검색 결과가 없습니다", minLen: 200 }, chan)).slice(0, 3); for (var k = 0; k < c.length && !hit; k++) hit = await check(c[k].id, via); }
@@ -330,8 +338,8 @@ async function fetchKream(rows, opt) {
         }
         try {
           ERP.toast("사이즈별 시세 읽는 중 · " + (f.sku || "") + " " + sz);
-          await new Promise(function (r) { setTimeout(r, 1500 + Math.random() * 1500); });
-          var sp = await pageSafe({ url: String(k.url).split("?")[0] + "?size=" + encodeURIComponent(sz), waitFor: "모델번호|발매가", minLen: 300 }, opt && opt.chan);
+          await new Promise(function (r) { setTimeout(r, 800 + Math.random() * 800); });
+          var sp = await pageSafe({ url: String(k.url).split("?")[0] + "?size=" + encodeURIComponent(sz), waitFor: "모델번호|발매가", minLen: 300, fast: true }, opt && opt.chan);
           if (!(sp.kream && sp.kream.full) && sp.kg && sp.kg.length) { sp.kream = sp.kream || {}; sp.kream.groups = sp.kg; }
           var pr = parseProduct(sp), kg = sp.kg || [];
           var trs = (pr.trades || []).filter(function (t) { return szSame(sz, t.size); });
@@ -551,6 +559,8 @@ function tgReport(rows, meta, sec) {
   var all = "📦 리스트 전체 " + T.q + "개 · 도매 " + w0(T.w) + "원\n💰 전부 사면 예상 이익 <b>" + w0(T.trd) + "원</b> (보수적·체결가 기준)" + (Math.round(T.ask) !== Math.round(T.trd) ? " / 보판가 기준 " + w0(T.ask) + "원" : "");
   var verdict = T.miss ? "❓ 시세 못 찾은 상품 " + T.miss + "개 — 확인 후 판단" : T.trd > 0 && T.trd / T.w >= 0.08 ? "👉 <b>테이크올 추천</b> (전체 이익률 " + (T.trd / T.w * 100).toFixed(1) + "%)" : T.trd > 0 ? "👉 <b>테이크올 검토</b> (전체 이익률 " + (T.trd / T.w * 100).toFixed(1) + "% — 얇음, 단가 협상 권장)" : "👉 <b>테이크올 비추천</b> (전체 손실 예상)";
   if (!meta.takeAll) verdict += "\n🛒 골라 사면: 추천 " + T.rq + "개 · 예상 이익 " + w0(T.rqReal) + "원";
+  var bud = num(S.SET.kream_budget) || 5000000, bp = budgetPick(rows, bud);
+  if (bp.qty) verdict += "\n\n💼 <b>예산 " + w0(bud) + "원 추천 조합</b> (거래량 우선)\n" + bp.lines.map(function (l) { return " • " + th((l.it.brand || "") + " " + (l.it.name || l.it.sku || "").slice(0, 22) + " " + (l.it.size && !szFree(l.it.size) ? l.it.size : "")) + " ×" + l.n + " = " + w0(cost(l.it) * l.n) + " → +" + w0(l.real * l.n) + " (" + th(l.c.volGrade) + ")"; }).join("\n") + "\n 합계 " + w0(bp.whole) + "원 → 예상 이익 <b>" + w0(bp.real) + "원</b>";
   if (T.conf) verdict += "\n🔍 사진 확인 필요 " + T.conf + "건 (ERP에서 [같은 상품 맞음] 눌러야 확정)";
   return "🧾 <b>" + th(sup) + " " + th(day) + "</b>" + (meta.takeAll ? " · 테이크올 조건" : "") + "\n\n" + L.join("\n\n") + "\n\n" + all + "\n" + verdict + "\n\n⏱ " + Math.round(sec) + "초 · <a href=\"" + location.origin + location.pathname + "#kream-yeolmu\">ERP에서 보기</a>";
 }

@@ -76,7 +76,8 @@ async function openPage(o) {
     await sleep(1000);
   }
   p = p || { url: o.url, text: "", links: [], meta: {} };
-  if (/kream\.co\.kr\/products\/\d+/.test(o.url) && p.text) {
+  /* o.fast: 거래내역 창 전체 읽기(10~30초)를 건너뛰고 요약 탭만 읽음 → 3~5초 (2026-11-16) */
+  if (/kream\.co\.kr\/products\/\d+/.test(o.url) && p.text && !o.fast) {
     try { var d = await chrome.scripting.executeScript({ target: { tabId: tabId }, func: deepRead }); p.kream = d && d[0] && d[0].result; } catch (e) { p.kream = { step: "깊게 읽기 실패: " + e.message }; }
     /* 백그라운드 탭에서 거래내역 창이 안 열리면 요약 탭(kg)으로 대신 계산 */
     if (!(p.kream && p.kream.full) && p.kg && p.kg.length) { p.kream = p.kream || {}; p.kream.groups = p.kg; }
