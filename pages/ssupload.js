@@ -23,6 +23,14 @@ function price(cost) {
   var p = b === "price" ? cost / (1 - f - m) : cost * (1 + m) / (1 - f);
   return p > 0 && isFinite(p) ? Math.ceil(p / 1000) * 1000 : 0;
 }
+function tagMul() { return Number(set("ss_tag_mul", 1.2)) || 1.2; }
+function tagPrice(sp) { return sp ? Math.ceil(sp * tagMul() / 1000) * 1000 : 0; }
+function calcLine(cost, manual) {
+  var sp = num(manual) || price(cost), tp = tagPrice(sp), f = feeRate();
+  if (!num(cost)) return "매입가를 넣으면 판매가·태그가가 계산돼요.";
+  if (!sp) return "수수료율을 설정해야 판매가가 계산돼요.";
+  return "판매가 <b>" + won(sp) + "</b>원 · 태그가 <b>" + won(tp) + "</b>원 (판매가×" + tagMul() + ")" + (f == null ? "" : " · 예상 이익 " + won(sp * (1 - f) - num(cost)) + "원");
+}
 function profit(d) { var f = feeRate(); return d.salePrice && f != null ? Math.round(d.salePrice * (1 - f) - num(d.cost)) : null; }
 
 function title(d) {
@@ -50,27 +58,28 @@ function list() {
     '<div class="fd"><label for="ssu-fee">스마트스토어 수수료율 (%)</label><input class="ctl" id="ssu-fee" type="number" step="0.01" value="' + (f == null ? "" : +(f * 100).toFixed(2)) + '" placeholder="정산 내역 기준으로 입력">' + (f == null ? '<small class="warn">수수료율을 넣어야 판매가가 계산돼요.</small>' : "") + "</div>" +
     '<div class="fd"><label for="ssu-m">마진율 (%) · 수수료 제외</label><input class="ctl" id="ssu-m" type="number" step="0.1" value="' + +(Number(set("ss_margin", 0.15)) * 100).toFixed(2) + '"></div>' +
     '<div class="fd"><label for="ssu-b">마진 기준</label><select class="ctl" id="ssu-b"><option value="cost"' + (basis === "cost" ? " selected" : "") + '>매입가 대비 (판매가 = 매입가×(1+마진)÷(1−수수료))</option><option value="price"' + (basis === "price" ? " selected" : "") + '>판매가 대비 (판매가 = 매입가÷(1−수수료−마진))</option></select></div>' +
+    '<div class="fd"><label for="ssu-tag">태그가 배수 (판매가×)</label><input class="ctl" id="ssu-tag" type="number" step="0.01" value="' + tagMul() + '"></div>' +
     '<div class="fd"><label for="ssu-tpl">틀 상품번호 (샤넬 지갑류 · 스마트스토어 상품번호)</label><input class="ctl" id="ssu-tpl" value="' + esc(set("ss_template_no", "")) + '" placeholder="예: 11603299884"></div>' +
     '<div class="fd"><label for="ssu-rf">반품 배송비 (편도)</label><input class="ctl" id="ssu-rf" type="number" value="' + num(set("ss_return_fee", 25000)) + '"></div>' +
     '<div class="fd"><label for="ssu-xf">교환 배송비 (왕복)</label><input class="ctl" id="ssu-xf" type="number" value="' + num(set("ss_exchange_fee", 50000)) + '"></div></div></div>' +
-    (D.length ? '<div class="table-wrap"><table><thead><tr><th>날짜</th><th>상태</th><th>사진</th><th>상품명</th><th class="num">매입가</th><th class="num">판매가</th><th class="num">예상 이익</th><th></th></tr></thead><tbody>' +
+    (D.length ? '<div class="table-wrap"><table><thead><tr><th>날짜</th><th>상태</th><th>사진</th><th>상품명</th><th class="num">매입가</th><th class="num">판매가</th><th class="num">태그가</th><th class="num">예상 이익</th><th></th></tr></thead><tbody>' +
       D.slice().reverse().map(function (d) {
         var p = profit(d);
         return "<tr><td>" + esc(d.date) + "</td><td>" + esc(d.status) + (d.error ? '<br><small class="warn">' + esc(d.error) + "</small>" : "") + "</td><td>" + (d.photos || []).length + "장</td><td>" + (d.productNo ? '<a href="' + STORE + esc(d.productNo) + '" target="_blank" rel="noopener">' + esc(d.name) + "</a>" : esc(d.name)) +
-          '</td><td class="num">' + won(d.cost) + '</td><td class="num">' + (d.salePrice ? won(d.salePrice) : "–") + '</td><td class="num">' + (p == null ? "–" : won(p)) + '</td><td><button class="btn sm" data-act="ssuopen" data-id="' + esc(d.id) + '">열기</button></td></tr>';
+          '</td><td class="num">' + won(d.cost) + '</td><td class="num">' + (d.salePrice ? won(d.salePrice) : "–") + '</td><td class="num">' + (d.salePrice ? won(d.tagPrice || tagPrice(d.salePrice)) : "–") + '</td><td class="num">' + (p == null ? "–" : won(p)) + '</td><td><button class="btn sm" data-act="ssuopen" data-id="' + esc(d.id) + '">열기</button></td></tr>';
       }).join("") + "</tbody></table></div>" : '<p class="muted">아직 등록할 상품이 없어요. [새 상품]을 눌러 사진과 정보를 넣어 주세요.</p>');
 }
 
 function editor() {
   var d = V.edit, ro = d.status === "등록완료";
   var w = function (l, k, v, type) { return '<div class="fd"><label for="se-' + k + '">' + l + '</label><input class="ctl" id="se-' + k + '" type="' + (type || "text") + '" value="' + esc(v == null ? "" : v) + '"' + (ro ? " disabled" : "") + "></div>"; };
-  var auto = price(d.cost);
   return '<div class="head"><div><h1>' + (d.name ? esc(d.name) : "새 상품") + "</h1><p>" + esc(d.status) + " · " + esc(d.date) + '</p></div><div class="tools"><button class="btn" data-act="ssuback">목록</button>' +
     (ro ? "" : '<button class="btn" data-act="ssusave">초안 저장</button><button class="btn primary" data-act="ssuapprove">' + (d.status === "승인" ? "승인 취소" : "확인 완료 · 승인") + "</button>") +
     '<button class="btn danger" data-act="ssudel">삭제</button></div></div>' +
     '<div class="grid2">' + w("브랜드", "brand", d.brand) + w("모델명", "model", d.model) + w("품번", "code", d.code) + w("색상 (확실한 것만)", "color", d.color) + w("옵션·사이즈 (있으면)", "option", d.option) +
     w("매입가 (원)", "cost", d.cost, "number") + w("매입일", "pdate", d.pdate, "date") + w("매입처 (백화점·지점)", "vendor", d.vendor) +
-    w("판매가 (비우면 자동 " + (auto ? won(auto) : "– 수수료율 필요") + ")", "salePrice", d.priceManual ? d.salePrice : "", "number") +
+    w("판매가 (비우면 자동 계산)", "salePrice", d.priceManual ? d.salePrice : "", "number") +
+    '<div class="fd full"><div class="card" id="se-calc" aria-live="polite">' + calcLine(d.cost, d.priceManual ? d.salePrice : "") + "</div></div>" +
     '<div class="fd full"><label>정품 안내 상자에 넣을 것 (실제로 있는 것만)</label><div>' + BOX.map(function (b) { return '<label style="margin-right:12px"><input type="checkbox" class="se-box" data-k="' + b[0] + '"' + (d.box && d.box[b[0]] ? " checked" : "") + (ro ? " disabled" : "") + "> " + b[1] + "</label>"; }).join("") + "</div></div>" +
     '<div class="fd full"><label for="se-note">상세 추가 문구 (선택 · 사실만)</label><textarea class="ctl" rows="3" id="se-note"' + (ro ? " disabled" : "") + ">" + esc(d.note || "") + "</textarea></div>" +
     '<div class="fd full"><label for="se-name">상품명 (비우면 자동: ' + esc(title(d)) + ')</label><input class="ctl" id="se-name" maxlength="100" value="' + esc(d.nameManual ? d.name : "") + '"' + (ro ? " disabled" : "") + "></div>" +
@@ -86,7 +95,7 @@ function grab() {
   d.code = d.code.toUpperCase(); d.cost = num(g("cost")); d.note = g("note");
   d.box = {}; document.querySelectorAll(".se-box").forEach(function (c) { d.box[c.dataset.k] = c.checked; });
   var sp = num(g("salePrice")); d.priceManual = !!sp; d.salePrice = sp || price(d.cost);
-  var nm = g("name"); d.nameManual = !!nm; d.name = nm || title(d);
+  d.tagPrice = tagPrice(d.salePrice); var nm = g("name"); d.nameManual = !!nm; d.name = nm || title(d);
 }
 async function store() {
   grab(); var D = drafts(), k = D.findIndex(function (x) { return x.id === V.edit.id; });
@@ -137,7 +146,7 @@ ERP.acts.ssuexport = async function () {
   for (var i = 0; i < A.length; i++) {
     var d = A[i], urls = [];
     for (var j = 0; j < (d.photos || []).length; j++) { var r = await S.sb.storage.from(BUCKET).createSignedUrl(d.photos[j].path, 86400); if (r.error) { ERP.toast("사진 주소 만들기 실패: " + d.name); return; } urls.push(r.data.signedUrl); }
-    out.items.push({ id: d.id, name: d.name, salePrice: d.salePrice, sellerCode: d.code + (d.color ? "-" + d.color : ""), photos: urls, detailHtml: detail(d, ["{{IMG}}"]).replace(/<p><img src="\{\{IMG\}\}"[^>]*><\/p>/, "{{IMAGES}}") });
+    out.items.push({ id: d.id, name: d.name, salePrice: d.salePrice, tagPrice: d.tagPrice || tagPrice(d.salePrice), sellerCode: d.code + (d.color ? "-" + d.color : ""), photos: urls, detailHtml: detail(d, ["{{IMG}}"]).replace(/<p><img src="\{\{IMG\}\}"[^>]*><\/p>/, "{{IMAGES}}") });
   }
   ERP.downloadBlob("ss_upload_" + U.today() + ".json", new Blob([JSON.stringify(out, null, 1)], { type: "application/json" }));
   ERP.toast(A.length + "개 내보냈어요. PC에서 ss_upload.py로 등록해 주세요(사진 주소는 24시간 유효).");
@@ -160,7 +169,10 @@ function bind(root) {
   sv("ssu-fee", "ss_fee_rate", function (x) { return x === "" ? "" : num(x) / 100; });
   sv("ssu-m", "ss_margin", function (x) { return num(x) / 100; });
   sv("ssu-b", "ss_margin_basis", String); sv("ssu-tpl", "ss_template_no", function (x) { return x.replace(/\D/g, ""); });
-  sv("ssu-rf", "ss_return_fee", num); sv("ssu-xf", "ss_exchange_fee", num);
+  sv("ssu-rf", "ss_return_fee", num); sv("ssu-tag", "ss_tag_mul", function (x) { return num(x) || 1.2; }); sv("ssu-xf", "ss_exchange_fee", num);
+  var ci = root.querySelector("#se-cost"), si = root.querySelector("#se-salePrice"), out = root.querySelector("#se-calc");
+  var live = function () { if (out) out.innerHTML = calcLine(ci ? ci.value : 0, si ? si.value : ""); };
+  if (ci) ci.oninput = live; if (si) si.oninput = live;
   var fi = root.querySelector("#se-files");
   if (fi) fi.onchange = async function () { grab(); fi.disabled = true; await uploadPhotos(fi.files); await store(); ERP.render(); };
   if (V.edit) thumbs(root);

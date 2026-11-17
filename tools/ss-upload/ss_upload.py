@@ -85,7 +85,9 @@ def build(tpl, item, imgs, ret_fee, exc_fee):
         origin.pop(k, None)
     origin["statusType"] = "SALE"
     origin["name"] = item["name"][:100]
-    origin["salePrice"] = int(item["salePrice"])
+    # 태그가로 등록하고 즉시할인으로 실제 결제가 = 계산된 판매가 (할인 표시)
+    sale, tag = int(item["salePrice"]), int(item.get("tagPrice") or item["salePrice"])
+    origin["salePrice"] = tag
     origin["stockQuantity"] = 1
     origin["images"] = {"representativeImage": {"url": imgs[0]}, "optionalImages": [{"url": u} for u in imgs[1:10]]}
     body = "".join(f'<p><img src="{u}" style="max-width:100%"></p>' for u in imgs)
@@ -94,7 +96,10 @@ def build(tpl, item, imgs, ret_fee, exc_fee):
     da["sellerCodeInfo"] = {**da.get("sellerCodeInfo", {}), "sellerManagementCode": item["sellerCode"]}
     da.pop("optionInfo", None)          # 틀 상품의 옵션·재고는 가져오지 않음 (1개 단품)
     da.pop("seoInfo", None)
-    origin.get("customerBenefit", {}).pop("immediateDiscountPolicy", None)  # 틀의 즉시할인 복사 안 함
+    cb = origin.setdefault("customerBenefit", {})
+    cb.pop("immediateDiscountPolicy", None)  # 틀의 즉시할인 복사 안 함
+    if tag > sale:
+        cb["immediateDiscountPolicy"] = {"discountMethod": {"value": tag - sale, "unitType": "WON"}}
     claim = origin.setdefault("deliveryInfo", {}).setdefault("claimDeliveryInfo", {})
     claim["returnDeliveryFee"] = int(ret_fee)
     claim["exchangeDeliveryFee"] = int(exc_fee)
