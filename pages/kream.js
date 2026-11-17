@@ -156,7 +156,7 @@ function render() {
   if (!mall) { var qr = qrows(), qn = 0, qw = 0, qreal = 0, qsell = 0, qno = 0, qbad = []; qr.forEach(function (it) { var n = qqty(it), c = calc(it); qn += n; qw += n * cost(it); if (c) { qreal += c.real * n; qsell += num(it.kreamPrice) / 1.1 * n; if (c.real < 0) qbad.push((it.sku || it.name || "") + (it.size && it.size !== "F" ? " " + it.size : "")); } else qno += n; });
     /* 선택한 것만 마진 (2026-11-17 대표님 요청): 이익률 = 크림 판매가(부가세 뺀) 기준, 매입 대비 = 이익 ÷ 매입가(부가세 뺀) */
     var qm = qr.length ? '<span>예상 이익 <b class="' + (qreal < 0 ? "neg" : "") + '">' + won(Math.round(qreal)) + "원</b> · 이익률 <b>" + (qsell ? pct(qreal / qsell) : "–") + "</b> · 매입 대비 <b>" + (qw ? pct(qreal / (qw / 1.1)) : "–") + "</b>" + (qno ? ' <small class="muted">(시세 없는 ' + qno + "개 빼고)</small>" : "") + (qbad.length ? ' <small class="neg">⚠ 손해: ' + esc(qbad.join(", ")) + "</small>" : "") + "</span>" : "";
-    h += '<div class="panel" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;position:sticky;top:0;z-index:5"><b>📄 견적서</b><span>' + (qr.length ? "선택 " + qr.length + "줄 · " + qn + "개 · " + won(qw) + "원" : "왼쪽 ‘선택’ 칸에서 살 상품을 체크하세요") + "</span>" + qm + '<button class="btn pri" data-act="kquote"' + (qr.length ? "" : " disabled") + '>견적서 만들기</button></div>'; }
+    h += '<div class="panel" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;position:sticky;top:0;z-index:5"><b>📄 견적서</b><span>' + (qr.length ? "선택 " + qr.length + "줄 · " + qn + "개 · " + won(qw) + "원" : "왼쪽 ‘선택’ 칸에서 살 상품을 체크하세요") + "</span>" + qm + '<button class="btn pri" data-act="kquote"' + (qr.length ? "" : " disabled") + '>견적서 만들기</button><button class="btn pri" data-act="kbconfirm"' + (qr.length ? "" : " disabled") + ' title="체크한 상품을 크림 매입으로 넘겨요">🛒 매입 확정</button>' + (function () { var done = qr.filter(function (x) { return (x.extra || {}).buyDate; }).length; return done ? '<small class="muted">매입 확정 ' + done + "/" + qr.length + "줄 · " + '</small><button class="btn sm" data-act="kbgo">크림 매입 보기 →</button>' : ""; })() + '</div>'; }
   h += kcards(list, w);
   h += '<div class="table-wrap ktable"><table style="min-width:1500px"><thead><tr><th>선택(견적)</th><th>상품</th><th>크림 품번 확인</th><th>사이즈</th><th class="r">수량</th><th class="r">' + (mall ? "실제 매입가" : "도매가") + '</th><th class="r">보판가(빠른)</th><th class="r">일반가</th><th class="r">최근 체결</th><th class="r">누적 거래</th><th class="r">계산 기준가</th><th class="r">개당 실이익</th><th class="r">이익률</th><th class="r">손익분기가</th><th>판단</th><th class="r">추천 수량</th><th>결정</th></tr></thead><tbody>' + body + "</tbody></table></div>";
   h += '<p class="note">계산 기준가 = 최근 체결 5건 중간값과 지금 즉시구매가 중 낮은 값(보수적으로). 추천 수량 = 최근 체결 속도로 한 달 안에 팔 수 있을 만큼(추천은 1.5배). ✅ 품번 일치가 아닌 줄은 크림 링크를 직접 확인해 주세요.</p>';
@@ -770,69 +770,87 @@ ERP.acts.kquote = function () {
   body.querySelector("#q-print").onclick = function () { keep(); var w = window.open("", "_blank"); if (!w) { ERP.toast("팝업이 막혔어요."); return; } w.document.write('<!doctype html><meta charset="utf-8"><title>' + esc(fname().replace(".png", "")) + '</title><style>@page{size:A4;margin:10mm}body{margin:0}.qdoc{width:auto!important}</style>' + qhtml(qrows(), cur(), sup, day)); w.document.close(); setTimeout(function () { w.print(); }, 600); };
   body.querySelector("#q-txt").onclick = async function () { keep(); try { await navigator.clipboard.writeText(qtext(qrows())); ERP.toast("복사했어요. 카톡에 붙여넣으세요."); } catch (e) { ERP.toast("⚠ 복사 실패"); } };
 };
-/* ---------- 크림도매 매입 관리 (견적서에서 '매입' 체크한 줄) — 2026-11-17 대표님 요청 ---------- */
-var STAGES = ["입금대기", "입금완료", "입고", "보판신청", "창고입고", "판매완료"];
-function stg(it) { var s = (it.extra || {}).buyStage; return STAGES.indexOf(s) >= 0 ? s : "입금대기"; }
-function buyRows() { return ERP.list("kream_wholesale").filter(function (x) { return x.decision === "매입"; }); }
+/* ---------- 크림 매입 (견적서에서 체크 → [매입 확정]한 상품) — 2026-11-17 대표님 요청 ----------
+   날짜 칸이 곧 단계: 입금일 → 입고일 → 보판신청일 → 창고입고일 → 판매일
+   입금일 = 우리 '매입'에 자동 기록 (대표님: 매입 시점은 입금날) · 입고일 = 재고 등록 · 창고입고일 = 재고 위치 KREAM */
+var KB_STEPS = [["payDate", "입금"], ["inDate", "입고"], ["boDate", "보판신청"], ["whDate", "창고입고"], ["soldDate", "판매"]];
+var OLD_STAGE = { "입금완료": "payDate", "입고": "inDate", "보판신청": "boDate", "창고입고": "whDate", "판매완료": "soldDate" };
+function kbEx(it) { return it.extra || {}; }
+function kbDay(it) { return kbEx(it).buyDate || it.listDate || ""; }
+function kbStage(it) { var e = kbEx(it), s = "매입확정"; KB_STEPS.forEach(function (st) { if (e[st[0]]) s = st[1]; }); if (s === "매입확정" && e.buyStage && OLD_STAGE[e.buyStage]) s = e.buyStage.replace("완료", "").replace("판매", "판매"); return s; }
+function kbIdx(it) { var e = kbEx(it), i = -1; KB_STEPS.forEach(function (st, j) { if (e[st[0]]) i = j; }); return i; }
+function buyRows() { return ERP.list("kream_wholesale").filter(function (x) { return x.decision === "매입" && kbEx(x).buyDate; }); }
 function setEx(it, patch) { return ERP.save("kream_wholesale", Object.assign({}, it, { extra: Object.assign({}, it.extra, patch) })); }
+function supName(sp) { return sp === "열무" ? "밀라노크리처(열무)" : sp === "수고개" ? "하이엔드부티크(수고개)" : (sp || "열무"); }
+function daysSince(d) { return d ? Math.floor((new Date(U.today()) - new Date(d)) / 86400000) : null; }
+function md(d) { return d ? d.slice(5).replace("-", "/") : ""; }
 function renderBuy() {
-  var w = ERP.canWrite("kream_wholesale"), all = buyRows(), f = v.kbF || "진행중";
-  var cnt = {}; STAGES.forEach(function (s) { cnt[s] = 0; }); all.forEach(function (it) { cnt[stg(it)]++; });
-  var L = all.filter(function (it) { var s = stg(it); return f === "전체" ? true : f === "진행중" ? s !== "판매완료" : s === f; });
-  var groups = {}, order = [];
-  L.sort(function (a, b) { return String(b.listDate).localeCompare(String(a.listDate)) || String(a.supplier).localeCompare(String(b.supplier)) || String(a.sku).localeCompare(String(b.sku)); })
-   .forEach(function (it) { var k = (it.listDate || "") + " · " + (it.supplier || "열무"); if (!groups[k]) { groups[k] = []; order.push(k); } groups[k].push(it); });
-  var TQ = 0, TW = 0, TR = 0;
-  var body = order.map(function (gk) {
-    var g = groups[gk], gq = 0, gw = 0, gr = 0;
-    var rows = g.map(function (it) {
-      var q = qqty(it), c = calc(it), ex = it.extra || {}, k = ex.kream || {}, s = stg(it), si = STAGES.indexOf(s);
-      gq += q; gw += cost(it) * q; gr += (c ? c.real : 0) * q;
-      var th = k.img && !/og-image/.test(k.img) ? '<img src="' + esc(String(k.img).split("?")[0] + "?type=m_webp") + '" referrerpolicy="no-referrer" alt="" loading="lazy" style="width:40px;height:40px;object-fit:cover;border-radius:6px">' : "";
-      var stock = ex.stockCode ? '<small class="muted">재고 ' + esc(ex.stockCode) + (ex.stockLoc ? " · " + esc(ex.stockLoc) : "") + "</small>" : "";
-      return "<tr" + (s === "판매완료" ? ' class="off"' : "") + ">" +
-        '<td class="c">' + th + "</td>" +
-        "<td><b>" + esc(it.brand || "") + "</b> " + esc(it.name || "") + '<br><small class="muted">' + esc(it.sku || "") + "</small>" + (it.memo ? '<br><small class="muted">' + esc(it.memo).slice(0, 60) + "</small>" : "") + "</td>" +
-        '<td class="c">' + esc(it.size || "F") + "</td>" +
-        '<td class="r num">' + (w ? '<input type="number" min="1" class="ctl sm" style="width:56px" data-kbq="' + esc(it.id) + '" value="' + q + '">' : q) + "</td>" +
-        '<td class="r num">' + won(cost(it)) + '<small class="muted">합 ' + won(cost(it) * q) + "</small></td>" +
-        '<td class="r num">' + (it.kreamPrice ? won(it.kreamPrice) : "–") + (c ? '<small class="' + (c.real < 0 ? "neg" : "") + '">' + won(c.real) + " · " + pct(c.rate) + "</small>" : "") + "</td>" +
-        '<td class="c" style="white-space:nowrap">' + (w ? '<select class="ctl sm" data-kbs="' + esc(it.id) + '">' + STAGES.map(function (x) { return "<option" + (x === s ? " selected" : "") + ">" + x + "</option>"; }).join("") + "</select>" + (si < STAGES.length - 1 ? ' <button class="btn sm" data-kbn="' + esc(it.id) + '" title="다음 단계">▶</button>' : "") : esc(s)) + "</td>" +
-        '<td class="c">' + (ex.stockCode ? stock : (w ? '<button class="btn sm" data-kbst="' + esc(it.id) + '">재고로 넘기기</button>' : "")) + "</td></tr>";
-    }).join("");
-    TQ += gq; TW += gw; TR += gr;
-    return '<tr style="background:rgba(60,150,255,.08)"><td colspan="8"><b>' + esc(gk) + "</b> — " + gq + "개 · 매입 " + won(gw) + " · 예상이익 " + won(Math.round(gr)) + "</td></tr>" + rows;
+  var w = ERP.canWrite("kream_wholesale"), all = buyRows();
+  var days = {}; all.forEach(function (it) { var k = kbDay(it) + "|" + (it.supplier || "열무"); (days[k] = days[k] || []).push(it); });
+  var keys = Object.keys(days).sort().reverse(); if (v.kbDay && !days[v.kbDay]) v.kbDay = ""; if (!v.kbDay && keys.length) v.kbDay = keys[0];
+  var cards = keys.map(function (k) { var g = days[k], n = 0, wsum = 0, est = 0, cnt = [0, 0, 0, 0, 0]; g.forEach(function (it) { var q = qqty(it), c = calc(it), i = kbIdx(it); n += q; wsum += q * cost(it); est += (c ? c.real : 0) * q; for (var j = 0; j <= i; j++) cnt[j] += q; });
+    var bar = KB_STEPS.map(function (st, j) { var pc = n ? Math.round(cnt[j] / n * 100) : 0; return '<div style="display:flex;align-items:center;gap:4px;font-size:11px"><span style="width:44px">' + st[1] + '</span><span style="flex:1;height:6px;background:rgba(127,127,127,.2);border-radius:3px;overflow:hidden"><span style="display:block;height:100%;width:' + pc + '%;background:' + (j === 4 ? "#30a46c" : "#3e8ef7") + '"></span></span><span class="num" style="width:38px;text-align:right">' + cnt[j] + "/" + n + "</span></div>"; }).join("");
+    var kk = k.split("|"); return '<button class="panel" data-kbday="' + esc(k) + '" style="text-align:left;cursor:pointer;min-width:230px;flex:0 0 auto;' + (k === v.kbDay ? "outline:2px solid #3e8ef7" : "") + '"><b>' + md(kk[0]) + " · " + esc(kk[1]) + '</b><br><small>' + n + "개 · " + won(wsum) + '원 · 예상 <span class="' + (est < 0 ? "neg" : "") + '">' + won(Math.round(est)) + "원</span></small>" + bar + "</button>"; }).join("");
+  var g = (days[v.kbDay] || []).slice().sort(function (a, b) { return String(a.sku).localeCompare(String(b.sku)) || String(a.size).localeCompare(String(b.size), "ko", { numeric: true }); });
+  var T = { q: 0, w: 0, now: 0, est: 0 };
+  var rows = g.map(function (it) {
+    var q = qqty(it), c = calc(it), e = kbEx(it), k = e.kream || {}, ba = e.kreamBasis || {}, now = c ? c.real : null, est = e.buyEst != null ? e.buyEst : null;
+    T.q += q; T.w += cost(it) * q; T.now += (now || 0) * q; T.est += (est != null ? est : (now || 0)) * q;
+    var th = k.img && !/og-image/.test(k.img) ? '<img src="' + esc(String(k.img).split("?")[0] + "?type=m_webp") + '" referrerpolicy="no-referrer" alt="" loading="lazy" style="width:40px;height:40px;object-fit:cover;border-radius:6px">' : "";
+    var dcell = function (f) { var val = e[f] || ""; return '<td class="c" style="white-space:nowrap">' + (w ? '<input type="date" class="ctl sm" style="width:118px" data-kbd="' + esc(it.id) + "|" + f + '" value="' + esc(val) + '">' + (val ? "" : ' <button class="btn sm" data-kbt="' + esc(it.id) + "|" + f + '" title="오늘 날짜 넣기">오늘</button>') : md(val)) + "</td>"; };
+    var dd = daysSince(e.whDate), dday = e.whDate && !e.soldDate ? '<small class="' + (dd >= 25 ? "neg" : "muted") + '">창고 ' + dd + "일째" + (dd >= 30 ? " · 보관료 붙는 중" : dd >= 25 ? " · 곧 보관료" : "") + "</small>" : "";
+    var px = '<td class="r num"><b>' + (it.kreamPrice ? won(it.kreamPrice) : "–") + "</b>" + '<small class="muted">' + (ba.fast ? "보판 " + won(ba.fast) + " · " : "") + (ba.normal ? "일반 " + won(ba.normal) + " · " : "") + (ba.trade ? "체결 " + won(ba.trade) : "") + "</small>" + (it.updatedAt ? '<small class="muted">' + esc(String(it.updatedAt).slice(5, 16).replace("T", " ")) + " 기준</small>" : "") + "</td>";
+    var diff = now != null && est != null ? now - est : null;
+    var pr = '<td class="r num">' + (now != null ? '<b class="' + (now < 0 ? "neg" : "") + '">' + won(Math.round(now)) + "</b><small>" + pct(c.rate) + "</small>" : "–") + (diff != null && Math.abs(diff) >= 1000 ? '<small class="' + (diff < 0 ? "neg" : "") + '">' + (diff > 0 ? "▲ " : "▼ ") + won(Math.abs(Math.round(diff))) + " (매입 때 " + won(Math.round(est)) + ")</small>" : "") + "</td>";
+    return "<tr" + (e.soldDate ? ' class="off"' : "") + ">" + '<td class="c">' + th + "</td><td><b>" + esc(it.brand || "") + "</b> " + esc(it.name || "") + '<br><small class="muted">' + esc(it.sku || "") + " · " + esc(it.size || "F") + "</small>" + (e.stockCode ? '<br><small class="muted">재고 ' + esc(e.stockCode) + (e.stockLoc ? " · " + esc(e.stockLoc) : "") + "</small>" : "") + (e.purchaseIds && e.purchaseIds.length ? '<br><small class="muted">매입 기록 ' + e.purchaseIds.length + "건</small>" : "") + dday + "</td>" +
+      '<td class="r num">' + (w ? '<input type="number" min="1" class="ctl sm" style="width:52px" data-kbq="' + esc(it.id) + '" value="' + q + '">' : q) + '</td><td class="r num">' + won(cost(it)) + '<small class="muted">합 ' + won(cost(it) * q) + "</small></td>" +
+      '<td class="c"><span class="pill ' + (e.soldDate ? "p-good" : kbIdx(it) >= 3 ? "p-acc" : "") + '">' + kbStage(it) + "</span></td>" + KB_STEPS.map(function (st) { return dcell(st[0]); }).join("") + px + pr + (w ? '<td class="c"><button class="btn sm" data-kbx="' + esc(it.id) + '" title="크림 매입에서 빼기 (열무 크림도매 체크는 그대로)">빼기</button></td>' : "") + "</tr>";
   }).join("");
-  var tabs = ["진행중", "전체"].concat(STAGES).map(function (x) { var n = x === "전체" ? all.length : x === "진행중" ? all.length - cnt["판매완료"] : cnt[x]; return '<button class="btn sm' + (x === f ? " pri" : "") + '" data-kbf="' + x + '">' + x + " " + n + "</button>"; }).join(" ");
-  return '<div class="panel"><h2>크림도매 매입</h2><p class="note">‘열무 크림도매’ 견적서에서 체크(매입)한 상품이 여기 모여요. 단계를 바꾸고, 물건이 오면 <b>재고로 넘기기</b>를 누르세요 — ‘창고입고’로 바꾸면 재고 위치가 KREAM으로 바뀌어 ‘로우나재고 크림’ 보판 이익률에 잡혀요.</p>' +
-    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">' + tabs + "</div>" +
-    '<div class="tiles">' + ERP.tile("개수", TQ + "개", f) + ERP.tile("매입 합계", won(TW) + "원", "") + ERP.tile("예상 이익", won(Math.round(TR)) + "원", "크림 시세 기준", "hl") + "</div></div>" +
-    '<div class="panel"><div class="tbl-wrap"><table class="tbl"><thead><tr><th></th><th>상품</th><th>사이즈</th><th class="r">수량</th><th class="r">매입가</th><th class="r">크림가 · 개당이익</th><th>단계</th><th>재고</th></tr></thead><tbody>' +
-    (body || '<tr><td colspan="8" class="c muted">해당 단계 상품이 없어요</td></tr>') + "</tbody></table></div></div>";
+  var kk = (v.kbDay || "|").split("|");
+  return '<div class="head"><div><h1>크림 매입</h1><p>‘열무 크림도매’에서 체크하고 <b>🛒 매입 확정</b>을 누른 상품이 매입일별로 모여요. 날짜 칸을 채우면 단계가 바뀌어요 — <b>입금일</b>을 넣으면 ‘매입’에 자동 기록, <b>입고일</b>이면 재고 등록, <b>창고입고일</b>이면 재고 위치가 KREAM으로 바뀌어요.</p></div><div class="tools"><button class="btn" data-act="kbback">← 열무 크림도매</button></div></div>' +
+    (keys.length ? '<div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:6px">' + cards + "</div>" : '<div class="panel empty"><b>아직 매입 확정한 상품이 없어요</b>‘열무 크림도매’에서 살 상품을 체크하고 위쪽 <b>🛒 매입 확정</b>을 누르세요.</div>') +
+    (g.length ? '<div class="panel"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>' + md(kk[0]) + " " + esc(kk[1]) + "</b><span>" + T.q + "개 · 매입 " + won(T.w) + "원 · 지금 시세로 이익 <b class=\"" + (T.now < 0 ? "neg" : "") + '">' + won(Math.round(T.now)) + "원</b>" + (Math.abs(T.now - T.est) >= 1000 ? ' <small class="' + (T.now < T.est ? "neg" : "") + '">(매입 때 예상 ' + won(Math.round(T.est)) + "원)</small>" : "") + '</span><span style="flex:1"></span>' + (w ? '<button class="btn sm" data-act="kbrefresh">🔄 이 날짜 시세 새로고침</button>' + KB_STEPS.slice(0, 4).map(function (st) { return '<button class="btn sm" data-kball="' + st[0] + '">' + st[1] + " 전체 오늘</button>"; }).join("") : "") + "</div>" +
+      '<div class="tbl-wrap"><table class="tbl"><thead><tr><th></th><th>상품</th><th class="r">수량</th><th class="r">매입가</th><th>단계</th>' + KB_STEPS.map(function (st) { return "<th>" + st[1] + "일</th>"; }).join("") + '<th class="r">크림 시세</th><th class="r">지금 팔면 개당</th>' + (w ? "<th></th>" : "") + "</tr></thead><tbody>" + rows + "</tbody></table></div></div>" : "");
 }
 async function toStock(it, loc) {
-  if (!ERP.stockAdd) { ERP.toast("재고 화면 모듈이 아직 안 불러와졌어요. 새로고침 후 다시 해 주세요"); return; }
-  var q = qqty(it), r = await ERP.stockAdd({ brand: it.brand, name: it.name, model: it.sku, opt: it.size && it.size !== "F" ? it.size : "", qty: q, price: cost(it), vendor: it.supplier || "열무", date: U.today(), loc: loc, src: "kream_wholesale:" + it.id, photo: ((it.extra || {}).kream || {}).img || "" });
+  if (!ERP.stockAdd) { ERP.toast("재고 모듈이 아직 안 불러와졌어요. 새로고침 후 다시 해 주세요"); return; }
+  var q = qqty(it), r = await ERP.stockAdd({ brand: it.brand, name: it.name, model: it.sku, opt: it.size && it.size !== "F" ? it.size : "", qty: q, price: cost(it), vendor: supName(it.supplier), date: kbEx(it).inDate || U.today(), loc: loc, src: "kream_wholesale:" + it.id, photo: (kbEx(it).kream || {}).img || "" });
   await setEx(it, { stockCode: r.code, stockLots: r.lots, stockLoc: loc || "" });
   ERP.toast("재고에 넣었어요 → " + r.code + " (" + q + "개" + (loc ? " · " + loc : "") + ")");
 }
-async function stageTo(it, s) {
-  var ex = it.extra || {};
-  await setEx(it, { buyStage: s });
-  var nit = ERP.DATA.kream_wholesale.get(it.id) || it, nex = nit.extra || {};
-  var want = s === "창고입고" ? "KREAM" : null;
+async function toPurchases(it, day) {
+  if (!ERP.canWrite("purchases")) { ERP.toast("‘매입’에 쓸 권한이 없어요"); return; }
+  var e = kbEx(it); if (e.purchaseIds && e.purchaseIds.length) { for (var i = 0; i < e.purchaseIds.length; i++) { var p = ERP.DATA.purchases.get(e.purchaseIds[i]); if (p && p.date !== day) await ERP.save("purchases", Object.assign({}, p, { date: day })); } return; }
+  var q = qqty(it), rows = [], ids = [];
+  for (var j = 0; j < q; j++) { var id = U.uid(); ids.push(id); rows.push(ERP.toRow("purchases", { id: id, date: day, vendor: supName(it.supplier), brand: it.brand || "", itemCode: it.sku || "", option: it.size && it.size !== "F" ? it.size : "", serialNo: "", category: "", qty: 1, unitCost: cost(it), cardId: "", effectiveUnitCost: "", status: "in_stock", soldSaleId: "", buyer: "신소희", rexOrderNo: "", rexStatus: "", source: "kream_wholesale", memo: "크림도매 " + (it.listDate || "") + " · " + (it.name || ""), extra: { buyType: "business", kreamWholesaleId: it.id } })); }
+  await ERP.saveBatch("purchases", rows); rows.forEach(function (r) { ERP.applyRow("purchases", r); });
+  await setEx(ERP.DATA.kream_wholesale.get(it.id) || it, { purchaseIds: ids }); ERP.toast("‘매입’에 " + q + "건 기록했어요 (" + day + ")");
+}
+async function untoPurchases(it) { var e = kbEx(it); if (!e.purchaseIds || !e.purchaseIds.length) return; for (var i = 0; i < e.purchaseIds.length; i++) await ERP.remove("purchases", e.purchaseIds[i]); await setEx(ERP.DATA.kream_wholesale.get(it.id) || it, { purchaseIds: [] }); ERP.toast("입금일을 지워서 ‘매입’ 기록 " + e.purchaseIds.length + "건을 뺐어요"); }
+async function setDate(it, f, val) {
+  var patch = {}; patch[f] = val || ""; await setEx(it, patch);
+  var nit = ERP.DATA.kream_wholesale.get(it.id) || it, e = kbEx(nit);
   try {
-    if (want && !nex.stockCode) await toStock(nit, want);
-    else if (want && nex.stockCode && nex.stockLoc !== want) { await ERP.stockSetLoc(nex.stockCode, nex.stockLots || [], want); await setEx(nit, { stockLoc: want }); ERP.toast(nex.stockCode + " 위치 → KREAM"); }
-  } catch (e) { ERP.toast("⚠ " + e.message); }
+    if (f === "payDate") { if (val) await toPurchases(nit, val); else await untoPurchases(nit); }
+    if (f === "inDate" && val && !e.stockCode) await toStock(nit, e.whDate ? "KREAM" : "");
+    if (f === "whDate" && val) { if (!e.stockCode) await toStock(nit, "KREAM"); else if (e.stockLoc !== "KREAM") { await ERP.stockSetLoc(e.stockCode, e.stockLots || [], "KREAM"); await setEx(nit, { stockLoc: "KREAM" }); ERP.toast(e.stockCode + " 위치 → KREAM"); } }
+  } catch (er) { ERP.toast("⚠ " + er.message); }
 }
 function bindBuy(root) {
-  root.querySelectorAll("[data-kbf]").forEach(function (b) { b.onclick = function () { v.kbF = b.dataset.kbf; ERP.render(); }; });
+  root.querySelectorAll("[data-kbday]").forEach(function (b) { b.onclick = function () { v.kbDay = b.dataset.kbday; ERP.render(); }; });
   root.querySelectorAll("[data-kbq]").forEach(function (el) { el.onchange = async function () { var it = ERP.DATA.kream_wholesale.get(el.dataset.kbq); if (!it) return; await setEx(it, { buyQty: Math.max(1, num(el.value)) }); ERP.render(); }; });
-  root.querySelectorAll("[data-kbs]").forEach(function (el) { el.onchange = async function () { var it = ERP.DATA.kream_wholesale.get(el.dataset.kbs); if (!it) return; await stageTo(it, el.value); ERP.render(); }; });
-  root.querySelectorAll("[data-kbn]").forEach(function (b) { b.onclick = async function () { var it = ERP.DATA.kream_wholesale.get(b.dataset.kbn); if (!it) return; b.disabled = true; var i = STAGES.indexOf(stg(it)); await stageTo(it, STAGES[Math.min(STAGES.length - 1, i + 1)]); ERP.render(); }; });
-  root.querySelectorAll("[data-kbst]").forEach(function (b) { b.onclick = async function () { var it = ERP.DATA.kream_wholesale.get(b.dataset.kbst); if (!it || (it.extra || {}).stockCode) return; b.disabled = true; try { await toStock(it, STAGES.indexOf(stg(it)) >= STAGES.indexOf("창고입고") ? "KREAM" : ""); } catch (e) { ERP.toast("⚠ " + e.message); } ERP.render(); }; });
+  root.querySelectorAll("[data-kbd]").forEach(function (el) { el.onchange = async function () { var a = el.dataset.kbd.split("|"), it = ERP.DATA.kream_wholesale.get(a[0]); if (!it) return; await setDate(it, a[1], el.value); ERP.render(); }; });
+  root.querySelectorAll("[data-kbt]").forEach(function (b) { b.onclick = async function () { var a = b.dataset.kbt.split("|"), it = ERP.DATA.kream_wholesale.get(a[0]); if (!it) return; b.disabled = true; await setDate(it, a[1], U.today()); ERP.render(); }; });
+  root.querySelectorAll("[data-kball]").forEach(function (b) { b.onclick = async function () { var f = b.dataset.kball, L = (buyRows().filter(function (x) { return kbDay(x) + "|" + (x.supplier || "열무") === v.kbDay && !kbEx(x)[f]; })); if (!L.length) { ERP.toast("다 들어가 있어요"); return; } b.disabled = true; for (var i = 0; i < L.length; i++) await setDate(L[i], f, U.today()); ERP.render(); }; });
+  root.querySelectorAll("[data-kbx]").forEach(function (b) { b.onclick = async function () { var it = ERP.DATA.kream_wholesale.get(b.dataset.kbx); if (!it) return; var e = kbEx(it); if ((e.purchaseIds && e.purchaseIds.length) || e.stockCode) { if (!confirm("이 상품은 이미 ‘매입’ 기록이나 재고 등록이 돼 있어요. 크림 매입 목록에서만 빼고, 매입·재고 기록은 그대로 둘까요?")) return; } await setEx(it, { buyDate: "" }); ERP.render(); }; });
 }
-ERP.page({ id: "kream-buy", title: "크림도매 매입", wide: true, roles: ["owner", "accountant", "staff", "ai"], render: renderBuy, bind: bindBuy });
+ERP.acts.kbback = function () { ERP.go("kream-yeolmu"); };
+ERP.acts.kbgo = function () { ERP.go("kream-buy"); };
+ERP.acts.kbrefresh = async function () { var L = buyRows().filter(function (x) { return kbDay(x) + "|" + (x.supplier || "열무") === v.kbDay; }); if (!L.length) return; ERP.toast("크림 시세 " + L.length + "줄 다시 읽는 중 (한 상품씩)"); try { await fetchKream(L, { chan: "W" }); } catch (e) { ERP.toast("⚠ " + e.message); } ERP.render(); };
+/* 열무 크림도매 → [매입 확정]: 체크한 줄에 매입일·매입 때 예상 이익을 찍고 크림 매입으로 */
+ERP.acts.kbconfirm = async function () { var L = qrows(); if (!L.length) { ERP.toast("살 상품을 먼저 체크하세요"); return; } var day = U.today(), n = 0;
+  for (var i = 0; i < L.length; i++) { var it = L[i], e = kbEx(it); if (e.buyDate) continue; var c = calc(it); await setEx(it, { buyDate: day, buyEst: c ? Math.round(c.real) : null, buyQty: qqty(it) }); n++; }
+  ERP.toast(n ? n + "줄 매입 확정 → 크림 매입으로 넘겼어요" : "이미 매입 확정된 줄이에요"); v.kbDay = day + "|" + (L[0].supplier || "열무"); ERP.go("kream-buy"); };
+ERP.page({ id: "kream-buy", title: "크림 매입", wide: true, roles: ["owner", "accountant", "staff", "ai"], render: renderBuy, bind: bindBuy });
 ERP.page({ id: "kream-yeolmu", title: "열무 크림도매", roles: ["owner", "accountant", "staff", "ai"], render: render, bind: bind });
 })();
