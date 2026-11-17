@@ -35,7 +35,8 @@ var PROMPT = [
   "- 금지: 이미지를 본 것처럼 쓰기(이미지는 없음), 특정 모델 사양을 추측하기, ③은 아이템 종류의 일반 특성 수준까지만.",
   "- 출시·연식: 렉스몬드 제조연월/시즌(예: 24FW→2024년)이 있을 때만. 없으면 빼세요.",
   "- 색상: 상품명·렉스몬드 글자에 색이 있을 때만(BLACK/블랙/NAVY 등). 소재명(브라스·실버925)으로 색을 추측하지 마세요.",
-  "- 소재: 여러 소재면 대표 소재 1개(겉감 비율 가장 큰 것). 안감·부자재 무시.",
+  "- 소재: 여러 소재면 대표 소재 1개(겉감 비율 가장 큰 것). '소재' 칸에는 안감·부자재 넣지 않기.",
+  "- 안감·기능·충전재 등 별도 속성 칸: 렉스몬드(상품정보고시·혼용률·MD노트·하단 설명)에 언급 있으면 반드시 채우기(예: 안감 소재, 방수·발수·경량·보온). 언급 없으면 빼기.",
   "- 네이버 기준: 무관한 속성이나 과도하게 많은 값은 노출에 불리함(스마트스토어 수정화면 안내). 그래서 속성 칸은 해당되는 것 모두 채우되, 한 칸 안에서는 대표값 1개(꼭 필요할 때만 2개). 단일선택은 1개.",
   "- 색상: 렉스몬드·상품명·품번의 색 정보(예: BLACK, 999=블랙 등 브랜드 색코드가 확실할 때)로.",
   "- 치수 속성(굽높이·기장 등): 렉스몬드 실측 숫자로 구간 선택. 숫자 없으면 일반적인 모델 사양이 확실할 때만.",
@@ -48,11 +49,19 @@ function cut(t, a, b, n) { var i = t.indexOf(a); if (i < 0) return ""; var j = b
 async function rexInfo(code) {
   if (!code) return { found: false, why: "자체상품코드 없음" };
   var d = await ERP.helperAsk("page", { rexGap: 10, url: "https://www.rexmonde.com/products/list?search_keyword=" + encodeURIComponent(code), waitFor: "상품정보고시|검색결과|검색 결과|상품이 없", minLen: 300, tries: 15 });
-  if (!/products\/view/.test(d.url || "")) return { found: false, why: "렉스몬드 검색결과 1건 아님" };
+  var nz = function (x) { return String(x || "").replace(/[\s\-_./]/g, "").toUpperCase(); }, nc = nz(code);
+  if (!/products\/view/.test(d.url || "")) {   /* 검색결과 여러 건(색상별 등) → 링크 글자에 품번이 그대로 있는 상품 고르기 */
+    var L = (d.links || []).filter(function (l) { return l && /products\/view/.test(l.href || "") && /[?&]no=\d+/.test(l.href); });
+    var ex = L.filter(function (l) { var m = String(l.text || "").match(/\(([^()]*)\)/g) || []; return m.some(function (x) { return nz(x.slice(1, -1)) === nc; }); });
+    var hit = ex.length ? ex : L.filter(function (l) { return nc && nz(l.text).indexOf(nc) >= 0; });
+    var nos = hit.map(function (l) { return l.href.match(/[?&]no=(\d+)/)[1]; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
+    if (!nos.length) return { found: false, why: L.length ? "검색결과에 같은 품번 없음" : "렉스몬드 검색결과 없음" };
+    d = await ERP.helperAsk("page", { rexGap: 10, url: "https://www.rexmonde.com/products/view?no=" + nos[0], waitFor: "상품정보고시", minLen: 300, tries: 15 });
+  }
   var t = d.text || "", title = (d.title || "").replace(/\s*\|\s*렉스몬드\s*$/, "");
-  if (code && t.indexOf(code) < 0 && title.indexOf(code) < 0) return { found: false, why: "렉스몬드 품번 불일치" };
-  var info = ["상품: " + title, cut(t, "홈\n", "할인가", 300), cut(t, "추가정보", "상품 옵션", 300), cut(t, "MD’s NOTE", "상품 안내", 600) || cut(t, "MD's NOTE", "상품 안내", 600), cut(t, "상품정보고시", "품질보증기준", 700), cut(t, "렉스몬드 실측", "사이즈 선택 TIP", 400)].filter(Boolean).join("\n");
-  return { found: true, url: (d.url || "").split("&")[0], info: info.slice(0, 3500) };
+  if (code && nz(t).indexOf(nc) < 0 && nz(title).indexOf(nc) < 0) return { found: false, why: "렉스몬드 품번 불일치" };
+  var info = ["상품: " + title, cut(t, "홈\n", "할인가", 300), cut(t, "추가정보", "상품 옵션", 300), cut(t, "MD’s NOTE", "상품 안내", 600) || cut(t, "MD's NOTE", "상품 안내", 600), cut(t, "상품정보고시", "품질보증기준", 1200), cut(t, "렉스몬드 실측", "사이즈 선택 TIP", 400), cut(t, "혼용률", null, 400), cut(t, "\n소재", null, 300), cut(t, "상품 안내", null, 500)].filter(Boolean).join("\n");
+  return { found: true, url: (d.url || "").split("&")[0], info: info.slice(0, 5000) };
 }
 async function choose(t, attrs, rex) {
   var todo = attrs.filter(function (a) { return !a.selected.length; }).map(function (a) { return { name: a.name, type: a.type, options: a.type === "single" ? a.options.map(function (o) { return o.text; }) : a.options }; });
@@ -203,7 +212,7 @@ async function one(t, s, opts) {
       rex = await rexInfo(t.code); row.rex = rex.found ? rex.url : "못 찾음(" + rex.why + ")"; mk("렉스");
       c = await choose(t, p.attrs, rex); mk("AI속성");
     }
-    row.pick = c.pick; row.why = c.why; row.v = 6; row.an = p.attrs.length; row.ae = p.attrs.filter(function (x) { return !x.selected.length; }).length;   /* 속성 칸 수 / 빈 칸 수(점검용) */
+    row.pick = c.pick; row.why = c.why; row.v = 7; row.an = p.attrs.length; row.ae = p.attrs.filter(function (x) { return !x.selected.length; }).length;   /* 속성 칸 수 / 빈 칸 수(점검용) */
     var tp = { have: p.have || [], reg: [] }, cands = [];
     if (HV25) {   /* 2.5: 태그 확인을 저장 화면에서 같이(페이지 1번 덜 엶) */
       if (!p.have || p.have.length < 10) { try { cands = await makeTags(t, rex, p.have || []); } catch (e) { row.tagErr = e.message; } }
