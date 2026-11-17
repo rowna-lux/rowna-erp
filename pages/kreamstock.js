@@ -23,7 +23,7 @@ var BLOCK_RE = /비정상적인 (접근|요청)|접근이 (차단|제한)|Access
 async function page(url) { var p = await askS(url); if (BLOCK_RE.test(String((p && p.text) || "").slice(0, 3000))) throw new Error("차단·경고 화면이 보여서 멈췄어요"); return p; }
 
 /* ---------- 저장 (app_settings.kream_stock) ---------- */
-function D() { var d = S.SET[KEY]; if (!d || typeof d !== "object") d = {}; ["map", "px", "ship", "alerts"].forEach(function (k) { if (!d[k]) d[k] = k === "alerts" ? [] : {}; }); return d; }
+function D() { var d = S.SET[KEY]; if (!d || typeof d !== "object") d = {}; ["map", "px", "ship", "alerts", "cand"].forEach(function (k) { if (!d[k]) d[k] = k === "alerts" ? [] : {}; }); return d; }
 async function save(d) { var res = await S.sb.from("app_settings").upsert({ key: KEY, value: d }); if (res.error) ERP.toast(ERP.errMsg(res.error)); else S.SET[KEY] = d; }
 function months() { return D().months == null ? 1 : num(D().months); }
 function SHIP() { return 3500; }
@@ -99,7 +99,7 @@ function render() {
   var h = '<div class="head"><div><h1>로우나재고 크림</h1><p>보유 재고를 크림 시세(95점 제외, 같은 옵션만)로 판별해요 · ' + (on() ? '<span class="pill p-good">로우나재고 크림 도우미 켜짐</span>' : '<span class="pill p-crit" title="tools/kream-stock-helper 를 크롬 확장으로 설치하세요">로우나재고 크림 도우미 꺼짐</span>') +
     (d.lastAuto ? ' · 마지막 자동 확인 ' + esc(new Date(d.lastAuto).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })) : "") + '</p></div><div class="tools">' +
     '<button class="btn ' + (tab === "bo" ? "pri" : "") + '" data-act="ksbo">보판 (' + rows("bo").length + ')</button><button class="btn ' + (tab === "nm" ? "pri" : "") + '" data-act="ksnm">일반판매 (' + rows("nm").length + ')</button>' +
-    '<button class="btn" data-act="ksrefresh"' + (busy ? " disabled" : "") + '>' + (busy ? "확인 중…" : "↻ 시세 새로고침") + "</button></div></div>";
+    '<button class="btn" data-act="ksrefresh"' + (busy ? " disabled" : "") + '>' + (busy ? "확인 중…" : "↻ 시세 새로고침") + '</button><button class="btn" data-act="ksfindall"' + (busy ? " disabled" : "") + '>🔍 크림 연결 안 된 재고 후보 찾기</button></div></div>';
   if (unseen.length) h += '<div class="panel"><h2>🔔 시세 변동 ' + unseen.length + '건</h2><ul class="note">' + unseen.slice(-20).reverse().map(function (a) { return "<li>" + esc(a.text) + ' <small class="muted">' + esc(new Date(a.at).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })) + "</small></li>"; }).join("") + '</ul><button class="btn sm" data-act="ksseen">모두 확인</button></div>';
   var T0 = { qty: 0, cost: 0, a: 0, b: 0 };
   var body = R.map(function (r) {
@@ -107,7 +107,7 @@ function render() {
     T0.qty += r.qty; if (r.cost != null) T0.cost += r.cost * r.qty; if (c && c.aP) T0.a += c.aP.real * r.qty; if (c && c.bP) T0.b += c.bP.real * r.qty;
     function pcell(P, price, note) { if (!price) return '<td class="r">–</td>'; return '<td class="r num"><b>' + won(price) + "</b>" + (note ? '<small class="muted">' + esc(note) + "</small>" : "") + (P ? '<small class="' + (P.real < 0 ? "neg" : "") + '">' + won(P.real) + " · " + pct(P.rate) + "</small>" : '<small class="muted">매입가 없음</small>') + "</td>"; }
     var link = r.pid ? '<a href="https://kream.co.kr/products/' + esc(r.pid) + '" target="_blank" rel="noopener">크림 #' + esc(r.pid) + " ↗</a>" : "";
-    var cand = CAND[r.key] ? '<select class="ctl" data-kspick="' + esc(r.key) + '"><option value="">후보 선택 (색상·하드웨어 꼭 확인)</option>' + CAND[r.key].map(function (o) { return '<option value="' + esc(o.id) + '">' + esc(o.text) + "</option>"; }).join("") + "</select>" : "";
+    var cl = CAND[r.key] || D().cand[r.key], cand = cl && cl.length ? '<select class="ctl" data-kspick="' + esc(r.key) + '"><option value="">후보 선택 (색상·하드웨어 꼭 확인)</option>' + cl.map(function (o) { return '<option value="' + esc(o.id) + '">' + esc(o.text) + "</option>"; }).join("") + "</select>" : "";
     var img = it.photo || (D().map[r.key] || {}).img || (px && px.img) || "";
     return "<tr><td style=\"width:64px\">" + (img ? '<img src="' + esc(/pstatic\.net/.test(img) ? img.split("?")[0] + "?type=m_webp" : img) + '" alt="" loading="lazy" referrerpolicy="no-referrer" style="width:56px;height:56px;object-fit:cover;border-radius:8px;background:#f3f3f3">' : '<div style="width:56px;height:56px;border-radius:8px;background:#f1f1f1;display:flex;align-items:center;justify-content:center;font-size:10px;color:#999">사진<br>없음</div>') + "</td><td class=\"name\"><b>" + esc(it.brand || "") + "</b> " + esc(it.name || "") + '<small class="num">' + esc(it.model || "") + " · " + esc(it.opt || "옵션 없음") + "</small>" + (px && px.name ? '<small class="muted">크림: ' + esc(px.name) + (px.model ? " (" + esc(px.model) + ")" : "") + "</small>" : "") + "</td>" +
       '<td><input class="cell-in num" style="width:90px" placeholder="크림 번호" data-kspid="' + esc(r.key) + '" value="' + esc(r.pid) + '"> <input class="cell-in" style="width:64px" placeholder="사이즈" data-kssz="' + esc(r.key) + '" value="' + esc(r.size) + '"><small>' + link + (r.pid ? "" : ' <button class="btn sm" data-ksfind="' + esc(r.key) + '">크림 찾기</button>') + "</small>" + cand + "</td>" +
@@ -129,7 +129,7 @@ function bind(root) {
   root.querySelectorAll("[data-kspid]").forEach(function (el) { el.onchange = async function () { var d = D(), k = el.dataset.kspid, id = (String(el.value).match(/(\d{3,})/) || [])[1] || ""; d.map[k] = Object.assign({}, d.map[k], { pid: id }); delete d.px[k]; await save(d); ERP.render(); }; });
   root.querySelectorAll("[data-kssz]").forEach(function (el) { el.onchange = async function () { var d = D(), k = el.dataset.kssz; d.map[k] = Object.assign({}, d.map[k], { size: el.value.trim() }); delete d.px[k]; await save(d); ERP.render(); }; });
   root.querySelectorAll("[data-ksship]").forEach(function (el) { el.onchange = async function () { var d = D(); d.ship[el.dataset.ksship] = num(el.value); await save(d); ERP.render(); }; });
-  root.querySelectorAll("[data-kspick]").forEach(function (el) { el.onchange = async function () { if (!el.value) return; var d = D(), k = el.dataset.kspick; d.map[k] = Object.assign({}, d.map[k], { pid: el.value }); delete CAND[k]; await save(d); ERP.render(); }; });
+  root.querySelectorAll("[data-kspick]").forEach(function (el) { el.onchange = async function () { if (!el.value) return; var d = D(), k = el.dataset.kspick; d.map[k] = Object.assign({}, d.map[k], { pid: el.value }); delete CAND[k]; delete d.cand[k]; await save(d); ERP.render(); }; });
   root.querySelectorAll("[data-ksfind]").forEach(function (b) { b.onclick = function () { find(b.dataset.ksfind); }; });
   var ev = root.querySelector("#ks-every"); if (ev) ev.onchange = async function () { var d = D(); d.boEvery = Math.max(0, num(ev.value)); await save(d); ERP.render(); };
   var mo = root.querySelector("#ks-mon"); if (mo) mo.onchange = async function () { var d = D(); d.months = num(mo.value) || 1; await save(d); ERP.render(); };
@@ -138,11 +138,16 @@ ERP.acts.ksbo = function () { v.ksTab = "bo"; ERP.render(); };
 ERP.acts.ksnm = function () { v.ksTab = "nm"; ERP.render(); };
 ERP.acts.ksseen = async function () { var d = D(); d.alerts.forEach(function (a) { a.seen = 1; }); d.alerts = d.alerts.slice(-100); await save(d); ERP.render(); };
 ERP.acts.ksrefresh = function () { refresh(false); };
+/* 크림에 연결 안 된 재고를 한 번에 검색해 후보만 붙여 둠 (색상·금장/은장은 대표님이 고름) — 10~14초 간격 (2026-11-17) */
+ERP.acts.ksfindall = async function () { if (busy) return; if (!on()) { ERP.toast("‘로우나재고 크림 도우미’ 확장을 켜 주세요"); return; } var d = D(), L = rows("nm").concat(rows("bo")).filter(function (r) { return !r.pid && !(d.cand[r.key] && d.cand[r.key].length); }); busy = true;
+  for (var i = 0; i < L.length; i++) { ERP.toast("크림 후보 찾는 중 " + (i + 1) + "/" + L.length); try { await find(L[i].key); } catch (e) { if (/차단|꺼져/.test(e.message)) break; } await new Promise(function (r) { setTimeout(r, 10000 + Math.random() * 4000); }); }
+  busy = false; ERP.toast("크림 후보 찾기 끝 · 표에서 후보를 골라 주세요"); ERP.render(); };
 
 /* 크림 찾기: 품번으로 검색해 후보만 보여 줌 — 색상·금장/은장은 대표님이 직접 고름 (자동으로 안 고름) */
 async function find(k) {
   var it = inv()[k]; if (!it) return;
   try { ERP.toast("크림에서 " + (it.model || "") + " 찾는 중"); var p = await page("https://kream.co.kr/search?keyword=" + encodeURIComponent(String(it.model || it.name || "").split(/\s/)[0]) + "&tab=products"); var seen = {}; CAND[k] = (p.links || []).map(function (a) { var id = (String(a.href).match(/kream\.co\.kr\/products\/(\d+)/) || [])[1]; return id && !seen[id] && (seen[id] = 1) ? { id: id, text: String(a.text || "").replace(/\s+/g, " ").replace(/^최근 본 상품( 연관)?/, "").slice(0, 70) } : null; }).filter(Boolean).slice(0, 10); if (!CAND[k].length) ERP.toast("검색 결과가 없어요"); } catch (e) { ERP.toast("⚠ " + e.message); }
+  if (CAND[k] && CAND[k].length) { var dd = D(); dd.cand[k] = CAND[k]; await save(dd); }
   ERP.render();
 }
 
