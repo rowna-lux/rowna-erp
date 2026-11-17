@@ -63,6 +63,21 @@ async function deepRead() {
   out.full = { trades: rows(lists[0]), asks: rows(lists[1]), bids: rows(lists[2]) }; out.step = "ok";
   return out;
 }
+/* 내 보관판매 목록 (my/inventory) — 한 화면 20개씩이라 아래 쪽 번호(2, 3…)를 사람 속도로 눌러 끝까지 읽음. 읽기만 (2026-11-18) */
+async function invRead() {
+  function sl(ms) { return new Promise(function (r) { setTimeout(r, ms + Math.random() * 800); }); }
+  function first() { return (document.body.innerText.match(/I-[A-Z]{2}\d+-\d+/) || [])[0] || ""; }
+  var pages = [document.body.innerText];
+  for (var p = 2; p <= 15; p++) {
+    var b = Array.prototype.filter.call(document.querySelectorAll(".page_bind a, .page_bind button"), function (e) { return e.textContent.trim() === String(p); })[0];
+    if (!b) break;
+    var f = first(); await sl(2200); b.click();
+    for (var i = 0; i < 20 && first() === f; i++) await sl(400);
+    if (first() === f) break;
+    pages.push(document.body.innerText);
+  }
+  return { pages: pages };
+}
 async function openPage(o) {
   var gap = 6000 + Math.random() * 4000, wait = lastOpen + gap - Date.now(); if (wait > 0) await sleep(wait);
   var tabId = await workTab(); lastOpen = Date.now();
@@ -76,6 +91,9 @@ async function openPage(o) {
     await sleep(1000);
   }
   p = p || { url: o.url, text: "", links: [], meta: {} };
+  if (/kream\.co\.kr\/my\/inventory/.test(o.url) && p.text) {
+    try { var iv = await chrome.scripting.executeScript({ target: { tabId: tabId }, func: invRead }); p.inv = iv && iv[0] && iv[0].result; } catch (e) { p.inv = { pages: [p.text], err: e.message }; }
+  }
   if (/kream\.co\.kr\/products\/\d+/.test(o.url) && p.text) {
     try { var d = await chrome.scripting.executeScript({ target: { tabId: tabId }, func: deepRead }); p.kream = d && d[0] && d[0].result; } catch (e) { p.kream = { step: "깊게 읽기 실패: " + e.message }; }
   }

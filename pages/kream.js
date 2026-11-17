@@ -595,6 +595,7 @@ async function tgApi(m, body) {
   var j = await r.json(); if (!j.ok) throw new Error("텔레그램: " + (j.description || r.status)); return j.result;
 }
 function th(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+ERP.tgSend = function (t, x) { return tgSend(t, x); };
 function tgSend(text, extra) { if (!lsg(TGK.chat)) return Promise.resolve(null); return tgApi("sendMessage", Object.assign({ chat_id: lsg(TGK.chat), text: text, parse_mode: "HTML", disable_web_page_preview: true }, extra || {})).catch(function (e) { tgLog("보내기 실패 " + e.message); return null; }); }
 function tgEdit(msg, text) { if (!msg) return tgSend(text); return tgApi("editMessageText", { chat_id: lsg(TGK.chat), message_id: msg.message_id, text: text, parse_mode: "HTML", disable_web_page_preview: true }).catch(function () { return null; }); }
 async function tgPhoto(fid) {
@@ -784,6 +785,7 @@ function kbStage(it) { var e = kbEx(it), s = "매입확정"; KB_STEPS.forEach(fu
 function kbIdx(it) { var e = kbEx(it), i = -1; KB_STEPS.forEach(function (st, j) { if (e[st[0]]) i = j; }); return i; }
 function buyRows() { return ERP.list("kream_wholesale").filter(function (x) { return x.decision === "매입" && kbEx(x).buyDate; }); }
 function setEx(it, patch) { return ERP.save("kream_wholesale", Object.assign({}, it, { extra: Object.assign({}, it.extra, patch) })); }
+ERP.kbSetEx = setEx; ERP.kbSetDate = function (it, f, val) { return setDate(it, f, val); };   /* 크림 보판 현황(kreamsync.js)에서 씀 */
 function supName(sp) { return sp === "열무" ? "밀라노크리처(열무)" : sp === "수고개" ? "하이엔드부티크(수고개)" : (sp || "열무"); }
 function daysSince(d) { return d ? Math.floor((new Date(U.today()) - new Date(d)) / 86400000) : null; }
 function md(d) { return d ? d.slice(5).replace("-", "/") : ""; }
