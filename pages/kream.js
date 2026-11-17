@@ -726,7 +726,7 @@ ERP.acts.kquote = function () {
   var form = '<div class="fg narrow"><div class="fd"><label for="q-title">제목</label><input id="q-title" class="ctl" list="q-titles" value="' + esc(q.title) + '"><datalist id="q-titles"><option>견적서</option><option>거래명세서</option><option>발주서</option></datalist></div><div class="fd"><label for="q-sup">공급처 (' + esc(sup) + ' 정보 · 이 도매처에 저장)</label><input id="q-sup" class="ctl" value="' + esc(q.supInfo) + '"></div></div>' +
     '<details' + (q.me.email && q.me.addr ? "" : " open") + '><summary><b>내 정보 (수신자)</b> — 한 번 넣으면 저장돼요</summary><div class="fg narrow">' + [["biz", "상호"], ["ceo", "대표자"], ["bizno", "사업자번호"], ["phone", "연락처"], ["email", "이메일"], ["addr", "주소"]].map(function (f) { return '<div class="fd"><label for="q-me-' + f[0] + '">' + f[1] + '</label><input id="q-me-' + f[0] + '" class="ctl" value="' + esc(q.me[f[0]] || "") + '"></div>'; }).join("") + "</div></details>" +
     '<p class="note">수량은 각 줄의 ‘선택’ 옆 숫자로 바꿀 수 있어요. 바꾼 뒤 [미리보기 새로고침].</p>' +
-    '<div class="tools"><button class="btn pri" id="q-share">📤 이미지로 보내기(카톡)</button> <button class="btn" id="q-png">🖼 이미지 저장</button> <button class="btn" id="q-print">🖨 PDF·인쇄</button> <button class="btn" id="q-txt">📋 카톡 텍스트 복사</button> <button class="btn" id="q-re">미리보기 새로고침</button></div>' +
+    '<div class="tools"><button class="btn pri" id="q-share">📤 카톡용 이미지 복사</button> <button class="btn" id="q-png">🖼 이미지 저장</button> <button class="btn" id="q-print">🖨 PDF·인쇄</button> <button class="btn" id="q-txt">📋 카톡 텍스트 복사</button> <button class="btn" id="q-re">미리보기 새로고침</button></div>' +
     '<div id="q-prev" style="overflow:auto;border:1px solid var(--line,#ddd);border-radius:8px;margin-top:8px;max-height:70vh"></div>';
   var body = ERP.openDrawer(esc(sup) + " 견적서 · " + rows.length + "줄", form, "kream_wholesale", null, false);
   var drawEl = body.closest(".drawer"); if (drawEl) { drawEl.style.width = "min(1120px,100vw)"; drawEl.style.maxWidth = "100vw"; var ft = drawEl.querySelector("footer"); if (ft) ft.style.display = "none"; }
@@ -738,11 +738,15 @@ ERP.acts.kquote = function () {
   body.querySelector("#q-re").onclick = draw;
   var fname = function () { return sup + "_" + (val("q-title").trim() || "견적서") + "_" + day + ".png"; };
   body.querySelector("#q-png").onclick = async function () { keep(); try { var b = await qpng(body.querySelector(".qdoc")); var a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = fname(); a.click(); } catch (e) { ERP.toast("⚠ " + e.message); } };
-  body.querySelector("#q-share").onclick = async function () { keep(); try { var b = await qpng(body.querySelector(".qdoc")), file = new File([b], fname(), { type: "image/png" });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: fname() });
-      else if (navigator.clipboard && window.ClipboardItem) { await navigator.clipboard.write([new ClipboardItem({ "image/png": b })]); ERP.toast("견적서 이미지를 복사했어요. 카톡 대화창에 Ctrl+V 하세요."); }
-      else { var a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = fname(); a.click(); }
-    } catch (e) { if (e.name !== "AbortError") ERP.toast("⚠ " + e.message); } };
+  /* 카톡 보내기: PC는 클립보드에 이미지 복사 → 카톡 대화창에 Ctrl+V. (윈도우 공유창으로 빠지던 문제 수정 2026-11-17)
+     이미지 만드는 데 시간이 걸려도 복사 권한이 끊기지 않게 클릭 즉시 ClipboardItem에 '만드는 중인 이미지'를 넘김 */
+  body.querySelector("#q-share").onclick = async function () { keep(); var mob = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent), node = body.querySelector(".qdoc");
+    try {
+      if (!mob && navigator.clipboard && window.ClipboardItem) { ERP.toast("이미지 만드는 중…"); await navigator.clipboard.write([new ClipboardItem({ "image/png": qpng(node) })]); ERP.toast("✔ 견적서 이미지를 복사했어요. 카톡 대화창 클릭 → Ctrl+V → Enter"); return; }
+      var b = await qpng(node), file = new File([b], fname(), { type: "image/png" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: fname() }); return; }
+      var a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = fname(); a.click(); ERP.toast("복사가 안 돼서 이미지 파일로 저장했어요. 카톡에 파일을 끌어다 놓으세요.");
+    } catch (e) { if (e.name === "AbortError") return; try { var b2 = await qpng(node), a2 = document.createElement("a"); a2.href = URL.createObjectURL(b2); a2.download = fname(); a2.click(); ERP.toast("⚠ 복사 실패(" + e.message + ") → 이미지 파일로 저장했어요. 카톡에 끌어다 놓으세요."); } catch (e2) { ERP.toast("⚠ " + e2.message); } } };
   body.querySelector("#q-print").onclick = function () { keep(); var w = window.open("", "_blank"); if (!w) { ERP.toast("팝업이 막혔어요."); return; } w.document.write('<!doctype html><meta charset="utf-8"><title>' + esc(fname().replace(".png", "")) + '</title><style>@page{size:A4;margin:10mm}body{margin:0}.qdoc{width:auto!important}</style>' + qhtml(qrows(), cur(), sup, day)); w.document.close(); setTimeout(function () { w.print(); }, 600); };
   body.querySelector("#q-txt").onclick = async function () { keep(); try { await navigator.clipboard.writeText(qtext(qrows())); ERP.toast("복사했어요. 카톡에 붙여넣으세요."); } catch (e) { ERP.toast("⚠ 복사 실패"); } };
 };
