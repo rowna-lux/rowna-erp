@@ -464,6 +464,19 @@ async function importPhotos(pics, sup, day, opt) {
   if (wholesaleOn()) fetchKream(made, { chan: "W" }).then(function () { tgNotifyRows(made, meta); }); else ERP.toast("크림 시세는 ‘로우나 열무 크림도매 도우미’를 켠 뒤 [크림 시세 다시 가져오기]로 채워 주세요.");
   return made.length;
 }
+/* 부티크 오더 계산기(pages/boutique.js)에서 넘어온 줄 → 도매 리스트 저장 → 크림 시세 (같은 부티크·같은 줄은 기존 줄을 고쳐 씀) */
+ERP.kreamImportRows = async function (made, day) {
+  if (!made.length) return 0;
+  var old = {}; ERP.list("kream_wholesale").forEach(function (x) { var b = (x.extra || {}).bq; if (b) old[b] = x; });
+  made = made.map(function (o) { var h = old[(o.extra || {}).bq]; return h ? Object.assign({}, h, { brand: o.brand, sku: o.sku, name: o.name, size: o.size, qty: o.qty, wholesalePrice: o.wholesalePrice, memo: o.memo, extra: Object.assign({}, h.extra, o.extra) }) : o; });
+  var rowsDb = made.map(function (o) { return ERP.toRow("kream_wholesale", o); });
+  try { await ERP.saveBatch("kream_wholesale", rowsDb); rowsDb.forEach(function (r) { ERP.applyRow("kream_wholesale", r); }); } catch (e) { ERP.toast(ERP.errMsg(e)); return 0; }
+  var need = made.filter(function (o) { return !num(o.kreamPrice); });
+  if (!wholesaleOn()) { ERP.toast(made.length + "줄을 넣었어요. 크림 시세는 메인PC에서 ‘로우나 열무 크림도매 도우미’를 켠 뒤 다시 눌러 주세요."); return made.length; }
+  ERP.toast(made.length + "줄을 넣었어요. 크림에서 한 상품씩 확인해요 (상품당 10~30초).");
+  await fetchKream(need.length ? need : made, { chan: "W" });
+  return made.length;
+};
 function fileToData(f) { return new Promise(function (res, rej) { var r = new FileReader(); r.onload = function () { res(r.result); }; r.onerror = rej; r.readAsDataURL(f); }); }
 /* 휴대폰(도우미 없음): 사진을 저장소에 올려 두면 PC1 ERP(도우미 켜짐)가 1분 안에 알아서 읽어서 넣음 (대표님 지시 2026-11-12) */
 var QKEY = "kream_photo_queue";
