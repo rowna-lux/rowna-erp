@@ -227,7 +227,7 @@ var MENU = ERP.MENU = [
   { id: "office", top: true },
   { g: "운영" }, { id: "home" }, { id: "sales" }, { id: "purchases" }, { id: "returns" }, { id: "stock" }, { id: "documents" },
   { g: "사방넷 소싱" }, { id: "rex-sourcing" }, { id: "naver-auto" },
-  { g: "스마트스토어" }, { id: "sourcing" }, { id: "ss-attr" }, { id: "blog" },
+  { g: "스마트스토어" }, { id: "sourcing" }, { id: "ss-upload" }, { id: "ss-attr" }, { id: "blog" },
   { g: "크림" }, { id: "kream-yeolmu" }, { id: "kream-buy" }, { id: "kream-stock" }, { soon: "크림 시세 소싱" },
   { g: "분석", roles: ["owner", "accountant"] }, { id: "tax" }, { id: "reports" }, { id: "channels" },
   { g: "설정", roles: ["owner", "accountant"] }, { id: "settings" }, { id: "users" }, { id: "activity" }, { id: "data" },
