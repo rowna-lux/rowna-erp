@@ -405,11 +405,16 @@ function lookup(model) {
 /* ---------- 라벨 출력 (40×20mm) ---------- */
 /* PC의 '라벨 도우미'(127.0.0.1:17777)가 켜져 있으면 4B-2054N으로 바로 출력, 꺼져 있으면 화면 인쇄로 */
 var HELPER = "http://127.0.0.1:17777";
-/* 라벨 아래 줄: 품번 / 사이즈·컬러 / 입고일(가장 최근 입고, 없으면 오늘) */
-function inDateOf(it) { var ds = (it.lots ? active(it) : []).map(lotIn).filter(Boolean).sort(); var d = ds.length ? ds[ds.length - 1] : (it.at || U.today()).slice(0, 10); return String(d).slice(2, 10).replace(/-/g, "."); }
-/* 라벨 프린터는 영문·숫자만 찍혀서, 한글만 있는 칸(예: 색상 "블랙")은 빼고 이어붙임 */
-function labelInfo(it) { return [it.model, it.opt].map(function (x) { return String(x || "").replace(/[^\x20-\x7E]/g, "").replace(/\s+/g, " ").trim(); }).filter(Boolean).join(" / "); }
-function labelDate(it) { return "IN " + inDateOf(it); }
+/* 라벨 아래 줄 (대표님 11/17): 라벨번호 / 품번 / 매입가 매입일(YYMMDD) — 가장 최근 입고 기준 */
+function lastInLot(it) { var L = (it.lots ? active(it) : []).filter(function (x) { return lotIn(x); }).sort(function (a, b) { return lotIn(a) < lotIn(b) ? -1 : 1; }); return L.length ? L[L.length - 1] : null; }
+function inDateOf(it) { var x = lastInLot(it); var d = x ? lotIn(x) : (it.at || U.today()).slice(0, 10); return String(d).slice(2, 10).replace(/-/g, ""); }
+/* 라벨 프린터는 영문·숫자만 찍혀서 한글은 뺌 */
+function asc(x) { return String(x || "").replace(/[^\x20-\x7E]/g, "").replace(/\s+/g, " ").trim(); }
+function labelInfo(it) { return asc(it.model); }
+function labelDate(it) {
+  var x = lastInLot(it), pr = x && x.price !== "" && x.price != null ? Number(x.price) : (it.buyPrice !== "" && it.buyPrice != null ? Number(it.buyPrice) : null);
+  return (pr != null && !isNaN(pr) ? pr.toLocaleString("en-US") + "  " : "") + inDateOf(it);
+}
 async function helperPrint(L, locs) {
   var labels = L.map(function (it) { return locs ? { code: it.code, sub: "LOCATION" } : { code: it.code, sub: labelInfo(it), sub2: labelDate(it) }; });
   try {
@@ -456,6 +461,26 @@ function expandLocs(txt) {
 }
 
 /* ---------- 버튼 ---------- */
+/* 크림도매 매입 → 재고로 넘기기 (kream.js에서 사용). 같은 브랜드·품번·옵션이 있으면 그 상품에 수량만 추가 */
+var BR_EN = { CH: "CHANEL", HM: "HERMES", AI: "ALPHA INDUSTRIES", MC: "MONCLER", CL: "CELINE", CO: "CHLOE", MM: "MIU MIU", HK: "HOKA", AM: "AMI", MK: "MAISON KITSUNE", PB: "PARABOOT", TB: "THOM BROWNE", VW: "VIVIENNE WESTWOOD", LV: "LOUIS VUITTON", DI: "DIOR", GC: "GUCCI", PR: "PRADA", BV: "BOTTEGA VENETA", YS: "SAINT LAURENT", FE: "FENDI", BA: "BALENCIAGA", LO: "LOEWE", BB: "BURBERRY", MA: "MAISON MARGIELA" };
+function brandCode(b) { var t = String(b || "").trim().toUpperCase().replace(/[\s.\-]/g, ""); if (!t) return "ET"; var f = allBrands().find(function (x) { var en = String(x[2] || BR_EN[x[0]] || "").toUpperCase().replace(/[\s.\-]/g, ""); return x[0] === t || String(x[1]).replace(/\s/g, "") === t || (en && (en === t || t.indexOf(en) === 0)); }); if (!f && /YSL|SAINTLAURENT|생로랑/.test(t)) return "YS"; return f ? f[0] : "ET"; }
+ERP.stockAdd = async function (o) {
+  var d = D(), b = brandCode(o.brand), model = String(o.model || "").trim(), opt = String(o.opt || "").trim(), n = Math.max(1, Number(o.qty) || 1);
+  var it = Object.values(d.items).find(function (x) { return x.brand === b && String(x.model || "").trim().toUpperCase() === model.toUpperCase() && String(x.opt || "").trim().toUpperCase() === opt.toUpperCase(); });
+  if (!it) { d.seq = d.seq || {}; d.seq[b] = (d.seq[b] || 0) + 1; var code = "RW-" + b + "-" + String(d.seq[b]).padStart(4, "0"); while (d.items[code]) { d.seq[b]++; code = "RW-" + b + "-" + String(d.seq[b]).padStart(4, "0"); }
+    it = { code: code, own: true, brand: b, name: String(o.name || "").trim(), model: model, serial: "", opt: opt, loc: String(o.loc || "").toUpperCase(), lots: [], qty: 0, photo: o.photo || "", memo: o.memo || "" }; d.items[code] = it; }
+  lotsOf(it); var ids = [];
+  for (var i = 0; i < n; i++) { var l = mkLot({ vendor: o.vendor, date: o.date, price: o.price, loc: o.loc, color: opt }); l.src = o.src || ""; it.lots.push(l); ids.push(l.id); }
+  it.qty = active(it).length; it.at = new Date().toISOString();
+  var err = await save(true); if (err) throw new Error(err);
+  return { code: it.code, lots: ids };
+};
+/* 넘긴 재고의 위치만 바꿈 (예: 창고 입고 → KREAM) */
+ERP.stockSetLoc = async function (code, ids, loc) {
+  var d = D(), it = d.items[code]; if (!it) throw new Error("재고에서 " + code + "를 못 찾았어요");
+  lotsOf(it).forEach(function (l) { if (ids.indexOf(l.id) >= 0 && !l.out) l.loc = String(loc || "").toUpperCase(); }); it.at = new Date().toISOString();
+  var err = await save(true); if (err) throw new Error(err);
+};
 ERP.acts.stnew = function () { open(); };
 ERP.acts.stlocclear = function () { v.stLoc = ""; v.stMsg = "위치를 해제했어요"; ERP.render(); };
 ERP.acts.stlabel = function () { var L = picked(); if (!L.length) { ERP.toast("표에서 라벨을 뽑을 상품에 체크해 주세요."); return; } printLabels(L); };
