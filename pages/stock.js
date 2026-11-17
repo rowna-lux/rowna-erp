@@ -405,11 +405,16 @@ function lookup(model) {
 /* ---------- 라벨 출력 (40×20mm) ---------- */
 /* PC의 '라벨 도우미'(127.0.0.1:17777)가 켜져 있으면 4B-2054N으로 바로 출력, 꺼져 있으면 화면 인쇄로 */
 var HELPER = "http://127.0.0.1:17777";
-/* 라벨 아래 줄: 품번 / 사이즈·컬러 / 입고일(가장 최근 입고, 없으면 오늘) */
-function inDateOf(it) { var ds = (it.lots ? active(it) : []).map(lotIn).filter(Boolean).sort(); var d = ds.length ? ds[ds.length - 1] : (it.at || U.today()).slice(0, 10); return String(d).slice(2, 10).replace(/-/g, "."); }
-/* 라벨 프린터는 영문·숫자만 찍혀서, 한글만 있는 칸(예: 색상 "블랙")은 빼고 이어붙임 */
-function labelInfo(it) { return [it.model, it.opt].map(function (x) { return String(x || "").replace(/[^\x20-\x7E]/g, "").replace(/\s+/g, " ").trim(); }).filter(Boolean).join(" / "); }
-function labelDate(it) { return "IN " + inDateOf(it); }
+/* 라벨 아래 줄 (대표님 11/17): 라벨번호 / 품번 / 매입가 매입일(YYMMDD) — 가장 최근 입고 기준 */
+function lastInLot(it) { var L = (it.lots ? active(it) : []).filter(function (x) { return lotIn(x); }).sort(function (a, b) { return lotIn(a) < lotIn(b) ? -1 : 1; }); return L.length ? L[L.length - 1] : null; }
+function inDateOf(it) { var x = lastInLot(it); var d = x ? lotIn(x) : (it.at || U.today()).slice(0, 10); return String(d).slice(2, 10).replace(/-/g, ""); }
+/* 라벨 프린터는 영문·숫자만 찍혀서 한글은 뺌 */
+function asc(x) { return String(x || "").replace(/[^\x20-\x7E]/g, "").replace(/\s+/g, " ").trim(); }
+function labelInfo(it) { return asc(it.model); }
+function labelDate(it) {
+  var x = lastInLot(it), pr = x && x.price !== "" && x.price != null ? Number(x.price) : (it.buyPrice !== "" && it.buyPrice != null ? Number(it.buyPrice) : null);
+  return (pr != null && !isNaN(pr) ? pr.toLocaleString("en-US") + "  " : "") + inDateOf(it);
+}
 async function helperPrint(L, locs) {
   var labels = L.map(function (it) { return locs ? { code: it.code, sub: "LOCATION" } : { code: it.code, sub: labelInfo(it), sub2: labelDate(it) }; });
   try {
