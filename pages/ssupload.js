@@ -54,6 +54,7 @@ function list() {
   var basis = set("ss_margin_basis", "cost");
   return '<div class="head"><div><h1>스마트스토어 매입상품 등록</h1><p>사진·정보 입력 → 초안 → 승인 → PC에서 등록 (샤넬 지갑류 상품을 틀로 복사)</p></div><div class="tools">' +
     '<button class="btn primary" data-act="ssunew">새 상품</button><button class="btn" data-act="ssuexport">승인분 내보내기 (' + st["승인"] + ')</button><button class="btn" data-act="ssuimport">결과 불러오기</button></div></div>' +
+    '<p class="warn">시험 운영 중이에요. 이상한 점은 알려주세요. 스마트스토어 실제 등록은 PC 스크립트에서 --apply를 붙일 때만 돼요.</p>' +
     '<div class="card"><h3>가격·틀 설정</h3><div class="grid2">' +
     '<div class="fd"><label for="ssu-fee">스마트스토어 수수료율 (%)</label><input class="ctl" id="ssu-fee" type="number" step="0.01" value="' + (f == null ? "" : +(f * 100).toFixed(2)) + '" placeholder="정산 내역 기준으로 입력">' + (f == null ? '<small class="warn">수수료율을 넣어야 판매가가 계산돼요.</small>' : "") + "</div>" +
     '<div class="fd"><label for="ssu-m">마진율 (%) · 수수료 제외</label><input class="ctl" id="ssu-m" type="number" step="0.1" value="' + +(Number(set("ss_margin", 0.15)) * 100).toFixed(2) + '"></div>' +
@@ -177,5 +178,5 @@ function bind(root) {
   if (fi) fi.onchange = async function () { grab(); fi.disabled = true; await uploadPhotos(fi.files); await store(); ERP.render(); };
   if (V.edit) thumbs(root);
 }
-ERP.page({ id: "ss-upload", title: "매입상품 등록", wide: true, roles: ["owner"], render: render, bind: bind });
+ERP.page({ id: "ss-upload", title: "매입상품 등록 (시험)", wide: true, roles: ["owner"], render: render, bind: bind });
 })();
