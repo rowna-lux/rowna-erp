@@ -375,7 +375,7 @@ async function fetchKream(rows, opt) {
         }
         try {
           ERP.toast("사이즈별 시세 읽는 중 · " + (f.sku || "") + " " + sz);
-          await new Promise(function (r) { setTimeout(r, 800 + Math.random() * 800); });
+          await new Promise(function (r) { setTimeout(r, 2000 + Math.random() * 1500); });
           var sp = await pageSafe({ url: String(k.url).split("?")[0] + "?size=" + encodeURIComponent(sz), waitFor: "모델번호|발매가", minLen: 300, fast: true }, ch);
           if (!(sp.kream && sp.kream.full) && sp.kg && sp.kg.length) { sp.kream = sp.kream || {}; sp.kream.groups = sp.kg; }
           var pr = parseProduct(sp), kg = sp.kg || [];

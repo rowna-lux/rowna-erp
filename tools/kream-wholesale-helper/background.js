@@ -64,7 +64,7 @@ async function deepRead() {
   return out;
 }
 async function openPage(o) {
-  var gap = 2500 + Math.random() * 1500,   /* 속도: 페이지 간격 6~10초 → 2.5~4초 (2026-11-16) */ wait = lastOpen + gap - Date.now(); if (wait > 0) await sleep(wait);
+  var gap = 4500 + Math.random() * 2000,   /* 속도·차단 균형: 4.5~6.5초 (2.5~4초는 크림 오류 페이지 발생, 2026-11-17) */ wait = lastOpen + gap - Date.now(); if (wait > 0) await sleep(wait);
   var tabId = await workTab(); lastOpen = Date.now();
   await chrome.tabs.update(tabId, { url: o.url });
   await sleep(800); await waitComplete(tabId, 30000);
@@ -98,17 +98,3 @@ chrome.runtime.onMessage.addListener(function (msg, sender, reply) {
   queue = queue.then(function () { return openPage(msg.opt); }).then(function (d) { reply({ ok: true, data: d }); }, function (e) { reply({ ok: false, error: String(e && e.message || e) }); });
   return true;
 });
-
-
-// ── 소희봇 3대 통합: 폴더의 버전이 바뀌면 스스로 다시 켬 (2026-11-15) ──
-;(function () {
-  async function rownaChk() {
-    try {
-      var r = await fetch(chrome.runtime.getURL("manifest.json") + "?t=" + Date.now(), { cache: "no-store" });
-      var m = await r.json();
-      if (m.version && m.version !== chrome.runtime.getManifest().version) chrome.runtime.reload();
-    } catch (e) {}
-  }
-  rownaChk();
-  setInterval(rownaChk, 60000);
-})();
