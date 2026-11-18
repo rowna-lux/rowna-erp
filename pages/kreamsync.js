@@ -40,6 +40,10 @@ function parse(text, stName) {
 }
 function stInfo(name) { return ST.find(function (s) { return s[2] === name; }) || [0, 0, name, 0]; }
 function d8(x) { var m = String(x || "").match(/(\d{2})\/(\d{2})\/(\d{2})/); return m ? "20" + m[1] + "-" + m[2] + "-" + m[3] : ""; }
+/* 최신순: 크림 보관번호(I-XX13745936-1)의 숫자가 클수록 최근 신청. 정산완료·반송·회수 끝난 건은 맨 아래 (대표님 2026-11-18) */
+function inum(it) { var m = String(it.id || "").match(/I-[A-Z]{2}(\d+)-(\d+)/); return m ? +m[1] * 100 + (+m[2]) : 0; }
+function done(it) { var s = stInfo(it.st)[3]; return s === 3 || s === 9; }
+function newest(a, b) { return (done(a) - done(b)) || (inum(b) - inum(a)); }
 function hoursLeft(x) { var m = String(x || "").match(/(\d+):(\d{2}):(\d{2})/); return m ? +m[1] + (+m[2]) / 60 : null; }
 
 /* 짝짓기: 품번(크림 모델번호의 / 나눈 각각) + 사이즈 */
@@ -123,7 +127,7 @@ setInterval(function () { try { if (busy || !on() || !S.SET || !S.profile) retur
 function render() {
   var d = D(), I = Object.keys(d.items).map(function (k) { return d.items[k]; }), A = assign(I.slice()), rows = buyRows(), ROW = {}; rows.forEach(function (r) { ROW[r.id] = r; });
   var c = d.counts || {}, cc = {}; Object.keys(c).forEach(function (t) { Object.assign(cc, c[t]); });
-  var h = '<div class="head"><div><h1>크림 보판 현황</h1><p>크림 ‘내 보관판매’를 읽어 크림 매입의 보판신청·창고입고·판매일을 채우고, 정산완료 건은 매출(크림)로 기록해요 · ' + (on() ? '<span class="pill p-good">로우나재고 크림 도우미 켜짐</span>' : '<span class="pill p-crit">로우나재고 크림 도우미 꺼짐 (v1.2.0 필요)</span>') + (d.at ? " · 마지막 " + esc(new Date(d.at).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })) : "") + '</p></div><div class="tools"><button class="btn pri" data-act="kssync"' + (busy ? " disabled" : "") + ">" + (busy ? "읽는 중…" : "↻ 지금 읽기") + "</button></div></div>";
+  var h = '<div class="head"><div><h1>크림 보판 현황</h1><p>크림 ‘내 보관판매’를 읽어 크림 매입의 보판신청·창고입고·판매일을 채우고, 정산완료 건은 매출(크림)로 기록해요 · ' + (on() ? '<span class="pill p-good">로우나재고 크림 도우미 켜짐</span>' : '<span class="pill p-crit">로우나재고 크림 도우미 꺼짐 (v1.2.0 필요)</span>') + (d.at ? " · 마지막 " + esc(new Date(d.at).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })) : "") + '</p></div><div class="tools"><button class="btn pri" data-act="kssync"' + (busy ? " disabled" : "") + ">" + (busy ? "읽는 중…" : "↻ 지금 읽기") + '</button><button class="btn" data-act="ksexport"' + (Object.keys(d.items).length ? "" : " disabled") + '>📥 세무사용 엑셀</button></div></div>';
   if (d.err) h += '<div class="panel"><small class="neg">마지막 오류 (' + esc(new Date(d.errAt).toLocaleString("ko-KR")) + "): " + esc(d.err) + "</small></div>";
   h += '<div class="panel"><div style="display:flex;gap:6px;flex-wrap:wrap">' + ST.map(function (s) { var n = cc[s[2]] || 0; return '<span class="pill ' + (n ? (s[3] === 9 ? "p-crit" : s[3] === 3 ? "p-good" : "p-acc") : "") + '">' + esc(s[2]) + " " + n + "</span>"; }).join("") + "</div></div>";
   /* 발송 기한 */
@@ -133,14 +137,31 @@ function render() {
   var sup = {}; rows.forEach(function (r) { var ks = r.extra.kreamSync || {}, n = num(ks.settledN); if (!n) return; var s = sup[r.supplier || "열무"] = sup[r.supplier || "열무"] || { n: 0, real: 0, est: 0, noEst: 0 }; s.n += n; s.real += num(ks.settled) - num(r.wholesalePrice) * n; if (r.extra.buyEst != null) s.est += num(r.extra.buyEst) * n; else s.noEst += n; });
   h += '<div class="panel"><h2>💰 정산완료 · 예상 이익 vs 실제 이익</h2>' + (Object.keys(sup).length ? '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>도매처</th><th class="r">정산 수량</th><th class="r">매입 때 예상 이익</th><th class="r">실제 이익 (정산금액 − 도매가)</th><th class="r">차이</th></tr></thead><tbody>' + Object.keys(sup).map(function (k) { var s = sup[k], df = s.real - s.est; return "<tr><td>" + esc(k) + '</td><td class="r num">' + s.n + '</td><td class="r num">' + won(s.est) + (s.noEst ? '<small class="muted">예상 없는 ' + s.noEst + "개</small>" : "") + '</td><td class="r num"><b>' + won(s.real) + '</b></td><td class="r num ' + (df < 0 ? "neg" : "") + '">' + (df >= 0 ? "+" : "") + won(df) + "</td></tr>"; }).join("") + "</tbody></table></div>" : '<p class="muted">아직 크림 매입 상품 중 정산완료된 게 없어요.</p>') + '<p class="note">실제 이익 = 크림 정산금액(수수료 뗀 금액) − 도매가. 정산완료 1건마다 매출(쇼핑몰 ‘크림’, 정산 확정)에 1줄씩 들어가요 · 지금까지 ' + Object.keys(d.sold).length + "건</p></div>";
   /* 크림 매입 줄별 진행 */
-  var mine = rows.filter(function (r) { return (A.by[r.id] || []).length; });
+  var mine = rows.filter(function (r) { return (A.by[r.id] || []).length; }).sort(function (a, b) { return String(b.extra.buyDate).localeCompare(String(a.extra.buyDate)) || Math.max.apply(null, A.by[b.id].map(inum)) - Math.max.apply(null, A.by[a.id].map(inum)); });
   h += '<div class="panel"><h2>크림 매입 상품 진행 (' + mine.length + '줄)</h2><div class="tbl-wrap"><table class="tbl"><thead><tr><th>매입일</th><th>도매처</th><th>품번 · 사이즈</th><th class="r">매입</th><th>크림 단계</th><th>보판신청</th><th>창고입고</th><th>판매</th><th class="r">정산</th></tr></thead><tbody>' + (mine.map(function (r) { var L = A.by[r.id], n = {}; L.forEach(function (it) { n[it.st] = (n[it.st] || 0) + 1; }); var e = r.extra, ks = e.kreamSync || {}; return '<tr><td class="num">' + esc(e.buyDate.slice(5)) + "</td><td>" + esc(r.supplier || "") + "</td><td>" + esc((r.brand || "") + " " + (r.sku || "")) + " <small>" + esc(r.size || "") + '</small></td><td class="r num">' + qty(r) + "</td><td>" + Object.keys(n).map(function (k) { return '<span class="pill">' + esc(k) + " " + n[k] + "</span>"; }).join(" ") + '</td><td class="num">' + esc((e.boDate || "").slice(5)) + '</td><td class="num">' + esc((e.whDate || "").slice(5)) + '</td><td class="num">' + esc((e.soldDate || "").slice(5)) + '</td><td class="r num">' + (ks.settledN ? won(ks.settled) + "<small>" + ks.settledN + "개</small>" : "") + "</td></tr>"; }).join("") || '<tr><td colspan="9" class="empty">' + (I.length ? "짝이 맞은 크림 매입 상품이 없어요" : "‘지금 읽기’를 눌러 주세요") + "</td></tr>") + "</tbody></table></div></div>";
   /* 짝 안 맞은 것 */
-  var un = I.filter(function (it) { return !it.row; }), ug = {}; un.forEach(function (it) { var k = it.st + "|" + it.model + "|" + it.name + "|" + (it["사이즈"] || ""); ug[k] = (ug[k] || 0) + 1; });
+  var un = I.filter(function (it) { return !it.row; }).sort(newest), ug = {}; un.forEach(function (it) { var k = it.st + "|" + it.model + "|" + it.name + "|" + (it["사이즈"] || ""); ug[k] = (ug[k] || 0) + 1; });
   if (un.length) h += '<div class="panel"><h2>크림 매입과 짝 안 맞은 보판 (' + un.length + '건)</h2><p class="muted">로우나 재고에서 보낸 것이거나 품번·사이즈 표기가 달라요. 크림 매입 상품이면 열무 크림도매에서 품번을 크림 모델번호와 같게 고쳐 주세요.</p><div class="tbl-wrap"><table class="tbl"><thead><tr><th>단계</th><th>모델번호</th><th>상품</th><th>사이즈</th><th class="r">수량</th></tr></thead><tbody>' + Object.keys(ug).map(function (k) { var a = k.split("|"); return "<tr><td>" + esc(a[0]) + "</td><td>" + esc(a[1]) + "</td><td>" + esc(a[2]) + "</td><td>" + esc(a[3]) + '</td><td class="r num">' + ug[k] + "</td></tr>"; }).join("") + "</tbody></table></div></div>";
   h += '<p class="note">자동: ERP가 켜져 있고 도우미가 켜져 있으면 6시간마다 읽어요. 날짜는 비어 있을 때만 채워요(직접 넣은 날짜는 그대로). 창고입고일은 크림 ‘보관 중’에서 처음 본 날로 들어가요.</p>';
   return h;
 }
 ERP.acts.kssync = function () { sync(false); };
+/* 세무사용 엑셀 (대표님 2026-11-18): 크림 보관판매 전체를 최신순으로, 매입가(크림 매입 = 도매가, 로우나 재고 = 재고실사 매입가) 붙여서 */
+function stockCost(it) {
+  var I = (S.SET.stock_inventory || {}).items || {}, ms = String(it.model || "").split("/").map(nk).filter(Boolean), hit = null;
+  Object.keys(I).forEach(function (k) { var s = I[k]; if (!s || hit) return; var m = nk(s.model); if (!m || !ms.some(function (y) { return y === m || (m.length >= 8 && (y.indexOf(m) >= 0 || m.indexOf(y) >= 0)); })) return; if (s.opt && it["사이즈"] && !sizeHit({ size: s.opt }, it["사이즈"])) return; hit = s; });
+  if (!hit) return null;
+  var L = (hit.lots || []), K = L.filter(function (x) { return String(x.loc || "").toUpperCase() === "KREAM"; }), use = (K.length ? K : L).map(function (x) { return num(x.price); }).filter(function (x) { return x > 0; });
+  return { cost: use.length ? Math.round(use.reduce(function (a, b) { return a + b; }, 0) / use.length) : null, code: hit.code || "" };
+}
+ERP.acts.ksexport = function () {
+  var d = D(), I = Object.keys(d.items).map(function (k) { return d.items[k]; }), A = assign(I.slice()), ROW = {}; A.R.forEach(function (r) { ROW[r.id] = r; });
+  var rows = I.sort(newest).map(function (it, i) {
+    var r = it.row && ROW[it.row], sc = r ? null : stockCost(it), cost = r ? num(r.wholesalePrice) : sc && sc.cost;
+    return { "순서": i + 1, "크림 보관번호": it.id, "단계": it.st, "모델번호": it.model, "상품명": it.name, "사이즈": it["사이즈"] || "", "출처": r ? "크림 도매 매입 (" + (r.supplier || "") + ")" : sc ? "로우나 재고" : "확인 필요", "매입일": r ? r.extra.buyDate : "", "입금일": r ? (r.extra.payDate || "") : "", "매입가(개당, VAT 포함)": cost || "", "재고코드": sc ? sc.code : (r && r.extra.stockCode) || "", "보판신청일": r ? (r.extra.boDate || "") : "", "정산금액": it["정산금액"] ? num(it["정산금액"]) : "", "정산일": d8(it["정산일"]), "보증금": it["보증금"] ? num(it["보증금"]) : "" };
+  });
+  var sum = {}; rows.forEach(function (x) { var k = x["단계"]; sum[k] = sum[k] || { "단계": k, "수량": 0, "매입가 합계": 0, "정산금액 합계": 0 }; sum[k]["수량"]++; sum[k]["매입가 합계"] += num(x["매입가(개당, VAT 포함)"]); sum[k]["정산금액 합계"] += num(x["정산금액"]); });
+  ERP.downloadBlob("크림보관판매_" + U.today() + ".xlsx", ERP.xlsxBlob([{ name: "보관판매 전체(최신순)", rows: rows }, { name: "단계별 합계", rows: ST.map(function (s) { return sum[s[2]]; }).filter(Boolean) }]));
+};
 ERP.page({ id: "kream-sync", title: "크림 보판 현황", wide: true, roles: ["owner", "accountant", "staff", "ai"], render: render, bind: function () {} });
 })();
