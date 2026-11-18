@@ -703,6 +703,19 @@ setInterval(async function () {
     autoBusy = true; await fetchKream(rows, { chan: "W" }); tgNotifyRows(rows, {});
   } catch (e) {} finally { autoBusy = false; }
 }, 60 * 1000);
+/* 크림 매입(매입 확정 상품)만 하루 2번(09시·21시) 시세 자동 확인 — 대표님 2026-11-18: "내가 매입한 상품만 시세 확인"
+   팔린 것(판매일 있음)은 뺌. 여러 PC에서 ERP를 켜 놔도 한 번만 돌도록 마지막 시각을 app_settings(kb_price_auto)에 기록 */
+function kbSlot() { var n = new Date(), s = new Date(n); s.setMinutes(0, 0, 0); if (n.getHours() >= 21) s.setHours(21); else if (n.getHours() >= 9) s.setHours(9); else { s.setDate(s.getDate() - 1); s.setHours(21); } return s.getTime(); }
+setInterval(async function () {
+  try {
+    if (autoBusy || !S.SET || !wholesaleOn() || qBusy || TG.running) return;
+    var st = S.SET.kb_price_auto || {}; if ((st.last || 0) >= kbSlot()) return;
+    var rows = ERP.list("kream_wholesale").filter(function (x) { var e = x.extra || {}; return x.decision === "매입" && e.buyDate && !e.soldDate && !busy[x.id]; });
+    st = { last: Date.now(), n: rows.length }; await S.sb.from("app_settings").upsert({ key: "kb_price_auto", value: st }); S.SET.kb_price_auto = st;
+    if (!rows.length) return;
+    autoBusy = true; ERP.toast("크림 매입 " + rows.length + "줄 시세 자동 확인 (09·21시)"); await fetchKream(rows, { chan: "W" });
+  } catch (e) {} finally { autoBusy = false; }
+}, 5 * 60 * 1000);
 function tgPanel() {
   var on = tgOn(), has = !!lsg(TGK.tok), log = []; try { log = JSON.parse(lsg(TGK.log) || "[]"); } catch (e) {}
   return '<div class="panel"><h2>🤖 텔레그램 자동계산 봇 <small class="muted">(이 PC에서만 · PC1 권장)</small></h2>' +

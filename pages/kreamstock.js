@@ -112,7 +112,7 @@ function T() { return v.ksTab || "bo"; }
 function render() {
   var tab = T(), R = rows(tab), d = D(), unseen = d.alerts.filter(function (a) { return !a.seen; });
   var h = '<div class="head"><div><h1>로우나재고 크림</h1><p>보유 재고를 크림 시세(95점 제외, 같은 옵션만)로 판별해요 · ' + (on() ? '<span class="pill p-good">로우나재고 크림 도우미 켜짐</span>' : '<span class="pill p-crit" title="tools/kream-stock-helper 를 크롬 확장으로 설치하세요">로우나재고 크림 도우미 꺼짐</span>') +
-    (d.lastAuto ? ' · 마지막 자동 확인 ' + esc(new Date(d.lastAuto).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })) : "") + '</p></div><div class="tools">' +
+    (d.auto ? "" : ' · <span class="pill">자동 확인 꺼짐 — ↻ 버튼으로만</span>') + (d.lastAuto ? ' · 마지막 자동 확인 ' + esc(new Date(d.lastAuto).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })) : "") + '</p></div><div class="tools">' +
     '<button class="btn ' + (tab === "bo" ? "pri" : "") + '" data-act="ksbo">보판 (' + rows("bo").length + ')</button><button class="btn ' + (tab === "nm" ? "pri" : "") + '" data-act="ksnm">일반판매 (' + rows("nm").length + ')</button><button class="btn ' + (tab === "old" ? "pri" : "") + '" data-act="ksold">⏳ ' + OLD_DAYS + '일+ (' + rows("old").length + ')</button>' +
     '<button class="btn" data-act="ksrefresh"' + (busy ? " disabled" : "") + '>' + (busy ? "확인 중…" : "↻ 시세 새로고침") + '</button><button class="btn" data-act="ksfindall"' + (busy ? " disabled" : "") + '>🔍 크림 연결 안 된 재고 후보 찾기</button></div></div>';
   if (unseen.length) h += '<div class="panel"><h2>🔔 시세 변동 ' + unseen.length + '건</h2><ul class="note">' + unseen.slice(-20).reverse().map(function (a) { return "<li>" + esc(a.text) + ' <small class="muted">' + esc(new Date(a.at).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })) + "</small></li>"; }).join("") + '</ul><button class="btn sm" data-act="ksseen">모두 확인</button></div>';
@@ -197,7 +197,8 @@ async function refresh(auto, only) {
 function lastSlot() { var n = new Date(), s = new Date(n); s.setMinutes(0, 0, 0); if (n.getHours() >= 21) s.setHours(21); else if (n.getHours() >= 9) s.setHours(9); else { s.setDate(s.getDate() - 1); s.setHours(21); } return s.getTime(); }
 /* 보판 상품은 판매 가격 확인용으로 따로 N분마다(기본 10분, 0이면 끔) 다시 확인 → 바뀌면 변동 알림 (대표님 지시 2026-11-12) */
 function boEvery() { var x = D().boEvery; return x == null ? 10 : num(x); }
-setInterval(function () { try { if (!S.SET || !S.SET[KEY] || busy || !on()) return; var d = D(); if ((d.lastAuto || 0) < lastSlot()) refresh(true); else if (boEvery() > 0 && Date.now() - (d.lastBo || 0) >= boEvery() * 60000) refresh(true, "bo"); } catch (e) {} }, 60 * 1000);
+/* 2026-11-18 대표님: 자동 시세 확인은 ‘크림 매입’ 상품만 → 여기 자동(하루 2번·보판 10분)은 꺼 둠. 설정에 auto:true 넣으면 다시 켜짐. 버튼 새로고침은 그대로 */
+setInterval(function () { try { if (!S.SET || !S.SET[KEY] || !D().auto || busy || !on()) return; var d = D(); if ((d.lastAuto || 0) < lastSlot()) refresh(true); else if (boEvery() > 0 && Date.now() - (d.lastBo || 0) >= boEvery() * 60000) refresh(true, "bo"); } catch (e) {} }, 60 * 1000);
 
 ERP.page({ id: "kream-stock", title: "로우나재고 크림", wide: true, roles: ["owner", "accountant", "staff", "ai"], render: render, bind: bind, badge: function () { return D().alerts.filter(function (a) { return !a.seen; }).length || ""; } });
 })();
