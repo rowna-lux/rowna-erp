@@ -178,5 +178,5 @@ function bind(root) {
   if (fi) fi.onchange = async function () { grab(); fi.disabled = true; await uploadPhotos(fi.files); await store(); ERP.render(); };
   if (V.edit) thumbs(root);
 }
-ERP.page({ id: "ss-upload", title: "매입상품 등록 (시험)", wide: true, roles: ["owner"], render: render, bind: bind });
+ERP.page({ id: "ss-upload", title: "매입상품 등록 (시험)", wide: true, roles: ["owner"], render: render, bind: bind, live: function () { if (!V.edit) ERP.render(); } });
 })();
