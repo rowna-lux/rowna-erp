@@ -126,7 +126,6 @@ ERP.acts.ssuapprove = async function () {
   if (d.status === "승인") { d.status = "초안"; await store(); ERP.render(); return; }
   var miss = []; if (!d.brand) miss.push("브랜드"); if (!d.code) miss.push("품번"); if (!d.cost) miss.push("매입가"); if (!d.salePrice) miss.push("판매가(수수료율 설정 필요)"); if (!(d.photos || []).length) miss.push("사진");
   if (miss.length) { ERP.toast("빠진 정보: " + miss.join(", ")); return; }
-  if (!S.SET.ss_template_no) { ERP.toast("가격·틀 설정에서 틀 상품번호(샤넬 지갑류)를 넣어 주세요."); return; }
   if (!confirm(d.name + "\n판매가 " + won(d.salePrice) + "원으로 승인할까요?")) return;
   d.status = "승인"; d.error = ""; await store();
   if (!d.purchaseId && ERP.canWrite("purchases") && confirm("ERP 매입 기록(재고)에도 저장할까요?")) {
@@ -142,6 +141,7 @@ ERP.acts.ssudel = async function () {
 };
 /* 승인분 → PC 스크립트용 JSON (사진은 24시간짜리 다운로드 주소) */
 ERP.acts.ssuexport = async function () {
+  if (!S.SET.ss_template_no) { ERP.toast("API용은 가격·틀 설정에서 틀 상품번호(샤넬 지갑류)를 넣어야 해요."); return; }
   var A = drafts().filter(function (d) { return d.status === "승인"; }); if (!A.length) { ERP.toast("승인된 상품이 없어요."); return; }
   var out = { exportedAt: new Date().toISOString(), templateChannelProductNo: String(S.SET.ss_template_no || ""), returnFee: num(set("ss_return_fee", 25000)), exchangeFee: num(set("ss_exchange_fee", 50000)), items: [] };
   for (var i = 0; i < A.length; i++) {
