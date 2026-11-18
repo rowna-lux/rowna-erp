@@ -141,7 +141,7 @@ function render() {
   cand.sort(function (a, b) { return pscore(b) - pscore(a); }).forEach(function (x) { var price = cost(x.it), n = Math.min(x.rq, Math.floor((budget - pick.whole) / price)); if (n > 0) { pick.qty += n; pick.whole += n * price; pick.real += n * x.c.real; pick.lines.push((x.it.brand || "") + " " + (x.it.name || x.it.sku || "").slice(0, 18) + " ×" + n); } });
   var sups = suppliers();
   var mall = KIND() === "mall";
-  var h = '<div class="head"><div><h1>' + (mall ? "크림 리셀 소싱 (국내몰)" : "열무 크림도매") + '</h1><p>' + (mall ? "국내몰 세일 목록을 할인율 높은 순으로 읽어 크림 시세·거래량·이익과 비교해요 · " : "도매 리스트 사진을 올리면 크림 시세·거래량·이익을 자동으로 채워요 · ") + (mall ? (resellOn() ? '<span class="pill p-good">리셀 도우미 켜짐</span>' : '<span class="pill p-crit" title="국내몰은 전용 확장 ‘로우나 리셀 도우미’로만 돌아가요 (기존 도우미는 안 씀)">리셀 도우미 꺼짐</span>') : (helperOn() ? '<span class="pill p-good">사진 읽기 도우미 켜짐</span>' : '<span class="pill p-crit" title="사진 읽기(ChatGPT)는 크롬 확장 ‘로우나 도우미’로 해요">사진 읽기 도우미 꺼짐</span>') + ' ' + (wholesaleOn() ? '<span class="pill p-good">열무 크림도매 도우미 켜짐</span>' : '<span class="pill p-crit" title="크림 시세(빠른배송·일반배송·95점 제외)는 전용 확장 ‘로우나 열무 크림도매 도우미’로 읽어요">열무 크림도매 도우미 꺼짐</span>')) + '</p></div><div class="tools">' +
+  var h = '<div class="head"><div><h1>' + (mall ? "크림 리셀 소싱 (국내몰)" : "열무 크림도매") + '</h1><p>' + (mall ? "국내몰 세일 목록을 할인율 높은 순으로 읽어 크림 시세·거래량·이익과 비교해요 · " : "도매 리스트 사진을 올리면 크림 시세·거래량·이익을 자동으로 채워요 · ") + (mall ? (resellOn() ? '<span class="pill p-good">리셀 도우미 켜짐</span>' : '<span class="pill p-crit" title="국내몰은 전용 확장 ‘로우나 리셀 도우미’로만 돌아가요 (기존 도우미는 안 씀)">리셀 도우미 꺼짐</span>') : (helperOn() ? '<span class="pill p-good">사진 읽기 도우미 켜짐</span>' : '<span class="pill p-crit" title="사진 읽기(ChatGPT)는 크롬 확장 ‘로우나 도우미’로 해요">사진 읽기 도우미 꺼짐</span>') + ' ' + (wholesaleOn() ? '<span class="pill p-good">열무 크림도매 도우미 켜짐' + (document.documentElement.dataset.rownaWholesaleV ? ' v' + document.documentElement.dataset.rownaWholesaleV : ' (구버전 — 새로고침 필요)') + '</span>' : '<span class="pill p-crit" title="크림 시세(빠른배송·일반배송·95점 제외)는 전용 확장 ‘로우나 열무 크림도매 도우미’로 읽어요">열무 크림도매 도우미 꺼짐</span>')) + '</p></div><div class="tools">' +
     '<select class="ctl" id="k-kind" aria-label="구분"><option value="whole"' + (mall ? "" : " selected") + '>도매처</option><option value="mall"' + (mall ? " selected" : "") + '>국내몰</option></select>' +
     '<select class="ctl" id="k-sup" aria-label="도매처">' + sups.map(function (x) { return "<option" + (x === SUP() ? " selected" : "") + ">" + esc(x) + "</option>"; }).join("") + (mall ? "" : '<option value="__new">+ 도매처 추가</option>') + "</select>" +
     (dates.length ? '<select class="ctl" id="k-list" aria-label="리스트 날짜">' + dates.map(function (d) { return "<option" + (d === v.kList ? " selected" : "") + ' value="' + d + '">' + d.replace(/-/g, ".") + " 리스트</option>"; }).join("") + "</select>" : "") +
@@ -379,7 +379,7 @@ async function fetchKream(rows, opt) {
     var g = bySku[keys[i]], f = g[0]; g.forEach(function (it) { busy[it.id] = 1; }); ERP.render();
     ERP.toast("크림 확인 중 " + (i + 1) + "/" + keys.length + " · " + (f.brand || "") + " " + (f.sku || ""));
     if (opt && opt.onProgress) try { opt.onProgress(i + 1, keys.length, (f.brand || "") + " " + (f.sku || "")); } catch (e) {}
-    var k; try { k = await kreamLookup(f.sku, f.kreamUrl, ch, ((f.brand || "") + " " + (f.name || "")).trim(), (g.filter(function (x) { return !szFree(x.size); })[0] || {}).size); } catch (e) { k = { error: e.message }; if (/멈췄|멈춤|꺼져/.test(e.message)) { g.forEach(function (it) { delete busy[it.id]; }); ERP.toast("⚠ " + e.message); stopAll = true; return; } }
+    var k; try { if (ERP.extDead.on) throw new Error("확장이 새로고침됐어요. ERP 페이지를 새로고침(F5)해 주세요."); k = await kreamLookup(f.sku, f.kreamUrl, ch, ((f.brand || "") + " " + (f.name || "")).trim(), (g.filter(function (x) { return !szFree(x.size); })[0] || {}).size); } catch (e) { k = { error: e.message }; if (/멈췄|멈춤|꺼져/.test(e.message)) { g.forEach(function (it) { delete busy[it.id]; }); ERP.toast("⚠ " + e.message); stopAll = true; return; } }
     /* 사이즈별로 크림 페이지(?size=XL)를 따로 열어 그 사이즈의 판매입찰·체결·구매입찰만 읽음 (2026-11-13 대표님 지시) */
     if (k && !k.error && k.verified && k.url) {
       k.bySize = {}; var szs = []; g.forEach(function (it) { if (!szFree(it.size) && szs.indexOf(it.size) < 0) szs.push(it.size); });
@@ -586,6 +586,7 @@ var TGK = { tok: "rowna_tg_token", chat: "rowna_tg_chat", off: "rowna_tg_off", o
 var TG = { busy: false, lastPoll: 0, err: "", jobs: [] };
 function lsg(k) { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } }
 function lss(k, v) { try { if (v === "" || v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
+ERP.kreamCalc = function (it) { return calc(it); }; ERP.tgOn = function () { return tgOn(); };
 function tgOn() { return !!(lsg(TGK.tok) && lsg(TGK.on) === "1"); }
 function tgLog(t) { var a = []; try { a = JSON.parse(lsg(TGK.log) || "[]"); } catch (e) {} a.unshift({ at: new Date().toISOString(), t: String(t).slice(0, 300) }); lss(TGK.log, JSON.stringify(a.slice(0, 40))); }
 async function tgApi(m, body) {
@@ -698,9 +699,9 @@ setInterval(async function () {
   try {
     if (autoBusy || !S.SET || !wholesaleOn() || qBusy || TG.running) return;
     var lo = U.shiftDay ? U.shiftDay(U.today(), -1) : U.today();
-    var rows = ERP.list("kream_wholesale").filter(function (x) { return !isMall(x.supplier) && (x.listDate || "") >= lo && x.kreamPrice == null && !(x.extra || {}).kream && !busy[x.id] && Date.now() - new Date(x.createdAt || 0) > 90 * 1000; });
+    var rows = ERP.list("kream_wholesale").filter(function (x) { return !isMall(x.supplier) && (x.listDate || "") >= lo && x.kreamPrice == null && (!(x.extra || {}).kream || (ERP.extDead.re.test(((x.extra || {}).kream || {}).error || "") && !ERP.extDead.retried[x.id])) && !busy[x.id] && Date.now() - new Date(x.createdAt || 0) > 90 * 1000; });
     if (!rows.length) return;
-    autoBusy = true; await fetchKream(rows, { chan: "W" }); tgNotifyRows(rows, {});
+    rows.forEach(function (x) { ERP.extDead.retried[x.id] = 1; }); autoBusy = true; await fetchKream(rows, { chan: "W" }); tgNotifyRows(rows, {});
   } catch (e) {} finally { autoBusy = false; }
 }, 60 * 1000);
 /* 크림 매입(매입 확정 상품)만 하루 2번(09시·21시) 시세 자동 확인 — 대표님 2026-11-18: "내가 매입한 상품만 시세 확인"

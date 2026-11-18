@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
   "name": "로우나재고 크림 도우미",
-  "version": "1.2.0",
+  "version": "1.2.3",
   "description": "로우나 ERP '로우나재고 크림' 전용. 보유 재고의 크림 시세(빠른배송·일반배송 판매입찰, 체결, 95점 목록)와 내 보관판매 진행·정산 목록을 읽기만 해요. 다른 도우미와 통로·대기줄·작업 탭이 모두 따로예요.",
   "permissions": [
     "tabs",
     "scripting",
-    "storage"
+    "storage",
+    "alarms"
   ],
   "host_permissions": [
     "https://kream.co.kr/*"
@@ -24,5 +25,6 @@
       ],
       "run_at": "document_start"
     }
-  ]
+  ],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6HdCua1WxXMw1Ez03UNbFdfLKn80MIVnnf99VDve9qQOlY9vorku3htejMy529AdEd3oH/mXXX1isTJMvIIvgxjDxIZNM4VmCMA2o8akThPwkfb+wlt1EJIT1eN+6hwoxpRWzmra7HK0lJ1jrbiTLDdKZR3Pa3DS6BbOZugzRgtX3EjfirwCNUn0tf8FOT1jiV+eDpYh3Kg56H+ZVfDTo/YV0pwr5sYiJpfNNXK9zOqrOeVf3iZuNa/7fPjq5VoCyc2ey/igx5SBD50+xXPQAasbGgEX2mEdCpCj/r5gYwE3WPjCkCGwYWZxt40+i6r/bz4oSxPH3Ha05LlR6OQoHQIDAQAB"
 }

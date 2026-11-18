@@ -127,7 +127,7 @@ setInterval(function () { try { if (busy || !on() || !S.SET || !S.profile) retur
 function render() {
   var d = D(), I = Object.keys(d.items).map(function (k) { return d.items[k]; }), A = assign(I.slice()), rows = buyRows(), ROW = {}; rows.forEach(function (r) { ROW[r.id] = r; });
   var c = d.counts || {}, cc = {}; Object.keys(c).forEach(function (t) { Object.assign(cc, c[t]); });
-  var h = '<div class="head"><div><h1>크림 보판 현황</h1><p>크림 ‘내 보관판매’를 읽어 크림 매입의 보판신청·창고입고·판매일을 채우고, 정산완료 건은 매출(크림)로 기록해요 · ' + (on() ? '<span class="pill p-good">로우나재고 크림 도우미 켜짐</span>' : '<span class="pill p-crit">로우나재고 크림 도우미 꺼짐 (v1.2.0 필요)</span>') + (d.at ? " · 마지막 " + esc(new Date(d.at).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })) : "") + '</p></div><div class="tools"><button class="btn pri" data-act="kssync"' + (busy ? " disabled" : "") + ">" + (busy ? "읽는 중…" : "↻ 지금 읽기") + '</button><button class="btn" data-act="ksexport"' + (Object.keys(d.items).length ? "" : " disabled") + '>📥 세무사용 엑셀</button></div></div>';
+  var h = '<div class="head"><div><h1>크림 보판 현황</h1><p>크림 ‘내 보관판매’를 읽어 크림 매입의 보판신청·창고입고·판매일을 채우고, 정산완료 건은 매출(크림)로 기록해요 · ' + (on() ? '<span class="pill p-good">로우나재고 크림 도우미 켜짐' + (document.documentElement.dataset.rownaStockV ? ' v' + document.documentElement.dataset.rownaStockV : ' (구버전)') + '</span>' : '<span class="pill p-crit">로우나재고 크림 도우미 꺼짐 (v1.2.0 필요)</span>') + (d.at ? " · 마지막 " + esc(new Date(d.at).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })) : "") + '</p></div><div class="tools"><button class="btn pri" data-act="kssync"' + (busy ? " disabled" : "") + ">" + (busy ? "읽는 중…" : "↻ 지금 읽기") + '</button><button class="btn" data-act="ksexport"' + (Object.keys(d.items).length ? "" : " disabled") + '>📥 세무사용 엑셀</button></div></div>';
   if (d.err) h += '<div class="panel"><small class="neg">마지막 오류 (' + esc(new Date(d.errAt).toLocaleString("ko-KR")) + "): " + esc(d.err) + "</small></div>";
   h += '<div class="panel"><div style="display:flex;gap:6px;flex-wrap:wrap">' + ST.map(function (s) { var n = cc[s[2]] || 0; return '<span class="pill ' + (n ? (s[3] === 9 ? "p-crit" : s[3] === 3 ? "p-good" : "p-acc") : "") + '">' + esc(s[2]) + " " + n + "</span>"; }).join("") + "</div></div>";
   /* 발송 기한 */
@@ -146,6 +146,24 @@ function render() {
   return h;
 }
 ERP.acts.kssync = function () { sync(false); };
+/* 아침 9시 텔레그램 보고 (대표님 2026-11-18): 보판 발송 기한 · 새 정산 · 크림 매입 손익. 하루 한 번(app_settings morning_tg), 텔레그램 봇이 켜진 PC에서만 */
+async function morning() {
+  var day = U.today(), st = S.SET.morning_tg || {}; if (st.day === day) return;
+  if (new Date().getHours() < 9 || !ERP.tgOn || !ERP.tgOn() || !ERP.tgSend) return;
+  st = { day: day, at: new Date().toISOString() }; var w = await S.sb.from("app_settings").upsert({ key: "morning_tg", value: st }); if (w.error) return; S.SET.morning_tg = st;
+  var d = D(), I = Object.keys(d.items).map(function (k) { return d.items[k]; }), out = ["☀️ <b>로우나 아침 보고</b> " + day.slice(5)];
+  var due = I.filter(function (it) { return it.st === "발송요청"; }), hs = due.map(function (it) { return hoursLeft(it["남은 시간"]); }).filter(function (x) { return x != null; });
+  if (d.at) { var age = Math.round((Date.now() - new Date(d.at).getTime()) / 3600e3); out.push("📦 크림 발송요청 " + due.length + "건" + (hs.length ? " · 가장 급한 건 약 " + Math.max(0, Math.round(Math.min.apply(null, hs) - age)) + "시간 남음" : "") + " (" + age + "시간 전 확인)"); }
+  var yd = new Date(day + "T00:00:00"); yd.setDate(yd.getDate() - 1); var y = yd.getFullYear() + "-" + ("0" + (yd.getMonth() + 1)).slice(-2) + "-" + ("0" + yd.getDate()).slice(-2), nw = I.filter(function (it) { return it.st === "정산완료" && d8(it["정산일"]) >= y; });
+  if (nw.length) out.push("💰 어제·오늘 크림 정산 " + nw.length + "건 · " + won(nw.reduce(function (a, it) { return a + num(it["정산금액"]); }, 0)) + "원");
+  var R = buyRows().filter(function (r) { return !r.extra.soldDate && r.kreamPrice; }), tot = 0, est = 0, bad = [];
+  R.forEach(function (r) { var c = ERP.kreamCalc ? ERP.kreamCalc(r) : null; if (!c) return; var q = qty(r); tot += c.real * q; if (r.extra.buyEst != null) est += num(r.extra.buyEst) * q; if (c.real < 0) bad.push((r.brand || "") + " " + (r.sku || "") + " " + (r.size || "") + " " + won(Math.round(c.real)) + "원×" + q); });
+  if (R.length) out.push("📈 크림 매입 미판매 " + R.length + "줄 · 지금 시세로 팔면 " + won(Math.round(tot)) + "원" + (est ? " (매입 때 예상 " + won(Math.round(est)) + "원)" : ""));
+  if (bad.length) out.push("⚠ 지금 팔면 손해 " + bad.length + "줄\n· " + bad.slice(0, 6).join("\n· "));
+  out.push("ERP: 크림 › 크림 보판 현황 / 크림 매입");
+  ERP.tgSend(out.join("\n"));
+}
+setInterval(function () { try { if (S.SET && S.profile) morning(); } catch (e) {} }, 5 * 60e3);
 /* 세무사용 엑셀 (대표님 2026-11-18): 크림 보관판매 전체를 최신순으로, 매입가(크림 매입 = 도매가, 로우나 재고 = 재고실사 매입가) 붙여서 */
 function stockCost(it) {
   var I = (S.SET.stock_inventory || {}).items || {}, ms = String(it.model || "").split("/").map(nk).filter(Boolean), hit = null;

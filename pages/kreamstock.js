@@ -111,7 +111,7 @@ function rec(r, tab) {
 function T() { return v.ksTab || "bo"; }
 function render() {
   var tab = T(), R = rows(tab), d = D(), unseen = d.alerts.filter(function (a) { return !a.seen; });
-  var h = '<div class="head"><div><h1>로우나재고 크림</h1><p>보유 재고를 크림 시세(95점 제외, 같은 옵션만)로 판별해요 · ' + (on() ? '<span class="pill p-good">로우나재고 크림 도우미 켜짐</span>' : '<span class="pill p-crit" title="tools/kream-stock-helper 를 크롬 확장으로 설치하세요">로우나재고 크림 도우미 꺼짐</span>') +
+  var h = '<div class="head"><div><h1>로우나재고 크림</h1><p>보유 재고를 크림 시세(95점 제외, 같은 옵션만)로 판별해요 · ' + (on() ? '<span class="pill p-good">로우나재고 크림 도우미 켜짐' + (document.documentElement.dataset.rownaStockV ? ' v' + document.documentElement.dataset.rownaStockV : ' (구버전)') + '</span>' : '<span class="pill p-crit" title="tools/kream-stock-helper 를 크롬 확장으로 설치하세요">로우나재고 크림 도우미 꺼짐</span>') +
     (d.auto ? "" : ' · <span class="pill">자동 확인 꺼짐 — ↻ 버튼으로만</span>') + (d.lastAuto ? ' · 마지막 자동 확인 ' + esc(new Date(d.lastAuto).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })) : "") + '</p></div><div class="tools">' +
     '<button class="btn ' + (tab === "bo" ? "pri" : "") + '" data-act="ksbo">보판 (' + rows("bo").length + ')</button><button class="btn ' + (tab === "nm" ? "pri" : "") + '" data-act="ksnm">일반판매 (' + rows("nm").length + ')</button><button class="btn ' + (tab === "old" ? "pri" : "") + '" data-act="ksold">⏳ ' + OLD_DAYS + '일+ (' + rows("old").length + ')</button>' +
     '<button class="btn" data-act="ksrefresh"' + (busy ? " disabled" : "") + '>' + (busy ? "확인 중…" : "↻ 시세 새로고침") + '</button><button class="btn" data-act="ksfindall"' + (busy ? " disabled" : "") + '>🔍 크림 연결 안 된 재고 후보 찾기</button></div></div>';

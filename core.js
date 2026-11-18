@@ -315,6 +315,22 @@ ERP.closeDrawer = function () { var rf = drawer && drawer.returnFocus; $("layer"
 /* ---------- 파일 내보내기 ---------- */
 ERP.pickFile = function (accept, fn) { var inp = document.createElement("input"); inp.type = "file"; inp.accept = accept; inp.onchange = function () { if (inp.files[0]) fn(inp.files[0]); }; inp.click(); };
 ERP.downloadBlob = function (name, blob) { var url = URL.createObjectURL(blob), a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(url); }, 4000); };
+/* 크롬 확장(도우미)이 스스로 다시 켜지면 이미 열린 ERP 탭과의 연결이 끊김 → 위에 띠를 띄우고, 입력 중이 아니면 20초 뒤 자동 새로고침.
+   새로고침 뒤에는 그때 실패한 크림 조회 줄을 열무 크림도매 자동 작업이 한 번 더 읽음 (2026-11-18) */
+ERP.extDead = { on: false, retried: {}, re: /확장이 새로고침|message channel closed|Extension context invalidated|Receiving end does not exist/i,
+  hit: function (msg) {
+    if (!msg || !ERP.extDead.re.test(String(msg)) || ERP.extDead.on) return; ERP.extDead.on = true;
+    var b = document.createElement("div"); b.id = "ext-dead";
+    b.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:9999;background:#b45309;color:#fff;padding:10px 16px;font-weight:600;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.3)";
+    b.innerHTML = '🔄 크롬 확장(도우미)이 다시 켜졌어요. 새로고침하면 실패한 계산을 이어서 해요. <span id="ext-dead-t"></span> <button class="btn sm" style="margin-left:8px" onclick="location.reload()">지금 새로고침</button>';
+    document.body.appendChild(b);
+    var left = 20, t = setInterval(function () {
+      var busyInput = document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && document.activeElement.value, modal = document.querySelector(".modal.open, .modal-bg, dialog[open]");
+      if (busyInput || modal) { document.getElementById("ext-dead-t").textContent = "(입력 중이라 자동 새로고침은 기다려요)"; left = 20; return; }
+      left--; document.getElementById("ext-dead-t").textContent = "(" + left + "초 뒤 자동 새로고침)"; if (left <= 0) { clearInterval(t); location.reload(); }
+    }, 1000);
+  } };
+window.addEventListener("message", function (e) { var d = e.data; if (e.source !== window || !d || d.ok !== false || !d.error) return; if (d.rownaS === "res" || d.rownaW === "res" || d.rownaK === "res" || d.rownaR === "res") ERP.extDead.hit(d.error); });
 ERP.xlsxBlob = function (sheets) { var wb = XLSX.utils.book_new(); sheets.forEach(function (s) { XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s.rows.length ? s.rows : [{ "": "데이터 없음" }]), s.name); }); return new Blob([XLSX.write(wb, { bookType: "xlsx", type: "array" })], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }); };
 
 /* ---------- 시작 ---------- */

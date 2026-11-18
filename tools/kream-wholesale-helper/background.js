@@ -98,3 +98,22 @@ chrome.runtime.onMessage.addListener(function (msg, sender, reply) {
   queue = queue.then(function () { return openPage(msg.opt); }).then(function (d) { reply({ ok: true, data: d }); }, function (e) { reply({ ok: false, error: String(e && e.message || e) }); });
   return true;
 });
+
+
+// ── 소희봇 3대 통합: 폴더의 버전이 바뀌면 스스로 다시 켬 (2026-11-15) ──
+;(function () {
+  async function rownaChk() {
+    try {
+      var r = await fetch(chrome.runtime.getURL("manifest.json") + "?t=" + Date.now(), { cache: "no-store" });
+      var m = await r.json();
+      if (m.version && m.version !== chrome.runtime.getManifest().version) chrome.runtime.reload();
+    } catch (e) {}
+  }
+  rownaChk();
+  setInterval(rownaChk, 60000);
+  // 2026-11-18: 확장이 잠들어(서비스 워커 비활성) 있어도 크롬 알람으로 1분마다 깨워서 확인
+  try {
+    chrome.alarms.create("rownaChk", { periodInMinutes: 1 });
+    chrome.alarms.onAlarm.addListener(function (a) { if (a && a.name === "rownaChk") rownaChk(); });
+  } catch (e) {}
+})();
