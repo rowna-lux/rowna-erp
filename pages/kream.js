@@ -93,7 +93,7 @@ function listDates() { var d = {}; items().forEach(function (x) { if (x.listDate
 function sheetKey(x) { var e = x.extra || {}; return e.sheet || ("t:" + String(x.createdAt || "").slice(0, 16)); }
 function sheetsOf(rows) { var m = {}; rows.forEach(function (x) { var k = sheetKey(x), t = String(x.createdAt || ""); if (!m[k]) m[k] = { key: k, at: t, n: 0, label: "" }; m[k].n++; if (t && t < m[k].at) m[k].at = t; var e = x.extra || {}; if (e.sheetName) m[k].label = e.sheetName; });
   return Object.keys(m).map(function (k) { return m[k]; }).sort(function (a, b) { return a.at.localeCompare(b.at); }).map(function (o, i) { o.no = i + 1; if (!o.label) o.label = "시트" + (i + 1); return o; }); }
-function inSheet(x) { return !v.kSheet || sheetKey(x) === v.kSheet; }
+function inSheet(x) { return !v.kSheet || v.kSheet === "*" || sheetKey(x) === v.kSheet; }   /* "*" = 전체 보기 (기본은 시트 하나씩, 대표님 2026-11-18) */
 function vpill(c) { if (!c) return '<span class="pill p-mute">크림가 필요</span>'; return c.verdict === "추천" ? '<span class="pill p-good">✓ 추천</span>' : c.verdict === "검토" ? '<span class="pill p-warn">△ 검토</span>' : '<span class="pill p-crit">✕ 비추천</span>'; }
 
 function helperOn() { return document.documentElement.dataset.rownaKream === "1"; }
@@ -113,7 +113,7 @@ var busy = {};
 function render() {
   var dates = listDates(); if (!v.kList || dates.indexOf(v.kList) === -1) v.kList = dates[0] || "";
   var dayRows = items().filter(function (x) { return x.listDate === v.kList; }), SH = sheetsOf(dayRows);
-  if (v.kSheet && !SH.some(function (o) { return o.key === v.kSheet; })) v.kSheet = "";
+  if (v.kSheet !== "*" && !SH.some(function (o) { return o.key === v.kSheet; })) v.kSheet = SH.length ? SH[SH.length - 1].key : "";   /* 기본: 가장 최근에 올린 시트 */
   var w = ERP.canWrite("kream_wholesale"), list = dayRows.filter(inSheet);
   var groups = {}, order = [];
   list.forEach(function (x) { var k = x.sku || x.name || x.id; if (!groups[k]) { groups[k] = []; order.push(k); } groups[k].push(x); });
@@ -147,7 +147,7 @@ function render() {
     (dates.length ? '<select class="ctl" id="k-list" aria-label="리스트 날짜">' + dates.map(function (d) { return "<option" + (d === v.kList ? " selected" : "") + ' value="' + d + '">' + d.replace(/-/g, ".") + " 리스트</option>"; }).join("") + "</select>" : "") +
     (w ? (mall ? '<button class="btn pri" data-act="kreammall">🛒 ' + esc(MALLS[SUP()].label) + " 불러오기</button>" : '<button class="btn pri" data-act="kreamphoto">📷 리스트 사진 올리기</button>') + (list.length ? '<button class="btn" data-act="kreamfetch">크림 시세 다시 가져오기</button>' : "") + '<button class="btn" data-act="kreamadd">+ 직접 추가</button>' : "") + (list.length ? '<button class="btn" data-act="kreamexport">엑셀 내보내기</button>' : "") + "</div></div>";
   if (dayRows.length) { var nck = list.filter(function (x) { return x.decision === "매입"; }).length;
-    h += '<div class="panel" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><b>📑</b> <button class="btn sm' + (!v.kSheet ? " pri" : "") + '" data-ksh="">전체 ' + dayRows.length + "</button>" + SH.map(function (o) { return '<button class="btn sm' + (v.kSheet === o.key ? " pri" : "") + '" data-ksh="' + esc(o.key) + '" title="' + esc(o.at.replace("T", " ").slice(0, 16)) + ' 올림">' + esc(o.label) + " " + o.n + "</button>"; }).join("") +
+    h += '<div class="panel" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><b>📑</b> <button class="btn sm' + (v.kSheet === "*" ? " pri" : "") + '" data-ksh="*">전체 ' + dayRows.length + "</button>" + SH.map(function (o) { return '<button class="btn sm' + (v.kSheet === o.key ? " pri" : "") + '" data-ksh="' + esc(o.key) + '" title="' + esc(o.at.replace("T", " ").slice(0, 16)) + ' 올림">' + esc(o.label) + " " + o.n + "</button>"; }).join("") +
       (w ? '<span style="flex:1"></span><button class="btn sm" data-act="kckall">☑ 전체 체크</button><button class="btn sm" data-act="kcknone"' + (nck ? "" : " disabled") + '>☐ 체크 전체 해제' + (nck ? " (" + nck + ")" : "") + "</button>" + (v.kSheet ? '<button class="btn sm" data-act="kshname">✏ 시트 이름</button>' : "") + '<button class="btn sm" data-act="kdelall" style="color:#e5484d">🗑 ' + (v.kSheet ? "이 시트" : "이 날짜") + " 전체 삭제 (" + list.length + ")</button>" : "") + "</div>"; }
   if (queue().length) h += '<div class="panel"><b>📱 휴대폰에서 올린 리스트 사진 ' + queue().length + '장 대기 중</b> — ' + (helperOn() ? '이 PC에서 지금 읽는 중이에요.' : 'PC1 ERP(로우나 도우미 켜짐)가 켜져 있으면 1~2분 안에 자동으로 읽어서 넣어요.') + '</div>';
   if (!list.length) return h + '<div class="panel empty"><b>' + esc(SUP()) + (mall ? " 후보가 아직 없어요</b>" + (w ? "‘🛒 불러오기’를 누르면 세일 목록 1장을 열어 조건에 맞는 상품만 담고, 크림에서 한 상품씩(10~12초 간격) 확인해요." : "") : ' 도매 리스트가 아직 없어요</b>' + (w ? "‘📷 리스트 사진 올리기’로 도매처가 보낸 사진을 올리면 표를 읽고 크림 시세까지 채워요." : "")) + "</div>" + feeNote(w);
@@ -462,7 +462,7 @@ async function importPhotos(pics, sup, day, opt) {
   var skNew = "s:" + Date.now(); made.forEach(function (o) { o.extra = Object.assign({}, o.extra, { sheet: skNew }); });   /* 한 번에 올린 사진 묶음 = 시트 하나 */
   var rowsDb = made.map(function (o) { return ERP.toRow("kream_wholesale", o); });
   try { await ERP.saveBatch("kream_wholesale", rowsDb); rowsDb.forEach(function (r) { ERP.applyRow("kream_wholesale", r); }); } catch (e) { ERP.toast(ERP.errMsg(e)); return opt.wait ? { rows: [], meta: meta, err: ERP.errMsg(e) } : 0; }
-  v.kSup = made[0].supplier; v.kList = day; ERP.render(); ERP.toast(made.length + "줄을 넣었어요. 이제 크림에서 한 상품씩 확인해요 (상품당 10~30초).");
+  v.kSup = made[0].supplier; v.kList = day; v.kSheet = skNew; ERP.render(); ERP.toast(made.length + "줄을 넣었어요. 이제 크림에서 한 상품씩 확인해요 (상품당 10~30초).");
   if (opt.wait) { if (wholesaleOn()) await fetchKream(made, { chan: "W", onProgress: opt.onProgress }); return { rows: made, meta: meta }; }
   if (wholesaleOn()) fetchKream(made, { chan: "W" }).then(function () { tgNotifyRows(made, meta); }); else ERP.toast("크림 시세는 ‘로우나 열무 크림도매 도우미’를 켠 뒤 [크림 시세 다시 가져오기]로 채워 주세요.");
   return made.length;
@@ -558,13 +558,13 @@ ERP.acts.kreammall = async function () {
   } catch (e) { ERP.toast("⚠ " + e.message); }
   finally { mallRunning = false; }
 };
-ERP.acts.kreamadd = function () { open(null, v.kSheet ? { extra: { sheet: v.kSheet } } : undefined); };
+ERP.acts.kreamadd = function () { open(null, v.kSheet && v.kSheet !== "*" ? { extra: { sheet: v.kSheet } } : undefined); };
 function shownRows() { return items().filter(function (x) { return x.listDate === v.kList && inSheet(x); }); }
 ERP.acts.kckall = async function () { var L = shownRows().filter(function (x) { return x.decision !== "매입" && x.decision !== "제외"; }); for (var i = 0; i < L.length; i++) { var it = L[i], ex = Object.assign({}, it.extra); if (!num(ex.buyQty)) ex.buyQty = num(it.qty); await ERP.save("kream_wholesale", Object.assign({}, it, { decision: "매입", extra: ex })); } ERP.toast(L.length + "줄 체크했어요 (‘제외’ 줄은 빼고)"); ERP.render(); };
 ERP.acts.kcknone = async function () { var L = shownRows().filter(function (x) { return x.decision === "매입"; }); for (var i = 0; i < L.length; i++) await ERP.save("kream_wholesale", Object.assign({}, L[i], { decision: "검토" })); ERP.toast(L.length + "줄 체크를 풀었어요"); ERP.render(); };
 ERP.acts.kshname = async function () { var L = shownRows(); if (!L.length) return; var cur = (L[0].extra || {}).sheetName || ""; var n = prompt("시트 이름 (예: 오전 리스트, 무우 2차)", cur); if (n == null) return; n = n.trim(); for (var i = 0; i < L.length; i++) { var ex = Object.assign({}, L[i].extra, { sheet: sheetKey(L[i]) }); if (n) ex.sheetName = n; else delete ex.sheetName; await ERP.save("kream_wholesale", Object.assign({}, L[i], { extra: ex })); } ERP.render(); };
 ERP.acts.kdelall = async function () { var L = shownRows(); if (!L.length) return; var buy = L.filter(function (x) { return x.decision === "매입" && ((x.extra || {}).buyStage || (x.extra || {}).stockCode); }).length;
-  if (!confirm((v.kSheet ? "이 시트" : v.kList + " 리스트") + " " + L.length + "줄을 모두 지울까요?" + (buy ? "\n⚠ 그중 " + buy + "줄은 ‘크림도매 매입’에서 진행 중이에요." : "") + "\n지우면 되돌릴 수 없어요.")) return;
+  if (!confirm((v.kSheet && v.kSheet !== "*" ? "이 시트" : v.kList + " 리스트") + " " + L.length + "줄을 모두 지울까요?" + (buy ? "\n⚠ 그중 " + buy + "줄은 ‘크림도매 매입’에서 진행 중이에요." : "") + "\n지우면 되돌릴 수 없어요.")) return;
   var n = 0; for (var i = 0; i < L.length; i++) if (await ERP.remove("kream_wholesale", L[i].id)) n++; v.kSheet = ""; ERP.toast(n + "줄을 지웠어요"); ERP.render(); };
 ERP.acts.kreamnewlist = function () { v.kList = U.today(); open(null, { listDate: U.today() }); };
 ERP.kreamRowsX = function (list) { return list.map(function (it) { var c = calc(it); return { "공급처": it.supplier, "리스트": it.listDate, "브랜드": it.brand, "품번": it.sku, "상품명": it.name, "사이즈": it.size, "수량": num(it.qty), "도매가": num(it.wholesalePrice), "크림판매가": it.kreamPrice == null ? "" : num(it.kreamPrice), "개당실이익": c ? Math.round(c.real) : "", "이익률": c ? Math.round(c.rate * 1000) / 10 + "%" : "", "합계이익": c ? Math.round(c.real * num(it.qty)) : "", "손익분기가": c ? Math.round(c.breakeven) : "", "판단": c ? c.verdict : "", "추천수량": recQty(it, c), "크림품번확인": ((it.extra || {}).kream || {}).verified ? (((it.extra || {}).kream || {}).model || "") : "미확인", "크림즉시구매가": ((it.extra || {}).kream || {}).price || "", "누적거래": ((it.extra || {}).kream || {}).tradeCount || "", "결정": it.decision, "최근체결": it.kreamRecent || "", "크림링크": it.kreamUrl || "" }; }); };
