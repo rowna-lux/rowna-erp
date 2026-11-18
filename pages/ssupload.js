@@ -53,7 +53,7 @@ function list() {
   var st = { "초안": 0, "승인": 0, "등록완료": 0, "오류": 0 }; D.forEach(function (d) { st[d.status] = (st[d.status] || 0) + 1; });
   var basis = set("ss_margin_basis", "cost");
   return '<div class="head"><div><h1>스마트스토어 매입상품 등록</h1><p>사진·정보 입력 → 초안 → 승인 → PC에서 등록 (샤넬 지갑류 상품을 틀로 복사)</p></div><div class="tools">' +
-    '<button class="btn primary" data-act="ssunew">새 상품</button><button class="btn" data-act="ssuexport">승인분 내보내기 (' + st["승인"] + ')</button><button class="btn" data-act="ssuimport">결과 불러오기</button></div></div>' +
+    '<button class="btn primary" data-act="ssunew">새 상품</button><button class="btn primary" data-act="ssusabang">사방넷 엑셀 + 사진 (' + st["승인"] + ')</button><button class="btn" data-act="ssuexport" title="스마트스토어 API 직등록용(PC 스크립트)">API용 내보내기 (' + st["승인"] + ')</button><button class="btn" data-act="ssuimport">결과 불러오기</button></div></div>' +
     '<p class="warn">시험 운영 중이에요. 이상한 점은 알려주세요. 스마트스토어 실제 등록은 PC 스크립트에서 --apply를 붙일 때만 돼요.</p>' +
     '<div class="card"><h3>가격·틀 설정</h3><div class="grid2">' +
     '<div class="fd"><label for="ssu-fee">스마트스토어 수수료율 (%)</label><input class="ctl" id="ssu-fee" type="number" step="0.01" value="' + (f == null ? "" : +(f * 100).toFixed(2)) + '" placeholder="정산 내역 기준으로 입력">' + (f == null ? '<small class="warn">수수료율을 넣어야 판매가가 계산돼요.</small>' : "") + "</div>" +
@@ -151,6 +151,76 @@ ERP.acts.ssuexport = async function () {
   }
   ERP.downloadBlob("ss_upload_" + U.today() + ".json", new Blob([JSON.stringify(out, null, 1)], { type: "application/json" }));
   ERP.toast(A.length + "개 내보냈어요. PC에서 ss_upload.py로 등록해 주세요(사진 주소는 24시간 유효).");
+};
+/* 사방넷 대량등록: 승인분 → 사방넷 엑셀(소싱폼과 같은 119칸 양식) + ESM 이미지호스팅에 올릴 사진 zip
+   사진 주소 = gi.esmplus.com/djsouplim/{작업폴더}/{순번  품번}/{2..}.jpg (렉스몬드 업로드와 같은 규칙) */
+var ESM = "djsouplim";
+var SBC = { name: 0, model: 2, modelNo: 3, brandEn: 4, sku: 5, kw: 6, kind: 8, maker: 12, origin: 13, gender: 17, state: 18, region: 19, tax: 20, shipKind: 21, shipFee: 22, cost: 24, sale: 25, tag: 26, opt1: 27, opt1v: 28, img: 31, add6: 37, add7: 38, add8: 39, detail: 42, certNo: 44, certField: 50, stock: 51, memo: 68, optEdit: 69, attrCode: 79 };
+var CRC = (function () { var t = []; for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t.push(c >>> 0); } return t; })();
+function crc32(b) { var c = 0xFFFFFFFF; for (var i = 0; i < b.length; i++) c = CRC[(c ^ b[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+/* 압축 없는(store) zip — 파일 이름 UTF-8 */
+function makeZip(files) {
+  var te = new TextEncoder(), parts = [], cen = [], off = 0;
+  files.forEach(function (f) {
+    var nm = te.encode(f.name), d = f.data, crc = crc32(d), h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint32(14, crc, true); h.setUint32(18, d.length, true); h.setUint32(22, d.length, true); h.setUint16(26, nm.length, true);
+    parts.push(new Uint8Array(h.buffer), nm, d);
+    var c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint32(16, crc, true); c.setUint32(20, d.length, true); c.setUint32(24, d.length, true); c.setUint16(28, nm.length, true); c.setUint32(42, off, true);
+    cen.push(new Uint8Array(c.buffer), nm); off += 30 + nm.length + d.length;
+  });
+  var csz = cen.reduce(function (a, b) { return a + b.length; }, 0), e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, csz, true); e.setUint32(16, off, true);
+  return new Blob(parts.concat(cen, [new Uint8Array(e.buffer)]), { type: "application/zip" });
+}
+/* 어떤 형식이든 JPG로 (흰 바탕, 긴 변 최대 2000px) */
+function toJpg(blob) {
+  return new Promise(function (res, rej) {
+    var url = URL.createObjectURL(blob), im = new Image();
+    im.onload = function () { var k = Math.min(1, 2000 / Math.max(im.width, im.height)), cv = document.createElement("canvas"); cv.width = Math.round(im.width * k); cv.height = Math.round(im.height * k); var x = cv.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, cv.width, cv.height); x.drawImage(im, 0, 0, cv.width, cv.height); URL.revokeObjectURL(url); cv.toBlob(function (b) { b ? b.arrayBuffer().then(function (a) { res(new Uint8Array(a)); }) : rej(new Error("JPG 변환 실패")); }, "image/jpeg", 0.92); };
+    im.onerror = function () { URL.revokeObjectURL(url); rej(new Error("사진을 열 수 없어요(HEIC 등)")); };
+    im.src = url;
+  });
+}
+function esmUrl(folder, no, code, n) { return "https://gi.esmplus.com/" + ESM + "/" + encodeURIComponent(folder) + "/" + encodeURIComponent(no + "  " + code) + "/" + n + ".jpg"; }
+ERP.acts.ssusabang = async function () {
+  var A = drafts().filter(function (d) { return d.status === "승인"; }); if (!A.length) { ERP.toast("승인된 상품이 없어요."); return; }
+  var t = U.today(), folder = prompt("ESM 이미지 폴더 이름 (이 이름으로 ESM에 올려요)", t.slice(2, 4) + t.slice(5, 7) + t.slice(8, 10) + " 하이엔드"); if (!folder) return;
+  folder = folder.trim().replace(/[\\\/:*?"<>|]/g, " ");
+  var H; try { H = await ERP.loadFile("sabang_head"); } catch (e) { ERP.toast(e.message); return; }
+  var rows = [], files = [], warn = [];
+  ERP.toast("사진을 모으는 중이에요… (" + A.length + "개)");
+  for (var i = 0; i < A.length; i++) {
+    var d = A[i], no = i + 1, code = String(d.code || "").trim(), ns = [];
+    for (var j = 0; j < (d.photos || []).length; j++) {
+      var dl = await S.sb.storage.from(BUCKET).download(d.photos[j].path);
+      if (dl.error) { warn.push(code + ": 사진 " + (j + 1) + " 내려받기 실패"); continue; }
+      try { var n = 2 + ns.length; files.push({ name: folder + "/" + no + "  " + code + "/" + n + ".jpg", data: await toJpg(dl.data) }); ns.push(n); } catch (e) { warn.push(code + ": 사진 " + (j + 1) + " " + e.message); }
+    }
+    if (!ns.length) { warn.push(code + ": 사진이 없어 뺐어요"); continue; }
+    var urls = ns.map(function (n) { return esmUrl(folder, no, code, n); });
+    var r = new Array(H[1].length).fill("");
+    r[SBC.name] = d.name || title(d); r[SBC.model] = d.model || code; r[SBC.modelNo] = code; r[SBC.brandEn] = ""; r[SBC.sku] = code; r[SBC.kw] = d.brand || "";
+    r[SBC.kind] = 3; r[SBC.maker] = d.brand || ""; r[SBC.origin] = "상세참조"; r[SBC.gender] = 2;
+    r[SBC.state] = 2; r[SBC.region] = 1; r[SBC.tax] = 1; r[SBC.shipKind] = 1; r[SBC.shipFee] = 0;
+    r[SBC.cost] = num(d.cost); r[SBC.sale] = d.salePrice; r[SBC.tag] = d.tagPrice || tagPrice(d.salePrice);
+    r[SBC.opt1] = "색상"; r[SBC.opt1v] = d.color || "상세참조";
+    r[SBC.img] = urls[0]; [SBC.add6, SBC.add7, SBC.add8].forEach(function (c, k) { if (urls[k + 1]) r[c] = urls[k + 1]; });
+    r[SBC.detail] = detail(d, urls);
+    r[SBC.certNo] = "없음"; r[SBC.certField] = "없음"; r[SBC.stock] = "N"; r[SBC.memo] = "로우나 하이엔드"; r[SBC.optEdit] = 2; r[SBC.attrCode] = "004";
+    for (var q = 1; q <= 14; q++) r[SBC.attrCode + q] = "상세참조";
+    rows.push({ d: d, no: no, r: r });
+  }
+  if (!rows.length) { alert("만들 상품이 없어요.\n" + warn.join("\n")); return; }
+  var ws = XLSX.utils.aoa_to_sheet(H.concat(rows.map(function (z) { return z.r; }))); ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 10 } }];
+  var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "사방넷상품대량등록_샘플파일");
+  var day = t.replace(/-/g, "."), fname = "사방넷_하이엔드_" + day + ".xlsx";
+  ERP.downloadBlob(fname, new Blob([XLSX.write(wb, { bookType: "xlsx", type: "array" })], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+  setTimeout(function () { ERP.downloadBlob("ESM사진_" + folder + ".zip", makeZip(files)); }, 1200);
+  var now = new Date().toISOString(), D = drafts().map(function (x) { var z = rows.filter(function (y) { return y.d.id === x.id; })[0]; return z ? Object.assign({}, x, { sabang: { file: fname, folder: folder, no: z.no, at: now } }) : x; });
+  await saveDrafts(D);
+  ERP.toast(rows.length + "개 · 사방넷 엑셀 + ESM 사진 zip을 만들었어요. ESM에 사진을 먼저 올린 뒤 사방넷에 엑셀을 올려 주세요.");
+  if (warn.length) setTimeout(function () { alert("확인할 것\n" + warn.join("\n")); }, 300);
 };
 /* PC 결과 → 상태 반영 */
 ERP.acts.ssuimport = function () {
