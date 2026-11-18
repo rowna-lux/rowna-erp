@@ -165,12 +165,17 @@ async function morning() {
 }
 setInterval(function () { try { if (S.SET && S.profile) morning(); } catch (e) {} }, 5 * 60e3);
 /* 세무사용 엑셀 (대표님 2026-11-18): 크림 보관판매 전체를 최신순으로, 매입가(크림 매입 = 도매가, 로우나 재고 = 재고실사 매입가) 붙여서 */
+/* 재고실사 품번은 짧게(AS3260, 1143954, 5125-그레이) 적힌 경우가 많음 → 크림 모델번호가 재고 품번으로 시작하면 같은 상품으로 봄(한글 색상은 빼고 비교).
+   옵션은 '블랙/은장', 'Black /XXL', 'US 8'처럼 색상+사이즈 → 마지막 사이즈 같은 글자만 뽑아 비교, 사이즈가 없으면 사이즈 무관 (대표님 2026-11-18) */
+function modelHit(sm, km) { var a = nk(sm); if (a.length < 4) return false; return String(km || "").split("/").map(nk).filter(Boolean).some(function (b) { return a === b || (a.length >= 5 && b.indexOf(a) === 0) || (b.length >= 5 && a.indexOf(b) === 0) || (a.length >= 8 && b.length >= 8 && (a.indexOf(b) >= 0 || b.indexOf(a) >= 0)); }); }
+var SZ_RE = /^(XXXS|XXS|XS|S|M|L|XL|XXL|XXXL|\d{1,3}(\.5)?W?|(US|EU|UK|KR|JP)\s?\d{1,3}(\.5)?W?|ONE\s?SIZE|F|FREE|OS|TU)$/i;
+function sizeOf(opt) { var parts = String(opt || "").split("/").map(function (x) { return x.trim(); }).filter(Boolean); for (var i = parts.length - 1; i >= 0; i--) { if (SZ_RE.test(parts[i])) return parts[i]; var w = parts[i].split(/\s+/), t = w[w.length - 1], t2 = w.slice(-2).join(" "); if (SZ_RE.test(t2)) return t2; if (SZ_RE.test(t)) return t; } return ""; }
 function stockCost(it) {
-  var I = (S.SET.stock_inventory || {}).items || {}, ms = String(it.model || "").split("/").map(nk).filter(Boolean), hit = null;
-  Object.keys(I).forEach(function (k) { var s = I[k]; if (!s || hit) return; var m = nk(s.model); if (!m || !ms.some(function (y) { return y === m || (m.length >= 8 && (y.indexOf(m) >= 0 || m.indexOf(y) >= 0)); })) return; if (s.opt && it["사이즈"] && !sizeHit({ size: s.opt }, it["사이즈"])) return; hit = s; });
-  if (!hit) return null;
-  var L = (hit.lots || []), K = L.filter(function (x) { return String(x.loc || "").toUpperCase() === "KREAM"; }), use = (K.length ? K : L).map(function (x) { return num(x.price); }).filter(function (x) { return x > 0; });
-  return { cost: use.length ? Math.round(use.reduce(function (a, b) { return a + b; }, 0) / use.length) : null, code: hit.code || "" };
+  var I = (S.SET.stock_inventory || {}).items || {}, best = null;
+  Object.keys(I).forEach(function (k) { var s = I[k]; if (!s || !modelHit(s.model, it.model)) return; var sz = sizeOf(s.opt); if (sz && it["사이즈"] && !sizeHit({ size: sz }, it["사이즈"])) return; var sc = (nk(s.model).length) + (sz ? 100 : 0); if (!best || sc > best.sc) best = { s: s, sc: sc, k: k }; });
+  if (!best) return null;
+  var L = (best.s.lots || []), K = L.filter(function (x) { return String(x.loc || "").toUpperCase() === "KREAM"; }), use = (K.length ? K : L).map(function (x) { return num(x.price); }).filter(function (x) { return x > 0; });
+  return { cost: use.length ? Math.round(use.reduce(function (a, b) { return a + b; }, 0) / use.length) : null, code: best.s.code || best.k };
 }
 ERP.acts.ksexport = function () {
   var d = D(), I = Object.keys(d.items).map(function (k) { return d.items[k]; }), A = assign(I.slice()), ROW = {}; A.R.forEach(function (r) { ROW[r.id] = r; });
