@@ -464,7 +464,8 @@ async function importPhotos(pics, sup, day, opt) {
   try { await ERP.saveBatch("kream_wholesale", rowsDb); rowsDb.forEach(function (r) { ERP.applyRow("kream_wholesale", r); }); } catch (e) { ERP.toast(ERP.errMsg(e)); return opt.wait ? { rows: [], meta: meta, err: ERP.errMsg(e) } : 0; }
   v.kSup = made[0].supplier; v.kList = day; v.kSheet = skNew; ERP.render(); ERP.toast(made.length + "줄을 넣었어요. 이제 크림에서 한 상품씩 확인해요 (상품당 10~30초).");
   if (opt.wait) { if (wholesaleOn()) await fetchKream(made, { chan: "W", onProgress: opt.onProgress }); return { rows: made, meta: meta }; }
-  if (wholesaleOn()) fetchKream(made, { chan: "W" }).then(function () { tgNotifyRows(made, meta); }); else ERP.toast("크림 시세는 ‘로우나 열무 크림도매 도우미’를 켠 뒤 [크림 시세 다시 가져오기]로 채워 주세요.");
+  /* 2026-11-18 대표님: 도매 리스트 계산 결과는 텔레그램으로 안 보냄 (봇에 직접 보낸 사진만 답장) */
+  if (wholesaleOn()) fetchKream(made, { chan: "W" }); else ERP.toast("크림 시세는 ‘로우나 열무 크림도매 도우미’를 켠 뒤 [크림 시세 다시 가져오기]로 채워 주세요.");
   return made.length;
 }
 function fileToData(f) { return new Promise(function (res, rej) { var r = new FileReader(); r.onload = function () { res(r.result); }; r.onerror = rej; r.readAsDataURL(f); }); }
@@ -656,8 +657,9 @@ async function tgJob(msgs) {
   var res = await importPhotos(pics, sup, U.today(), { wait: true, onProgress: function (n, tot, label) { tgEdit(pm, "🔎 크림 확인 중 " + n + "/" + tot + " · " + th(label)); } });
   if (!res.rows.length) { await tgEdit(pm, "⚠ 사진에서 상품 줄을 못 찾았어요" + (res.err ? " (" + th(res.err) + ")" : "") + ". 표가 잘 보이게 다시 보내 주세요."); return; }
   if (res.dup) { var miss = res.rows.filter(function (r) { return r.kreamPrice == null; }); if (miss.length && wholesaleOn()) await fetchKream(miss, { chan: "W" }); }
-  await tgEdit(pm, (res.dup ? "♻ 이미 받은 리스트라 지난 계산을 보여드려요." : "✅ 계산 끝") + " · " + res.rows.length + "줄");
-  await tgSend(tgReport(res.rows, res.meta || {}, (Date.now() - t0) / 1000));
+  /* 결과는 한 번만: '읽는 중' 메시지는 지우고 결과만 새로 보냄(알림 1번) — 대표님 2026-11-19 */
+  if (pm && pm.message_id) await tgApi("deleteMessage", { chat_id: lsg(TGK.chat), message_id: pm.message_id }).catch(function () {});
+  await tgSend((res.dup ? "♻ 이미 받은 리스트라 지난 계산이에요.\n\n" : "") + tgReport(res.rows, res.meta || {}, (Date.now() - t0) / 1000));
   tgLog("처리 " + res.rows.length + "줄 " + Math.round((Date.now() - t0) / 1000) + "초");
 }
 async function tgText(m) {
@@ -701,7 +703,7 @@ setInterval(async function () {
     var lo = U.shiftDay ? U.shiftDay(U.today(), -1) : U.today();
     var rows = ERP.list("kream_wholesale").filter(function (x) { return !isMall(x.supplier) && (x.listDate || "") >= lo && x.kreamPrice == null && (!(x.extra || {}).kream || (ERP.extDead.re.test(((x.extra || {}).kream || {}).error || "") && !ERP.extDead.retried[x.id])) && !busy[x.id] && Date.now() - new Date(x.createdAt || 0) > 90 * 1000; });
     if (!rows.length) return;
-    rows.forEach(function (x) { ERP.extDead.retried[x.id] = 1; }); autoBusy = true; await fetchKream(rows, { chan: "W" }); tgNotifyRows(rows, {});
+    rows.forEach(function (x) { ERP.extDead.retried[x.id] = 1; }); autoBusy = true; await fetchKream(rows, { chan: "W" });
   } catch (e) {} finally { autoBusy = false; }
 }, 60 * 1000);
 /* 크림 매입(매입 확정 상품)만 하루 2번(09시·21시) 시세 자동 확인 — 대표님 2026-11-18: "내가 매입한 상품만 시세 확인"
