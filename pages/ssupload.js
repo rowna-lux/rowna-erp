@@ -38,13 +38,12 @@ function title(d) {
 }
 /* 상세: 가운데 정렬, 사진, 정품 안내(입력한 항목만). 소재·사이즈 등 입력하지 않은 사양은 쓰지 않음 */
 function detail(d, urls) {
-  var c = 'style="text-align:center"', box = BOX.filter(function (b) { return d.box && d.box[b[0]] && b[0] !== "gift"; }).map(function (b) { return "· " + b[1]; });
+  var c = 'style="text-align:center"', box = BOX.filter(function (b) { return d.box && d.box[b[0]] ; }).map(function (b) { return "· " + b[1]; });
   var h = '<div ' + c + '><p><b>' + esc(d.name) + "</b></p>";
   (urls || []).forEach(function (u) { h += '<p><img src="' + esc(u) + '" style="max-width:100%"></p>'; });
   h += "<p>품번 " + esc(d.code) + (d.color ? "<br>색상 " + esc(d.color) : "") + (d.option ? "<br>" + esc(d.option) : "") + "</p>";
   if (d.note) h += "<p>" + esc(d.note).replace(/\n/g, "<br>") + "</p>";
   h += '<div style="border:1px solid #ccc;padding:16px;margin:16px auto;max-width:480px"><p>로우나명품은 정품만 판매하는 명품 판매처예요.</p>' + (box.length ? "<p>" + box.join("<br>") + "</p>" : "") + "</div>";
-  if (d.box && d.box.gift) h += "<p>선물포장을 원하시면 옵션에서 선택해 주세요.</p>";
   return h + "</div>";
 }
 
@@ -146,11 +145,11 @@ ERP.acts.ssuexport = async function () {
   var out = { exportedAt: new Date().toISOString(), templateChannelProductNo: String(S.SET.ss_template_no || ""), returnFee: num(set("ss_return_fee", 25000)), exchangeFee: num(set("ss_exchange_fee", 50000)), items: [] };
   for (var i = 0; i < A.length; i++) {
     var d = A[i], urls = [];
-    for (var j = 0; j < (d.photos || []).length; j++) { var r = await S.sb.storage.from(BUCKET).createSignedUrl(d.photos[j].path, 86400); if (r.error) { ERP.toast("사진 주소 만들기 실패: " + d.name); return; } urls.push(r.data.signedUrl); }
+    for (var j = 0; j < (d.photos || []).length; j++) { var r = await S.sb.storage.from(BUCKET).createSignedUrl(d.photos[j].path, 604800); if (r.error) { ERP.toast("사진 주소 만들기 실패: " + d.name); return; } urls.push(r.data.signedUrl); }
     out.items.push({ id: d.id, name: d.name, salePrice: d.salePrice, tagPrice: d.tagPrice || tagPrice(d.salePrice), sellerCode: d.code + (d.color ? "-" + d.color : ""), photos: urls, detailHtml: detail(d, ["{{IMG}}"]).replace(/<p><img src="\{\{IMG\}\}"[^>]*><\/p>/, "{{IMAGES}}") });
   }
   ERP.downloadBlob("ss_upload_" + U.today() + ".json", new Blob([JSON.stringify(out, null, 1)], { type: "application/json" }));
-  ERP.toast(A.length + "개 내보냈어요. PC에서 ss_upload.py로 등록해 주세요(사진 주소는 24시간 유효).");
+  ERP.toast(A.length + "개 내보냈어요. PC에서 ss_upload.py로 등록해 주세요(사진 주소는 7일 유효).");
 };
 /* 사방넷 대량등록: 승인분 → 사방넷 엑셀(소싱폼과 같은 119칸 양식) + ESM 이미지호스팅에 올릴 사진 zip
    사진 주소 = gi.esmplus.com/djsouplim/{작업폴더}/{순번  품번}/{2..}.jpg (렉스몬드 업로드와 같은 규칙) */
