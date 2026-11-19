@@ -194,7 +194,7 @@ function bind(root) {
   root.querySelectorAll("[data-ck]").forEach(function (el) { el.onchange = async function () { var it = ERP.DATA.kream_wholesale.get(el.dataset.ck); if (!it) return; var ex = Object.assign({}, it.extra); if (el.checked && !num(ex.buyQty)) ex.buyQty = num(it.qty); await ERP.save("kream_wholesale", Object.assign({}, it, { decision: el.checked ? "매입" : "검토", extra: ex })); ERP.render(); }; });
   root.querySelectorAll("[data-ckq]").forEach(function (el) { el.onchange = async function () { var it = ERP.DATA.kream_wholesale.get(el.dataset.ckq); if (!it) return; await ERP.save("kream_wholesale", Object.assign({}, it, { extra: Object.assign({}, it.extra, { buyQty: Math.max(1, num(el.value)) }) })); ERP.render(); }; });
   root.querySelectorAll("[data-dec]").forEach(function (el) { el.onchange = function () { var it = ERP.DATA.kream_wholesale.get(el.dataset.dec); if (it) ERP.save("kream_wholesale", Object.assign({}, it, { decision: el.value })); }; });
-  var kl = root.querySelector("#k-level"); if (kl) kl.onchange = function () { ERP.saveSetting("kream_level", num(kl.value)); ERP.render(); };
+  var klv = root.querySelector("#k-level"); if (klv) klv.onchange = function () { ERP.saveSetting("kream_level", num(klv.value)); ERP.render(); };   /* 이름 klv: 위의 kl(리스트 날짜)과 겹쳐서 날짜를 바꾸면 레벨 값(1)이 들어가던 버그 (2026-11-19) */
   var r = root.querySelector("#k-rate"); if (r) r.onchange = function () { ERP.saveSetting("kream_fee_rate", num(r.value) / 100); ERP.render(); };
   var cp = root.querySelector("#k-cap"); if (cp) cp.onchange = function () { ERP.saveSetting("kream_fee_cap", num(cp.value)); ERP.render(); };
 }
