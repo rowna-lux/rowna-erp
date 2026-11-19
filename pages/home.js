@@ -104,6 +104,36 @@ function render() {
     '<div class="head"><div><h1>오늘의 보고</h1><p>데이터로 만드는, 더 큰 가치<br>LOWNA의 오늘을 한눈에 확인하세요.</p></div>' +
     '<div class="tools"><div class="lux-date">' + ico("cal") + dt.getFullYear() + ". " + ("0" + (dt.getMonth() + 1)).slice(-2) + ". " + ("0" + dt.getDate()).slice(-2) + " (" + WK[dt.getDay()] + ')</div><button class="lux-ring" data-act="refreshreport" title="보고 새로고침" aria-label="보고 새로고침"></button></div></div></div>';
 
+  /* 2026-11-20 대표님: 아침 열면 1초만에 사업 상태 보기 — 매출채권·재고 묶인 돈·보판 기한·나갈 돈·통장·사방넷 D-day */
+  (function () {
+    /* 1) 매출채권 */
+    var pend = 0; ERP.list("sales").forEach(function (s) { if (ERP.excluded(s)) return; var d = ERP.derive(s); if (d.st !== "확정") pend += d.settled; });
+    /* 2) 재고 묶인 돈 */
+    var I = (S.SET.stock_inventory || {}).items || {}, tied = 0; Object.values(I).forEach(function (st) { if (!st || !st.lots) return; st.lots.forEach(function (l) { if (!l.out && l.price) tied += U.num(l.price); }); });
+    /* 3) 보판 발송기한 */
+    var ks = (S.SET.kream_sync || {}).items || {}, due = Object.values(ks).filter(function (x) { return x.st === "발송요청"; });
+    function hL(x) { var m = String(x || "").match(/(\d+):(\d{2}):(\d{2})/); return m ? +m[1] + (+m[2]) / 60 : null; }
+    var hs = due.map(function (x) { return hL(x["남은 시간"]); }).filter(function (x) { return x != null; }); var minH = hs.length ? Math.min.apply(null, hs) : null;
+    /* 4) 이번 달 나갈 돈 (카드 할부 + 고정지출 남은 분) */
+    var cp = S.SET.card_plan || {}, ym = today.slice(0, 7), cardM = 0, fixM = 0;
+    (cp.items || []).forEach(function (it) { var A = U.num(it.amount), N = Math.max(1, U.num(it.months) || 1), per = Math.floor(A / N), first = it.first; if (!first) { var dd2 = String(it.date || today).slice(0, 7); var y2 = +dd2.slice(0, 4), m2 = +dd2.slice(5, 7); m2++; if (m2 > 12) { m2 = 1; y2++; } first = y2 + "-" + ("0" + m2).slice(-2); } for (var i2 = 0; i2 < N; i2++) { var y3 = +first.slice(0, 4), m3 = +first.slice(5, 7) - 1 + i2; y3 += Math.floor(m3 / 12); m3 = ((m3 % 12) + 12) % 12; var mk = y3 + "-" + ("0" + (m3 + 1)).slice(-2); if (mk === ym) cardM += per + (i2 === 0 ? A - per * N : 0); } });
+    (cp.fixed || []).forEach(function (f) { if (f.until && f.until < ym) return; fixM += U.num(f.amount); });
+    /* 5) 통장 잔액 */
+    var bt = (S.SET.bank_tx || {}).rows || [], lastBal = bt.filter(function (x) { return x.bal != null; })[0];
+    /* 6) 사방넷 만료 D-day (대표님이 결제한 날짜 app_settings에 넣으면 그 날로 업데이트) */
+    var sb = S.SET.sabang_expire || "2026-11-29", dday = sb ? Math.max(0, Math.round((Date.parse(sb) - Date.parse(today)) / 864e5)) : null;
+    function K(v, u) { return U.won(v) + (u || ""); }
+    var tiles = [
+      { l: "💎 매출채권 (들어올 돈)", v: "₩ " + K(pend), go: "finance", cls: "" },
+      { l: "📦 재고 묶인 돈", v: "₩ " + K(tied), go: "finance", cls: "" },
+      { l: "📦 크림 보판 발송기한", v: due.length ? due.length + "건" + (minH != null ? " · " + Math.round(minH) + "h" : "") : "없음", go: "kream-sync", cls: minH != null && minH <= 24 ? "warn" : "" },
+      { l: "💳 이번 달 나갈 돈", v: "₩ " + K(cardM + fixM), go: "bank", cls: "" },
+      { l: "🏦 통장 잔액", v: lastBal ? "₩ " + K(lastBal.bal) : "-", go: "bank", cls: "" },
+      { l: "⚠ 사방넷 만료", v: dday != null ? "D-" + dday : "-", go: "", cls: dday != null && dday <= 10 ? "warn" : "" }
+    ];
+    h += '<div class="lux-morning" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:12px 0;padding:10px;background:linear-gradient(135deg,rgba(32,208,255,.06),rgba(42,167,255,.03));border:1px solid rgba(127,127,127,.15);border-radius:12px">' +
+      tiles.map(function (t) { return '<div style="padding:8px 10px;background:rgba(255,255,255,.03);border-radius:8px;cursor:'+(t.go?'pointer':'default')+'"' + (t.go ? ' data-go="' + t.go + '" role="button" tabindex="0"' : '') + '><div style="font-size:11px;opacity:.7;margin-bottom:4px">' + t.l + '</div><div class="num" style="font-size:16px;font-weight:700;color:' + (t.cls === "warn" ? "#ff4d6d" : "inherit") + '">' + t.v + '</div></div>'; }).join("") + '</div>';
+  })();
   // 알림 카드 4
   var todayAgg = ERP.aggregate(function (d) { return d.slice(0, 10) === today; });
   var alerts = [["cart", "어제 / 오늘 주문", [Y.orders || 0, todayAgg.n], "sales"], ["db", "정산 미확정", T.settle_pending_count || 0, "sales:saleFilter=pending"], ["back", "진행 중 반품·취소", T.open_returns || 0, "returns"], ["warn", "90일 넘은 재고", K.aged_90 || 0, "purchases:pStatus=aging"]];
