@@ -30,7 +30,7 @@ async function importFiles(files) {
 }
 /* 크림 매입 짝짓기: 출금액 = 매입일·도매처 묶음의 매입 합계(±1,000원), 날짜 = 매입일 ~ 7일 뒤 */
 function kreamGroups() { var G = {}; ERP.list("kream_wholesale").forEach(function (x) { var e = x.extra || {}; if (x.decision !== "매입" || !e.buyDate) return; var k = e.buyDate + "|" + (x.supplier || "열무"), q = num(e.buyQty) || num(x.qty); var g = G[k] = G[k] || { key: k, day: e.buyDate, sup: x.supplier || "열무", sum: 0, paid: 0, n: 0 }; g.sum += q * num(x.wholesalePrice); g.n++; if (e.payDate) g.paid++; }); return Object.keys(G).map(function (k) { return G[k]; }); }
-function suggest(r, G) { if (!r.out || r.match) return null; return G.filter(function (g) { var dd = (new Date(r.date) - new Date(g.day)) / 86400000; return g.paid < g.n && Math.abs(g.sum - r.out) <= 1000 && dd >= -1 && dd <= 7; })[0] || null; }
+function suggest(r, G) { if (!r.out || r.match) return null; return G.filter(function (g) { var dd = (new Date(r.date) - new Date(g.day)) / 86400000; return g.paid < g.n && (Math.abs(g.sum - r.out) <= 1000 || (r.out < g.sum && g.sum - r.out <= Math.max(1000, g.sum * 0.01))) && dd >= -1 && dd <= 7; })[0] || null; }
 /* ---------- 카드 할부·고정 지출·월별 나갈 돈 (대표님 요청 2026-11-18) ----------
    app_settings.card_plan = { cards:[{id,name,payDay}], items:[{id,card,date,memo,amount,months,first}], fixed:[{id,name,amount,day,until}] }
    할부: 금액 ÷ 개월 (원 단위 나머지는 첫 달), 첫 청구월 기본 = 구매 다음 달 (카드마다 결제일·마감일이 달라 직접 고칠 수 있음). 할부 이자는 넣지 않음(무이자 기준) */
@@ -67,17 +67,18 @@ function renderCard() {
 ERP.acts.cpcard = async function () { var nm = (U.$("cp-cn") || {}).value || ""; if (!nm.trim()) return; var d = CP(); d.cards.push({ id: "c" + Date.now().toString(36), name: nm.trim(), payDay: num((U.$("cp-cd") || {}).value) || "" }); await saveCP(d); ERP.render(); };
 ERP.acts.cpfix = async function () { var nm = (U.$("cp-fn") || {}).value || "", a = num((U.$("cp-fa") || {}).value); if (!nm.trim() || !a) { ERP.toast("이름과 월 금액을 넣어 주세요"); return; } var d = CP(); d.fixed.push({ id: "f" + Date.now().toString(36), name: nm.trim(), amount: a, day: num((U.$("cp-fd") || {}).value) || "", until: (U.$("cp-fu") || {}).value || "" }); await saveCP(d); ERP.render(); };
 ERP.acts.cpadd = async function () { var d = CP(), c = (U.$("cp-card") || {}).value, a = num((U.$("cp-amt") || {}).value); if (!c) { ERP.toast("카드를 먼저 추가하세요 (아래 ‘카드 · 고정 지출’)"); return; } if (!a) { ERP.toast("결제 금액을 넣어 주세요"); return; } d.items.push({ id: "i" + Date.now().toString(36), card: c, date: (U.$("cp-date") || {}).value || U.today(), memo: ((U.$("cp-memo") || {}).value || "").trim(), amount: a, months: num((U.$("cp-mon") || {}).value) || 1 }); await saveCP(d); ERP.toast("추가했어요"); ERP.render(); };
+/* 2026-11-19 대표님: 메뉴 이름 '자금관리', 메인 = 나갈 돈(카드 할부·고정 지출), 맨 위에 통장 내역 올리기, 거래내역 목록은 아래 탭 */
+function dropBox() { var d = D(); return '<div class="panel" id="bk-drop" style="border:2px dashed rgba(127,127,127,.4);padding:12px 16px;cursor:pointer;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>📎 통장 거래내역 올리기</b><span class="muted">엑셀(xls·xlsx·csv)을 여기에 끌어다 놓거나 클릭 · 같은 거래는 두 번 안 들어가요</span><input type="file" id="bk-file" accept=".xls,.xlsx,.csv" multiple style="display:none"><span style="flex:1"></span><small class="muted">' + (d.files.length ? "마지막: " + esc(d.files[d.files.length - 1].name) + " · 총 " + d.rows.length + "건" : "아직 올린 파일이 없어요") + "</small></div>"; }
 function render() {
-  var tabs = '<div class="tools" style="margin:-4px 0 10px"><button class="btn ' + (v.bkTab !== "card" ? "pri" : "") + '" data-bktab="tx">🏦 통장 거래내역</button><button class="btn ' + (v.bkTab === "card" ? "pri" : "") + '" data-bktab="card">💳 카드 할부 · 나갈 돈</button></div>';
-  if (v.bkTab === "card") return '<div class="head"><div><h1>통장 · 카드</h1><p>할부로 결제한 매입과 매달 나가는 돈을 넣으면, 이번 달·다음 달 빠져나갈 돈을 카드별로 계산해요.</p></div></div>' + tabs + renderCard();
-  return renderTx(tabs);
+  var tx = v.bkTab === "tx", tabs = '<div class="tools" style="margin:0 0 10px"><button class="btn ' + (tx ? "" : "pri") + '" data-bktab="card">💳 나갈 돈 (카드 할부 · 고정 지출)</button><button class="btn ' + (tx ? "pri" : "") + '" data-bktab="tx">🏦 통장 거래내역 (' + D().rows.length + ')</button></div>';
+  var head = '<div class="head"><div><h1>자금관리</h1><p>이번 달·다음 달 나갈 돈과 통장 흐름을 한곳에서 봐요. 통장 내역은 맨 위 칸에 올리면 돼요 (미라클럭스 농협).</p></div></div>' + dropBox() + tabs;
+  return head + (tx ? renderTx() : renderCard());
 }
-function renderTx(tabs) {
+function renderTx() {
   var d = D(), w = ERP.canWrite("purchases"), months = {}; d.rows.forEach(function (r) { months[r.date.slice(0, 7)] = 1; }); var ms = Object.keys(months).sort().reverse(); if (!v.bkM || ms.indexOf(v.bkM) < 0) v.bkM = ms[0] || "";
   var L = d.rows.filter(function (r) { return r.date.slice(0, 7) === v.bkM && (!v.bkQ || (r.memo + " " + r.out + " " + r.in).indexOf(v.bkQ) >= 0); }), tin = 0, tout = 0; L.forEach(function (r) { tin += r.in; tout += r.out; }); var G = kreamGroups();
   var body = L.map(function (r) { var sg = suggest(r, G); return "<tr><td class=\"num\">" + esc(r.date.slice(5)) + " <small class=\"muted\">" + esc(r.time || "") + "</small></td><td>" + esc(r.memo || "") + (r.match ? '<br><small class="muted">✔ ' + esc(r.match) + "</small>" : "") + (sg ? '<br><button class="btn sm pri" data-bkm="' + esc(r.id) + "§" + esc(sg.key) + '">크림 매입 ' + esc(sg.day.slice(5) + " " + sg.sup) + " (" + won(sg.sum) + ") 입금으로 처리</button>" : "") + '</td><td class="r num">' + (r.in ? '<b style="color:#30a46c">' + won(r.in) + "</b>" : "") + '</td><td class="r num">' + (r.out ? '<b class="neg">' + won(r.out) + "</b>" : "") + '</td><td class="r num"><small>' + (r.bal != null ? won(r.bal) : "") + "</small></td></tr>"; }).join("");
-  return '<div class="head"><div><h1>통장 (미라클럭스 농협)</h1><p>농협 인터넷뱅킹에서 받은 거래내역 엑셀을 아래 칸에 끌어다 놓으세요. 같은 거래는 두 번 들어가지 않아요. 크림 매입 송금이 보이면 <b>입금으로 처리</b> 버튼이 떠요 → 누르면 크림 매입 입금일이 들어가고 ‘매입’에 자동 기록돼요.</p></div></div>' +
-    tabs + '<div class="panel" id="bk-drop" style="border:2px dashed rgba(127,127,127,.4);text-align:center;padding:18px;cursor:pointer"><b>📥 거래내역 엑셀(xls·xlsx·csv) 끌어다 놓기 또는 클릭</b><input type="file" id="bk-file" accept=".xls,.xlsx,.csv" multiple style="display:none"><br><small class="muted">' + (d.files.length ? "마지막: " + esc(d.files[d.files.length - 1].name) + " · 총 " + d.rows.length + "건" : "아직 올린 파일이 없어요") + "</small></div>" +
+  return '<p class="note">크림 매입 송금이 보이면 <b>입금으로 처리</b> 버튼이 떠요 → 누르면 크림 매입 입금일이 들어가고 ‘매입’에 자동 기록돼요. 도매처가 조금 깎아 준 경우(매입 확정 금액의 1% 이내)도 후보로 떠요.</p>' +
     (ms.length ? '<div class="panel"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><select class="ctl" id="bk-m">' + ms.map(function (m) { return "<option" + (m === v.bkM ? " selected" : "") + ">" + m + "</option>"; }).join("") + '</select><input class="ctl" id="bk-q" placeholder="내용·금액 검색" value="' + esc(v.bkQ || "") + '"><span>입금 <b style="color:#30a46c">' + won(tin) + '</b> · 출금 <b class="neg">' + won(tout) + "</b> · " + L.length + '건</span></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>날짜</th><th>내용</th><th class="r">입금</th><th class="r">출금</th><th class="r">잔액</th></tr></thead><tbody>' + body + "</tbody></table></div></div>" : "");
 }
 function bind(root) {
@@ -92,5 +93,5 @@ function bind(root) {
   var q = root.querySelector("#bk-q"); if (q) q.onchange = function () { v.bkQ = q.value.trim(); ERP.render(); };
   root.querySelectorAll("[data-bkm]").forEach(function (b) { b.onclick = async function () { var a = b.dataset.bkm.split("§"), d = D(), r = d.rows.find(function (x) { return x.id === a[0]; }); if (!r || !ERP.kbPayGroup) return; b.disabled = true; var n2 = await ERP.kbPayGroup(a[1], r.date); r.match = "크림 매입 " + a[1].replace("|", " ") + " 입금 (" + n2 + "줄)"; await save(d); ERP.render(); }; });
 }
-ERP.page({ id: "bank", title: "통장·카드", roles: ["owner", "accountant"], render: render, bind: bind });
+ERP.page({ id: "bank", title: "자금관리", roles: ["owner", "accountant"], render: render, bind: bind });
 })();
