@@ -30,6 +30,30 @@ async function importFiles(files) {
 }
 /* 크림 매입 짝짓기: 출금액 = 매입일·도매처 묶음의 매입 합계(±1,000원), 날짜 = 매입일 ~ 7일 뒤 */
 function kreamGroups() { var G = {}; ERP.list("kream_wholesale").forEach(function (x) { var e = x.extra || {}; if (x.decision !== "매입" || !e.buyDate) return; var k = e.buyDate + "|" + (x.supplier || "열무"), q = num(e.buyQty) || num(x.qty); var g = G[k] = G[k] || { key: k, day: e.buyDate, sup: x.supplier || "열무", sum: 0, paid: 0, n: 0 }; g.sum += q * num(x.wholesalePrice); g.n++; if (e.payDate) g.paid++; }); return Object.keys(G).map(function (k) { return G[k]; }); }
+/* 2026-11-19 대표님: 통장 출금 한 건마다 그 돈으로 산 크림 매입 상품을 펼쳐 보기 — 입금내역별 매입 관리 */
+function kreamItemsFor(r) {
+  if (!r.out) return [];
+  var vend = /밀라노|밀라노크리처/.test(r.memo) ? "열무" : /하이엔드|부티크|수고개/.test(r.memo) ? "수고개" : "";
+  return ERP.list("kream_wholesale").filter(function (x) {
+    var e = x.extra || {}; if (x.decision !== "매입" || !e.buyDate) return false;
+    if (e.payDate === r.date && (!vend || (x.supplier || "열무") === vend)) return true;
+    if (!e.payDate && vend && (x.supplier || "열무") === vend) { var dd = (new Date(r.date) - new Date(e.buyDate)) / 86400000; if (dd >= -1 && dd <= 7) return true; }
+    return false;
+  });
+}
+function itemsPanel(items, r) {
+  if (!items.length) return "";
+  var sum = 0, qsum = 0; items.forEach(function (x) { var q = num((x.extra || {}).buyQty) || num(x.qty) || 1; sum += q * num(x.wholesalePrice); qsum += q; });
+  var diff = sum - r.out, byDay = {};
+  items.forEach(function (x) { var d = x.extra.buyDate; byDay[d] = byDay[d] || []; byDay[d].push(x); });
+  var rows = Object.keys(byDay).sort().map(function (d) {
+    return byDay[d].map(function (x) {
+      var q = num((x.extra || {}).buyQty) || num(x.qty) || 1, w = num(x.wholesalePrice);
+      return '<tr><td class="num">' + esc(d.slice(5)) + "</td><td>" + esc(x.brand || "") + " " + esc((x.sku || "").slice(0, 20)) + " <small>" + esc(x.size || "") + '</small></td><td class="r num">' + q + '</td><td class="r num">' + won(w) + '</td><td class="r num">' + won(q * w) + "</td></tr>";
+    }).join("");
+  }).join("");
+  return '<tr class="bk-items"><td colspan="5" style="background:rgba(127,127,127,.06);padding:8px 12px"><div style="font-weight:600;margin-bottom:4px">📦 이 송금으로 산 상품 ' + items.length + '종 ' + qsum + '개 · 매입 합계 ' + won(sum) + "원" + (diff !== 0 ? ' <span class="' + (diff > 0 ? "neg" : "p-good") + '">(' + (diff > 0 ? "-" : "+") + won(Math.abs(diff)) + "원 " + (diff > 0 ? "덜 보냄·할인" : "더 보냄") + ")</span>" : "") + '</div><table class="tbl" style="width:auto;min-width:500px"><thead><tr><th>매입일</th><th>상품</th><th class="r">수량</th><th class="r">도매가</th><th class="r">합계</th></tr></thead><tbody>' + rows + "</tbody></table></td></tr>";
+}
 function suggest(r, G) { if (!r.out || r.match) return null; return G.filter(function (g) { var dd = (new Date(r.date) - new Date(g.day)) / 86400000; return g.paid < g.n && (Math.abs(g.sum - r.out) <= 1000 || (r.out < g.sum && g.sum - r.out <= Math.max(1000, g.sum * 0.01))) && dd >= -1 && dd <= 7; })[0] || null; }
 /* ---------- 카드 할부·고정 지출·월별 나갈 돈 (대표님 요청 2026-11-18) ----------
    app_settings.card_plan = { cards:[{id,name,payDay}], items:[{id,card,date,memo,amount,months,first}], fixed:[{id,name,amount,day,until}] }
@@ -77,12 +101,14 @@ function render() {
 function renderTx() {
   var d = D(), w = ERP.canWrite("purchases"), months = {}; d.rows.forEach(function (r) { months[r.date.slice(0, 7)] = 1; }); var ms = Object.keys(months).sort().reverse(); if (!v.bkM || ms.indexOf(v.bkM) < 0) v.bkM = ms[0] || "";
   var L = d.rows.filter(function (r) { return r.date.slice(0, 7) === v.bkM && (!v.bkQ || (r.memo + " " + r.out + " " + r.in).indexOf(v.bkQ) >= 0); }), tin = 0, tout = 0; L.forEach(function (r) { tin += r.in; tout += r.out; }); var G = kreamGroups();
-  var body = L.map(function (r) { var sg = suggest(r, G); return "<tr><td class=\"num\">" + esc(r.date.slice(5)) + " <small class=\"muted\">" + esc(r.time || "") + "</small></td><td>" + esc(r.memo || "") + (r.match ? '<br><small class="muted">✔ ' + esc(r.match) + "</small>" : "") + (sg ? '<br><button class="btn sm pri" data-bkm="' + esc(r.id) + "§" + esc(sg.key) + '">크림 매입 ' + esc(sg.day.slice(5) + " " + sg.sup) + " (" + won(sg.sum) + ") 입금으로 처리</button>" : "") + '</td><td class="r num">' + (r.in ? '<b style="color:#30a46c">' + won(r.in) + "</b>" : "") + '</td><td class="r num">' + (r.out ? '<b class="neg">' + won(r.out) + "</b>" : "") + '</td><td class="r num"><small>' + (r.bal != null ? won(r.bal) : "") + "</small></td></tr>"; }).join("");
+  var body = L.map(function (r) { var sg = suggest(r, G), kit = kreamItemsFor(r), exp = kit.length && (v.bkExp || {})[r.id]; return (kit.length ? '<tr class="click" data-bkexp="' + esc(r.id) + '">' : "<tr>") + '<td class="num">' + (kit.length ? (exp ? "▼" : "▶") + " " : "") + esc(r.date.slice(5)) + ' <small class="muted">' + esc(r.time || "") + "</small></td><td>" + esc(r.memo || "") + (r.match ? '<br><small class="muted">✔ ' + esc(r.match) + "</small>" : "") + (kit.length && !r.match ? '<br><small class="p-acc">📦 크림 매입 ' + kit.length + "종 (펼쳐 보기)</small>" : "") + (sg ? '<br><button class="btn sm pri" data-bkm="' + esc(r.id) + "§" + esc(sg.key) + '">크림 매입 ' + esc(sg.day.slice(5) + " " + sg.sup) + " (" + won(sg.sum) + ") 입금으로 처리</button>" : "") + '</td><td class="r num">' + (r.in ? '<b style="color:#30a46c">' + won(r.in) + "</b>" : "") + '</td><td class="r num">' + (r.out ? '<b class="neg">' + won(r.out) + "</b>" : "") + '</td><td class="r num"><small>' + (r.bal != null ? won(r.bal) : "") + "</small></td></tr>" + (exp ? itemsPanel(kit, r) : ""); }).join("");
+  var _unused2 = (function () { var _OLD_body_unused = (function(){var x=L.map(function (r) { var sg = suggest(r, G); return "<tr><td class=\"num\">" + esc(r.date.slice(5)) + " <small class=\"muted\">" + esc(r.time || "") + "</small></td><td>" + esc(r.memo || "") + (r.match ? '<br><small class="muted">✔ ' + esc(r.match) + "</small>" : "") + (sg ? '<br><button class="btn sm pri" data-bkm="' + esc(r.id) + "§" + esc(sg.key) + '">크림 매입 ' + esc(sg.day.slice(5) + " " + sg.sup) + " (" + won(sg.sum) + ") 입금으로 처리</button>" : "") + '</td><td class="r num">' + (r.in ? '<b style="color:#30a46c">' + won(r.in) + "</b>" : "") + '</td><td class="r num">' + (r.out ? '<b class="neg">' + won(r.out) + "</b>" : "") + '</td><td class="r num"><small>' + (r.bal != null ? won(r.bal) : "") + "</small></td></tr>"; }).join(""); return x;})();})();
   return '<p class="note">크림 매입 송금이 보이면 <b>입금으로 처리</b> 버튼이 떠요 → 누르면 크림 매입 입금일이 들어가고 ‘매입’에 자동 기록돼요. 도매처가 조금 깎아 준 경우(매입 확정 금액의 1% 이내)도 후보로 떠요.</p>' +
     (ms.length ? '<div class="panel"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><select class="ctl" id="bk-m">' + ms.map(function (m) { return "<option" + (m === v.bkM ? " selected" : "") + ">" + m + "</option>"; }).join("") + '</select><input class="ctl" id="bk-q" placeholder="내용·금액 검색" value="' + esc(v.bkQ || "") + '"><span>입금 <b style="color:#30a46c">' + won(tin) + '</b> · 출금 <b class="neg">' + won(tout) + "</b> · " + L.length + '건</span></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>날짜</th><th>내용</th><th class="r">입금</th><th class="r">출금</th><th class="r">잔액</th></tr></thead><tbody>' + body + "</tbody></table></div></div>" : "");
 }
 function bind(root) {
   root.querySelectorAll("[data-bktab]").forEach(function (b) { b.onclick = function () { v.bkTab = b.dataset.bktab; ERP.render(); }; });
+  root.querySelectorAll("[data-bkexp]").forEach(function (tr) { tr.onclick = function (e) { if (e.target.closest("button,a,input")) return; v.bkExp = v.bkExp || {}; var k = tr.dataset.bkexp; if (v.bkExp[k]) delete v.bkExp[k]; else v.bkExp[k] = 1; ERP.render(); }; });
   root.querySelectorAll("[data-cpf]").forEach(function (el) { el.onchange = async function () { var a = el.dataset.cpf.split("|"), d = CP(), it = d.items.find(function (x) { return x.id === a[0]; }); if (!it) return; it[a[1]] = el.value; await saveCP(d); ERP.render(); }; });
   root.querySelectorAll("[data-cpdel]").forEach(function (b) { b.onclick = async function () { if (!confirm("이 결제를 지울까요?")) return; var d = CP(); d.items = d.items.filter(function (x) { return x.id !== b.dataset.cpdel; }); await saveCP(d); ERP.render(); }; });
   root.querySelectorAll("[data-cpcdel]").forEach(function (b) { b.onclick = async function () { var d = CP(), id = b.dataset.cpcdel; if (d.items.some(function (x) { return x.card === id; })) { ERP.toast("이 카드로 넣은 결제가 있어서 못 지워요"); return; } d.cards = d.cards.filter(function (x) { return x.id !== id; }); await saveCP(d); ERP.render(); }; });
