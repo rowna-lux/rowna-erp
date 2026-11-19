@@ -664,8 +664,38 @@ async function tgJob(msgs) {
 }
 async function tgText(m) {
   var t = String(m.text || "").trim();
-  if (/^\/start/.test(t)) { await tgSend("🤖 로우나 크림 계산봇이에요.\n도매 리스트 <b>사진(여러 장 가능)</b>을 보내면 크림 사이즈별 시세·거래량으로 계산해서 답장해요.\n캡션에 공급처를 적으면(예: 수고개) 그 이름으로 저장해요.\n\n/status 상태 · /last 마지막 리스트 다시 보기"); return; }
+  if (/^\/start/.test(t)) { await tgSend("🤖 로우나 크림 계산봇이에요.\n도매 리스트 <b>사진(여러 장 가능)</b>을 보내면 크림 사이즈별 시세·거래량으로 계산해서 답장해요.\n캡션에 공급처를 적으면(예: 수고개) 그 이름으로 저장해요.\n\n/오늘 /정산 /잔액 /보판 /last /status · /help"); return; }
   if (/^\/status/.test(t)) { await tgSend("상태: 사진 읽기 도우미 " + (helperOn() ? "✅" : "❌") + " · 열무 크림도매 도우미 " + (wholesaleOn() ? "✅" : "❌") + " · 대기 " + TG.jobs.length + "건" + (TG.err ? "\n최근 오류: " + th(TG.err) : "")); return; }
+  if (/^\/오늘|^\/today/i.test(t)) {
+    var today = U.today(), yd = U.shiftDay ? U.shiftDay(today, -1) : today, yAgg = ERP.aggregate(function (d) { return d === yd; }), tAgg = ERP.aggregate(function (d) { return d === today; });
+    await tgSend("☀ <b>오늘·어제 요약</b>\n어제: " + yAgg.n + "건 · " + won(yAgg.rev) + "원\n오늘: " + tAgg.n + "건 · " + won(tAgg.rev) + "원\n이번 달 매출: " + won(ERP.aggregate(function (d) { return U.ym(d) === today.slice(0, 7); }).rev) + "원");
+    return;
+  }
+  if (/^\/정산|^\/settle/i.test(t)) {
+    var byP = {}; ERP.list("sales").forEach(function (s) { if (ERP.excluded(s)) return; var d = ERP.derive(s); if (d.st === "확정") return; var p = s.platformId || "-"; byP[p] = (byP[p] || 0) + d.settled; });
+    var L = Object.keys(byP).map(function (p) { return [ERP.platName(p), byP[p]]; }).sort(function (a, b) { return b[1] - a[1]; });
+    var tot = L.reduce(function (a, x) { return a + x[1]; }, 0);
+    await tgSend("💎 <b>정산 미확정 (들어올 돈)</b>\n합계: " + won(tot) + "원\n\n" + L.slice(0, 10).map(function (x) { return "· " + x[0] + ": " + won(x[1]); }).join("\n"));
+    return;
+  }
+  if (/^\/잔액|^\/balance/i.test(t)) {
+    var bt = (S.SET.bank_tx || {}).rows || [], last = bt.filter(function (x) { return x.bal != null; })[0];
+    var cp = S.SET.card_plan || {}, ym = U.today().slice(0, 7), cardM = 0, fixM = 0;
+    (cp.items || []).forEach(function (it) { var A = num(it.amount), N = Math.max(1, num(it.months) || 1), per = Math.floor(A / N), ks = []; for (var i = 0; i < N; i++) ks.push(""); var first = it.first || ""; if (!first) { var dd = (it.date || U.today()).slice(0, 7); var y = +dd.slice(0, 4), m = +dd.slice(5, 7); m++; if (m > 12) { m = 1; y++; } first = y + "-" + ("0" + m).slice(-2); } /* find ym in schedule */ for (var i2 = 0; i2 < N; i2++) { var y2 = +first.slice(0, 4), m2 = +first.slice(5, 7) - 1 + i2; y2 += Math.floor(m2 / 12); m2 = ((m2 % 12) + 12) % 12; var mk = y2 + "-" + ("0" + (m2 + 1)).slice(-2); if (mk === ym) cardM += per + (i2 === 0 ? A - per * N : 0); } });
+    (cp.fixed || []).forEach(function (f) { if (f.until && f.until < ym) return; fixM += num(f.amount); });
+    await tgSend("🏦 <b>잔액 · 이번 달 나갈 돈</b>\n통장: " + (last ? won(last.bal) + "원 (" + last.date + ")" : "데이터 없음") + "\n카드 할부: " + won(cardM) + "원\n고정 지출: " + won(fixM) + "원\n합계: " + won(cardM + fixM) + "원" + (last ? "\n잔액 − 나갈 돈: " + won(last.bal - cardM - fixM) + "원" : ""));
+    return;
+  }
+  if (/^\/보판|^\/bopan/i.test(t)) {
+    var ks = (S.SET.kream_sync || {}).items || {}, due = Object.values(ks).filter(function (it) { return it.st === "발송요청"; });
+    function hL(x) { var m = String(x || "").match(/(\d+):(\d{2}):(\d{2})/); return m ? +m[1] + (+m[2]) / 60 : null; }
+    due.sort(function (a, b) { return (hL(a["남은 시간"]) || 999) - (hL(b["남은 시간"]) || 999); });
+    var g = {}; due.forEach(function (it) { var k = it.model + " " + (it["사이즈"] || ""); g[k] = g[k] || { n: 0, h: hL(it["남은 시간"]) }; g[k].n++; });
+    var lines = Object.keys(g).map(function (k) { return "· " + k + " ×" + g[k].n + (g[k].h != null ? " <b>" + Math.round(g[k].h) + "h</b>" : ""); });
+    await tgSend("📦 <b>크림 보판 발송요청</b> " + due.length + "건\n" + (lines.length ? lines.slice(0, 15).join("\n") : "없어요"));
+    return;
+  }
+  if (/^\/help|^\/명령|^\/commands/i.test(t)) { await tgSend("🤖 명령어\n/오늘 — 오늘·어제 매출\n/정산 — 쇼핑몰별 정산 미확정\n/잔액 — 통장 잔액·이번 달 나갈 돈\n/보판 — 크림 보판 발송 기한\n/last — 마지막 도매 리스트\n/status — 도우미 상태"); return; }
   if (/^\/last/.test(t)) { var ds = ERP.list("kream_wholesale").map(function (x) { return x.listDate + "|" + (x.supplier || "열무"); }).sort().reverse()[0]; if (!ds) { await tgSend("리스트가 없어요."); return; } var p = ds.split("|"); await tgSend(tgReport(ERP.list("kream_wholesale").filter(function (x) { return x.listDate === p[0] && (x.supplier || "열무") === p[1]; }), {}, 0)); return; }
   await tgSend("사진을 보내 주세요. (/status · /last)");
 }
