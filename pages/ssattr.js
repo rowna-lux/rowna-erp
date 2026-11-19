@@ -256,6 +256,9 @@ ERP.acts.ssattrrun = async function (btn) {
   if (btn && btn.dataset && btn.dataset.redo) { list = (await targets()).filter(function (t) { return (done[t.ch] || 0) > 0 && done[t.ch] < 6 && !nf[t.ch]; }); }
   if (btn && btn.dataset && btn.dataset.fails) { list = (await targets()).filter(function (t) { return !((done[t.ch] || 0) >= 6) && nf[t.ch]; }); }   /* 실패 모음 다시 하기 */   /* 예전 기준으로 한 상품의 빈 칸 다시 채우기 */
   if (btn && btn.dataset && btn.dataset.sold) { list = list.filter(function (t) { return t.sold > 0; }); lim = Infinity; }
+  var HIGHEND_BRAND = /샤넬|에르메스|루이비통|디올/;   /* 11/19 대표님 지시: 백화점 하이엔드 매입(상품코드 없음·해당 브랜드)은 이번 자동입력 대상에서 빼고, 렉스몬드 상품코드 있는 상품만 먼저 */
+  var isRex = function (t) { return !!t.code && !HIGHEND_BRAND.test(t.brand || ""); };
+  list = list.filter(isRex).concat(list.filter(function (t) { return !isRex(t); }));
   var WIN = /패딩|다운|코트|무스탕|머플러|목도리|니트|스웨터|가디건|카디건|캐시미어|울(?!트)|에코퍼|리얼퍼|퍼 |플리스|후리스|장갑|비니|귀마개|부츠|어그|점퍼|파카|발라클라바/;   /* 11/7 대표님 지시: 겨울 상품 먼저 */
   var isW = function (t) { return WIN.test((t.name || "") + " " + (t.cat || "")); };
   list = list.filter(isW).concat(list.filter(function (t) { return !isW(t); }));
