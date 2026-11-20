@@ -131,8 +131,42 @@ function render() {
       { l: "🏦 통장 잔액", v: lastBal ? "₩ " + K(lastBal.bal) : "-", go: "bank", cls: "" },
       { l: "⚠ 사방넷 만료", v: dday != null ? "D-" + dday : "-", go: "", cls: dday != null && dday <= 10 ? "warn" : "" }
     ];
-    h += '<div class="lux-morning" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:12px 0;padding:10px;background:linear-gradient(135deg,rgba(32,208,255,.06),rgba(42,167,255,.03));border:1px solid rgba(127,127,127,.15);border-radius:12px">' +
+    h += '<div class="lux-morning" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:12px 0 8px;padding:10px;background:linear-gradient(135deg,rgba(32,208,255,.06),rgba(42,167,255,.03));border:1px solid rgba(127,127,127,.15);border-radius:12px">' +
       tiles.map(function (t) { return '<div style="padding:8px 10px;background:rgba(255,255,255,.03);border-radius:8px;cursor:'+(t.go?'pointer':'default')+'"' + (t.go ? ' data-go="' + t.go + '" role="button" tabindex="0"' : '') + '><div style="font-size:11px;opacity:.7;margin-bottom:4px">' + t.l + '</div><div class="num" style="font-size:16px;font-weight:700;color:' + (t.cls === "warn" ? "#ff4d6d" : "inherit") + '">' + t.v + '</div></div>'; }).join("") + '</div>';
+
+    /* === 2번째 줄: 월간 손익 + 적립 추천 (2026-11-21 대표님 요청) === */
+    function monExp(ymx) {
+      var card2 = 0; (cp.items || []).forEach(function (it) {
+        var A = U.num(it.amount), N = Math.max(1, U.num(it.months) || 1), per = Math.floor(A / N), first = it.first;
+        if (!first) { var dd2 = String(it.date || today).slice(0, 7); var y2 = +dd2.slice(0, 4), m2 = +dd2.slice(5, 7); m2++; if (m2 > 12) { m2 = 1; y2++; } first = y2 + "-" + ("0" + m2).slice(-2); }
+        for (var i2 = 0; i2 < N; i2++) { var y3 = +first.slice(0, 4), m3 = +first.slice(5, 7) - 1 + i2; y3 += Math.floor(m3 / 12); m3 = ((m3 % 12) + 12) % 12; var mk = y3 + "-" + ("0" + (m3 + 1)).slice(-2); if (mk === ymx) card2 += per + (i2 === 0 ? A - per * N : 0); }
+      });
+      var fix2 = 0; (cp.fixed || []).forEach(function (f) { if (f.until && f.until < ymx) return; fix2 += U.num(f.amount); });
+      return card2 + fix2;
+    }
+    /* 이번 달 예상 순이익 = 매출총이익(M.margin) - 이번달 나갈돈(cardM+fixM) */
+    var profit = U.num(M.margin) - (cardM + fixM);
+    /* 최근 3개월 평균 순이익 */
+    var prev3P = 0; for (var kk = 1; kk <= 3; kk++) { var mkk = U.shiftMonth(m, -kk); var agg = ERP.aggregate(function (d) { return U.ym(d) === mkk; }); prev3P += U.num(agg.margin) - monExp(mkk); }
+    var avgProfit = Math.round(prev3P / 3);
+    /* 3월 세금 폭탄 대비 적립 추천: 3월 지출이 평달 대비 얼마나 더 나가나 → 그 초과분을 남은 월수로 나눔 */
+    var marE = monExp("2027-03");
+    var ahead = []; for (var kk2 = 0; kk2 < 6; kk2++) ahead.push(U.shiftMonth(m, kk2));
+    var others = ahead.filter(function (mk) { return mk !== "2027-03"; });
+    var avgOther = others.length ? others.reduce(function (a, mk) { return a + monExp(mk); }, 0) / others.length : 0;
+    var excess = Math.max(0, marE - avgOther);
+    var untilMar = ahead.indexOf("2027-03"); if (untilMar <= 0) untilMar = 1;
+    var saveReco = Math.round(excess / untilMar);
+    /* 남는 돈 = 통장 잔액 - 이번달 나갈돈 */
+    var leftOver = lastBal ? lastBal.bal - (cardM + fixM) : null;
+    var tiles2 = [
+      { l: "💵 이번 달 예상 순이익", v: "₩ " + K(profit), go: "finance", cls: profit < 0 ? "warn" : "" },
+      { l: "📊 최근 3개월 평균 순이익", v: "₩ " + K(avgProfit), go: "finance", cls: avgProfit < 0 ? "warn" : "" },
+      { l: "🎯 3월 세금 대비 적립/월", v: "₩ " + K(saveReco), go: "bank", cls: "" },
+      { l: "🏦 통장 − 이번 달 나갈돈", v: leftOver != null ? "₩ " + K(leftOver) : "-", go: "bank", cls: leftOver != null && leftOver < 0 ? "warn" : "" }
+    ];
+    h += '<div class="lux-morning" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:0 0 12px;padding:10px;background:linear-gradient(135deg,rgba(255,163,32,.06),rgba(255,120,80,.03));border:1px solid rgba(127,127,127,.15);border-radius:12px">' +
+      tiles2.map(function (t) { return '<div style="padding:8px 10px;background:rgba(255,255,255,.03);border-radius:8px;cursor:' + (t.go ? 'pointer' : 'default') + '"' + (t.go ? ' data-go="' + t.go + '" role="button" tabindex="0"' : '') + '><div style="font-size:11px;opacity:.7;margin-bottom:4px">' + t.l + '</div><div class="num" style="font-size:16px;font-weight:700;color:' + (t.cls === "warn" ? "#ff4d6d" : "inherit") + '">' + t.v + '</div></div>'; }).join("") + '</div>';
   })();
   // 알림 카드 4
   var todayAgg = ERP.aggregate(function (d) { return d.slice(0, 10) === today; });

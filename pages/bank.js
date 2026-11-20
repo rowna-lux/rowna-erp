@@ -72,12 +72,56 @@ function monthPlan(ym) {
   return { byCard: byCard, card: tot, fixed: fx, total: tot + fx, list: list };
 }
 function lastBal() { var r = D().rows.filter(function (x) { return x.bal != null; })[0]; return r ? { bal: r.bal, date: r.date } : null; }
+/* 2026-11-21 대표님 요청: 날짜별 결제 일정표 — 앞으로 180일 돈 나가는 날 전부 */
+function timeline(d, days) {
+  var today = U.today(), out = [];
+  d.items.forEach(function (it) {
+    var sc = sched(it), ks = Object.keys(sc).sort();
+    var card = d.cards.find(function (c) { return c.id === it.card; });
+    var dd = (card && card.payDay) ? +card.payDay : (+String(it.date || today).slice(8, 10) || 30);
+    ks.forEach(function (ym) {
+      var mm = +ym.slice(5, 7), yy = +ym.slice(0, 4);
+      var last = new Date(yy, mm, 0).getDate();
+      var day = Math.min(dd, last), date = ym + "-" + ("0" + day).slice(-2);
+      if (date >= today) out.push({ date: date, amt: sc[ym], memo: (card ? card.name + " · " : "") + (it.memo || ""), kind: "item" });
+    });
+  });
+  for (var k = 0; k < Math.ceil(days / 30) + 1; k++) {
+    var ym2 = addM(today.slice(0, 7), k);
+    d.fixed.forEach(function (f) {
+      if (f.until && f.until < ym2) return;
+      var yy = +ym2.slice(0, 4), mm = +ym2.slice(5, 7), last = new Date(yy, mm, 0).getDate();
+      var dd = f.day ? Math.min(+f.day, last) : last;
+      var date = ym2 + "-" + ("0" + dd).slice(-2);
+      if (date >= today) out.push({ date: date, amt: num(f.amount), memo: "고정 · " + (f.name || ""), kind: "fixed" });
+    });
+  }
+  var maxD = new Date(Date.now() + days * 864e5).toISOString().slice(0, 10);
+  return out.filter(function (x) { return x.date <= maxD; }).sort(function (a, b) { return a.date.localeCompare(b.date); });
+}
+function renderTimeline(d, now) {
+  var tl = timeline(d, 180);
+  if (!tl.length) return '<p class="muted">앞으로 180일 예정된 결제가 없어요.</p>';
+  var byMonth = {}; tl.forEach(function (x) { var ym = x.date.slice(0, 7); byMonth[ym] = byMonth[ym] || []; byMonth[ym].push(x); });
+  var cum = 0;
+  return Object.keys(byMonth).sort().map(function (ym) {
+    var monTot = byMonth[ym].reduce(function (a, x) { return a + x.amt; }, 0);
+    var bad = monTot >= 3000000; cum += monTot;
+    return '<details' + (ym === now ? ' open' : '') + ' style="margin:8px 0;padding:8px;background:' + (bad ? 'rgba(255,77,109,.08)' : 'rgba(127,127,127,.04)') + ';border-radius:8px"><summary style="cursor:pointer;font-weight:600;color:' + (bad ? '#ff4d6d' : 'inherit') + '">' + ym + ' · 합계 ' + won(monTot) + '원' + (bad ? ' ⚠ 폭탄' : '') + ' · 누적 ' + won(cum) + '원 · ' + byMonth[ym].length + '건</summary>' +
+      '<table class="tbl" style="margin-top:6px"><thead><tr><th>날짜</th><th>D-day</th><th>내용</th><th class="r">금액</th></tr></thead><tbody>' +
+      byMonth[ym].map(function (x) {
+        var dday = Math.round((Date.parse(x.date) - Date.parse(U.today())) / 864e5);
+        return '<tr><td class="num">' + x.date.slice(5) + '</td><td class="num">' + (dday === 0 ? '오늘' : dday > 0 ? 'D-' + dday : 'D+' + (-dday)) + '</td><td>' + esc(x.memo) + '</td><td class="r num">' + won(x.amt) + '</td></tr>';
+      }).join('') + '</tbody></table></details>';
+  }).join('');
+}
 function renderCard() {
   var d = CP(), w = ERP.canWrite("purchases"), now = U.today().slice(0, 7), lb = lastBal();
   var M = [0, 1, 2, 3, 4, 5].map(function (k) { var ym = addM(now, k); return { ym: ym, p: monthPlan(ym) }; });
   var h = '<div class="tiles">' + ERP.tile("이번 달 나갈 돈", won(M[0].p.total) + "원", "카드 " + won(M[0].p.card) + " · 고정 " + won(M[0].p.fixed), "hl") + ERP.tile("다음 달 나갈 돈", won(M[1].p.total) + "원", "카드 " + won(M[1].p.card) + " · 고정 " + won(M[1].p.fixed)) + ERP.tile("통장 잔액", lb ? won(lb.bal) + "원" : "–", lb ? lb.date + " 기준 (통장 탭 엑셀)" : "통장 엑셀을 올리면 보여요") + ERP.tile("잔액 − 이번 달", lb ? won(lb.bal - M[0].p.total) + "원" : "–", "남는 돈(크림 정산 예정 제외)") + "</div>";
   h += '<div class="panel"><h2>📅 앞으로 6개월 나갈 돈</h2><div class="tbl-wrap"><table class="tbl"><thead><tr><th>월</th>' + d.cards.map(function (c) { return '<th class="r">' + esc(c.name) + (c.payDay ? "<br><small>" + esc(c.payDay) + "일 결제</small>" : "") + "</th>"; }).join("") + '<th class="r">카드 합계</th><th class="r">고정 지출</th><th class="r">합계</th></tr></thead><tbody>' +
     M.map(function (m) { return "<tr" + (m.ym === now ? ' style="font-weight:600"' : "") + "><td>" + m.ym + "</td>" + d.cards.map(function (c) { return '<td class="r num">' + (m.p.byCard[c.id] ? won(m.p.byCard[c.id]) : "") + "</td>"; }).join("") + '<td class="r num">' + won(m.p.card) + '</td><td class="r num">' + won(m.p.fixed) + '</td><td class="r num"><b>' + won(m.p.total) + "</b></td></tr>"; }).join("") + "</tbody></table></div></div>";
+  h += '<div class="panel"><h2>🗓 앞으로 180일 결제 일정 (날짜별)</h2><p class="muted" style="margin-top:0">카드 결제일·고정지출 지급일 기준. 월 합계 300만 넘으면 ⚠ 폭탄 표시.</p>' + renderTimeline(d, now) + '</div>';
   var opt = function (sel) { return d.cards.map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === sel ? " selected" : "") + ">" + esc(c.name) + "</option>"; }).join(""); };
   h += '<div class="panel"><h2>💳 할부·카드 결제 (' + d.items.length + '건)</h2>' + (w ? '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><select class="ctl" id="cp-card">' + (opt() || '<option value="">카드를 먼저 추가하세요</option>') + '</select><input class="ctl" type="date" id="cp-date" value="' + U.today() + '"><input class="ctl" id="cp-memo" placeholder="내용 (예: 열무 매입)" style="width:180px"><input class="ctl num" type="number" id="cp-amt" placeholder="결제 금액" style="width:120px"><select class="ctl" id="cp-mon">' + [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 18, 24].map(function (k) { return "<option value=\"" + k + "\">" + (k === 1 ? "일시불" : k + "개월") + "</option>"; }).join("") + '</select><button class="btn pri" data-act="cpadd">＋ 추가</button></div>' : "") +
     '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>구매일</th><th>카드</th><th>내용</th><th class="r">금액</th><th class="r">개월</th><th>첫 청구월</th><th class="r">월 납부</th><th>남은 회차</th><th></th></tr></thead><tbody>' +

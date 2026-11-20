@@ -41,13 +41,28 @@ function render() {
   var topRate = withOrders.filter(function (g) { return g.orders >= 3; }).sort(function (a, b) { return b.rate - a.rate; }).filter(function (g) { return g.rate > 0; }).slice(0, 30);
   var topLoss = withOrders.filter(function (g) { return g.loss > 0; }).sort(function (a, b) { return b.loss - a.loss; }).slice(0, 20);
   var zeroR = withOrders.filter(function (g) { return g.returns === 0 && g.orders >= 5; }).sort(function (a, b) { return b.rev - a.rev; }).slice(0, 20);
+  /* 2026-11-21 대표님 요청: 광고 후보 추출 — 반품 없고 매출 중상위 상품 (머스트잇·네이버쇼핑 광고용) */
+  var adRev = withOrders.reduce(function (a, g) { return a + g.rev; }, 0) / Math.max(1, withOrders.length);  /* 평균 매출 = 중상위 기준 */
+  var adCandidates = withOrders.filter(function (g) { return g.orders >= 3 && g.returns === 0 && g.rev >= adRev; }).sort(function (a, b) { return b.rev - a.rev; }).slice(0, 20);
   var h = '<div class="head"><div><h1>반품률 분석</h1><p>반품 많은 상품 = 상세페이지 개선 or 접기 · 반품 없는 상품 = 안정적 재구매 상품</p></div><div class="tools"><select class="ctl" id="rr-m"><option value="">전체 기간</option>' + ms.map(function (m) { return "<option" + (m === v.rrM ? " selected" : "") + ">" + m + "</option>"; }).join("") + "</select></div></div>";
-  h += '<div class="tiles">' + ERP.tile("전체 반품률", (overall.o ? (overall.r / overall.o * 100).toFixed(1) : 0) + "%", overall.r + " / " + overall.o + "건") + ERP.tile("반품률 10% 넘는 상품", topRate.filter(function (g) { return g.rate >= 0.1; }).length + "개", "주문 3건 이상 기준") + ERP.tile("반품 손실 합계", won(withOrders.reduce(function (a, g) { return a + g.loss; }, 0)) + "원", "배송비+환불 등") + "</div>";
+  h += '<div class="tiles">' + ERP.tile("전체 반품률", (overall.o ? (overall.r / overall.o * 100).toFixed(1) : 0) + "%", overall.r + " / " + overall.o + "건") + ERP.tile("반품률 10% 넘는 상품", topRate.filter(function (g) { return g.rate >= 0.1; }).length + "개", "주문 3건 이상 기준") + ERP.tile("반품 손실 합계", won(withOrders.reduce(function (a, g) { return a + g.loss; }, 0)) + "원", "배송비+환불 등") + ERP.tile("광고 후보 상품", adCandidates.length + "개", "반품 0건 + 매출 중상위 (주문 3건+)") + "</div>";
   h += '<div class="panel"><h2>⚠ 반품률 Top 30 (주문 3건 이상)</h2>' + tbl(topRate) + '<p class="note">반품률 20% 넘으면 빨강. 상세페이지 사이즈·소재·사진 다시 보거나 공급처에 품질 확인 요청.</p></div>';
   h += '<div class="panel"><h2>💸 반품 손실 Top 20</h2>' + tbl(topLoss) + '<p class="note">배송비 왕복·환불 손실 합계 큰 상품. 반품 조건 재검토(수선·반품불가·교환 정책).</p></div>';
   h += '<div class="panel"><h2>⭐ 반품 0건 · 매출 Top 20 (안정 상품)</h2>' + tbl(zeroR) + '<p class="note">주문 5건 이상인데 반품 한 건도 없는 상품. 재구매·광고 집중 대상.</p></div>';
+  h += '<div class="panel"><h2>📢 광고 후보 Top 20 (반품 0 + 매출 중상위) <button class="btn pri sm" data-act="rrCsv" style="margin-left:8px">📥 CSV 다운로드</button></h2>' + tbl(adCandidates) + '<p class="note">주문 3건 이상, 반품 한 건도 없고, 매출이 평균 이상인 상품만. 머스트잇 그로스패키지·네이버쇼핑·구글 상품광고 등록할 상품 후보. CSV 눌러 받으면 품번·상품명·매출 포함된 엑셀로 열림.</p></div>';
   return h;
 }
 function bind(root) { var sel = root.querySelector("#rr-m"); if (sel) sel.onchange = function () { v.rrM = sel.value; ERP.render(); }; }
+ERP.acts.rrCsv = function () {
+  var G = groups(), withOrders = G.filter(function (g) { return g.orders > 0; });
+  var adRev = withOrders.reduce(function (a, g) { return a + g.rev; }, 0) / Math.max(1, withOrders.length);
+  var ad = withOrders.filter(function (g) { return g.orders >= 3 && g.returns === 0 && g.rev >= adRev; }).sort(function (a, b) { return b.rev - a.rev; }).slice(0, 20);
+  var header = ["순위", "품번", "브랜드", "상품명", "주문수", "총매출", "평균단가"];
+  var rows = ad.map(function (g, i) { return [i + 1, g.code || "", g.brand || "", g.name || "", g.orders, g.rev, Math.round(g.rev / g.orders)]; });
+  var csv = "﻿" + [header].concat(rows).map(function (r) { return r.map(function (x) { var s = String(x || ""); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(","); }).join("\n");
+  var blob = new Blob([csv], { type: "text/csv;charset=utf-8" }), url = URL.createObjectURL(blob);
+  var a = document.createElement("a"); a.href = url; a.download = "광고후보_" + U.today() + ".csv"; a.click(); URL.revokeObjectURL(url);
+  ERP.toast(ad.length + "개 상품 CSV 다운로드");
+};
 ERP.page({ id: "return-rate", title: "반품률 분석", wide: true, roles: ["owner", "accountant"], render: render, bind: bind });
 })();
