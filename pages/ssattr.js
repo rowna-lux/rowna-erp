@@ -44,7 +44,8 @@ var PROMPT = [
   "- 패턴: 로고·프린트 등이 상품명/설명에 있으면 그것, 언급이 없고 단색 기본 아이템이면 '무지'.",
   "출력은 json으로: {\"pick\":{\"속성이름\":[\"값\"]},\"why\":\"한 줄(근거)\"}"
 ].join("\n");
-/* 렉스몬드: 자체상품코드로 검색 → 1건이면 상품페이지로 바로 감. 추가정보·MD노트·혼용률·실측만 잘라서 AI에 줌(상품정보고시는 "렉스몬드" 수입자 표기 등이 섞여 들어가 11/20부터 제외) */
+/* 렉스몬드: 자체상품코드로 검색 → 1건이면 상품페이지로 바로 감. 추가정보·MD노트·혼용률·실측·상품정보고시의 "제품 주소재"만 잘라서 AI에 줌
+   (상품정보고시의 "제조자" 행엔 "(주)렉스몬드 수입/매입"이 그대로 들어있어 11/20부터 그 행은 긁지 않음 — 소재 행만) */
 function cut(t, a, b, n) { var i = t.indexOf(a); if (i < 0) return ""; var j = b ? t.indexOf(b, i + a.length) : -1; return t.slice(i, j > i ? Math.min(j, i + n) : i + n).trim(); }
 async function rexInfo(code) {
   if (!code) return { found: false, why: "자체상품코드 없음" };
@@ -60,7 +61,7 @@ async function rexInfo(code) {
   }
   var t = d.text || "", title = (d.title || "").replace(/\s*\|\s*렉스몬드\s*$/, "");
   if (code && nz(t).indexOf(nc) < 0 && nz(title).indexOf(nc) < 0) return { found: false, why: "렉스몬드 품번 불일치" };
-  var info = ["상품: " + title, cut(t, "홈\n", "할인가", 300), cut(t, "추가정보", "상품 옵션", 300), cut(t, "MD’s NOTE", "상품 안내", 600) || cut(t, "MD's NOTE", "상품 안내", 600), cut(t, "렉스몬드 실측", "사이즈 선택 TIP", 400), cut(t, "혼용률", null, 400), cut(t, "\n소재", null, 300), cut(t, "상품 안내", null, 500)].filter(Boolean).join("\n");
+  var info = ["상품: " + title, cut(t, "홈\n", "할인가", 300), cut(t, "추가정보", "상품 옵션", 300), cut(t, "MD’s NOTE", "상품 안내", 600) || cut(t, "MD's NOTE", "상품 안내", 600), cut(t, "제품 주소재", "색상", 200), cut(t, "렉스몬드 실측", "사이즈 선택 TIP", 400), cut(t, "혼용률", null, 400), cut(t, "\n소재", null, 300), cut(t, "상품 안내", null, 500)].filter(Boolean).join("\n");
   return { found: true, url: (d.url || "").split("&")[0], info: info.slice(0, 5000) };
 }
 async function choose(t, attrs, rex) {
