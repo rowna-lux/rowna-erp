@@ -99,6 +99,44 @@ function timeline(d, days) {
   var maxD = new Date(Date.now() + days * 864e5).toISOString().slice(0, 10);
   return out.filter(function (x) { return x.date <= maxD; }).sort(function (a, b) { return a.date.localeCompare(b.date); });
 }
+/* 6개월 현금흐름 예측: 과거 3개월 평균 매출·매입으로 미래 추정 + 확정 지출 timeline */
+function forecastStats() {
+  var today = U.today(), thisM = today.slice(0, 7);
+  var prev3 = []; for (var k = 1; k <= 3; k++) prev3.push(addM(thisM, -k));
+  var revByM = {}, purByM = {};
+  ERP.list("sales").forEach(function (s) {
+    if (ERP.excluded(s)) return; var ym = (s.date || "").slice(0, 7); if (!ym) return;
+    var dd = ERP.derive(s); revByM[ym] = (revByM[ym] || 0) + dd.settled;
+  });
+  ERP.list("purchases").forEach(function (p) {
+    if (p.status === "cancelled") return; var ym = (p.date || "").slice(0, 7); if (!ym) return;
+    purByM[ym] = (purByM[ym] || 0) + (num(p.effectiveUnitCost) || num(p.unitCost));
+  });
+  var avgRev = prev3.reduce(function (a, m) { return a + (revByM[m] || 0); }, 0) / 3;
+  var avgPur = prev3.reduce(function (a, m) { return a + (purByM[m] || 0); }, 0) / 3;
+  return { avgRev: Math.round(avgRev), avgPur: Math.round(avgPur), revByM: revByM, purByM: purByM };
+}
+function renderForecast(d, now, lb, M) {
+  var f = forecastStats();
+  if (!lb) return '<p class="muted">통장 엑셀을 먼저 올려 주세요. 현재 잔액이 있어야 예측 가능해요.</p>';
+  var bal = lb.bal, rows = [];
+  for (var i = 0; i < 6; i++) {
+    var ym = M[i].ym, exp = M[i].p.total, netIn = f.avgRev - f.avgPur - exp;
+    bal += netIn;
+    rows.push({ ym: ym, in: f.avgRev, pur: f.avgPur, exp: exp, net: netIn, bal: bal });
+  }
+  var minBal = Math.min.apply(null, rows.map(function (r) { return r.bal; }));
+  var alert = rows.filter(function (r) { return r.bal < 0; });
+  var head = '<div style="padding:10px;border-radius:8px;background:' + (alert.length ? "rgba(255,77,109,.1)" : "rgba(46,230,166,.08)") + ';margin-bottom:12px"><b>' + (alert.length ? '⚠ 자금 부족 위험' : '✅ 자금 흐름 안정') + '</b> · 현재 잔액 ' + won(lb.bal) + '원 (' + lb.date + ') · 6개월 후 예상 잔액 <b>' + won(rows[5].bal) + '원</b>' + (alert.length ? ' · <b class="neg">' + alert[0].ym + '에 처음 마이너스 진입</b>' : '') + '<br><small class="muted">예상 매출/매입 = 최근 3개월 평균 (매출 ' + won(f.avgRev) + '원/월 · 매입 ' + won(f.avgPur) + '원/월). 확정 지출 = 할부+고정지출 timeline.</small></div>';
+  var tbl = '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>월</th><th class="r">예상 매출 (정산)</th><th class="r">예상 매입</th><th class="r">확정 지출 (할부+고정)</th><th class="r">월 순유입</th><th class="r">월말 예상 잔액</th></tr></thead><tbody>' +
+    rows.map(function (r) {
+      var balCls = r.bal < 0 ? "neg" : r.bal < 5000000 ? "hl" : "";
+      var netCls = r.net < 0 ? "neg" : "";
+      return "<tr><td>" + r.ym + '</td><td class="r num"><small>+ ' + won(r.in) + '</small></td><td class="r num"><small>− ' + won(r.pur) + '</small></td><td class="r num"><small>− ' + won(r.exp) + '</small></td><td class="r num ' + netCls + '">' + (r.net >= 0 ? '+' : '') + won(r.net) + '</td><td class="r num ' + balCls + '"><b>' + won(r.bal) + "</b></td></tr>";
+    }).join("") + "</tbody></table></div>";
+  var note = '<p class="note">예상 매출·매입은 최근 3개월 평균 기준. 실제 계절성·이벤트·광고 효과는 반영 안 됨 — 참고용. 월말 잔액 500만 미만 주황, 마이너스 빨강. 매입은 통장에서 바로 나가는 돈 기준(실질원가).</p>';
+  return head + tbl + note;
+}
 function renderTimeline(d, now) {
   var tl = timeline(d, 180);
   if (!tl.length) return '<p class="muted">앞으로 180일 예정된 결제가 없어요.</p>';
@@ -122,6 +160,8 @@ function renderCard() {
   h += '<div class="panel"><h2>📅 앞으로 6개월 나갈 돈</h2><div class="tbl-wrap"><table class="tbl"><thead><tr><th>월</th>' + d.cards.map(function (c) { return '<th class="r">' + esc(c.name) + (c.payDay ? "<br><small>" + esc(c.payDay) + "일 결제</small>" : "") + "</th>"; }).join("") + '<th class="r">카드 합계</th><th class="r">고정 지출</th><th class="r">합계</th></tr></thead><tbody>' +
     M.map(function (m) { return "<tr" + (m.ym === now ? ' style="font-weight:600"' : "") + "><td>" + m.ym + "</td>" + d.cards.map(function (c) { return '<td class="r num">' + (m.p.byCard[c.id] ? won(m.p.byCard[c.id]) : "") + "</td>"; }).join("") + '<td class="r num">' + won(m.p.card) + '</td><td class="r num">' + won(m.p.fixed) + '</td><td class="r num"><b>' + won(m.p.total) + "</b></td></tr>"; }).join("") + "</tbody></table></div></div>";
   h += '<div class="panel"><h2>🗓 앞으로 180일 결제 일정 (날짜별)</h2><p class="muted" style="margin-top:0">카드 결제일·고정지출 지급일 기준. 월 합계 300만 넘으면 ⚠ 폭탄 표시.</p>' + renderTimeline(d, now) + '</div>';
+  /* 2026-11-21 대표님 요청: 6개월 현금흐름 예측 — 통장잔액 + 예상매출 - 예상매입 - 확정지출 = 월말 잔액 추정 */
+  h += '<div class="panel"><h2>🔮 6개월 현금흐름 예측</h2>' + renderForecast(d, now, lb, M) + '</div>';
   var opt = function (sel) { return d.cards.map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === sel ? " selected" : "") + ">" + esc(c.name) + "</option>"; }).join(""); };
   h += '<div class="panel"><h2>💳 할부·카드 결제 (' + d.items.length + '건)</h2>' + (w ? '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><select class="ctl" id="cp-card">' + (opt() || '<option value="">카드를 먼저 추가하세요</option>') + '</select><input class="ctl" type="date" id="cp-date" value="' + U.today() + '"><input class="ctl" id="cp-memo" placeholder="내용 (예: 열무 매입)" style="width:180px"><input class="ctl num" type="number" id="cp-amt" placeholder="결제 금액" style="width:120px"><select class="ctl" id="cp-mon">' + [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 18, 24].map(function (k) { return "<option value=\"" + k + "\">" + (k === 1 ? "일시불" : k + "개월") + "</option>"; }).join("") + '</select><button class="btn pri" data-act="cpadd">＋ 추가</button></div>' : "") +
     '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>구매일</th><th>카드</th><th>내용</th><th class="r">금액</th><th class="r">개월</th><th>첫 청구월</th><th class="r">월 납부</th><th>남은 회차</th><th></th></tr></thead><tbody>' +
