@@ -77,14 +77,14 @@ var TAGP = [
   "네이버 스마트스토어 '태그'(검색어) 후보를 만듭니다. 고객이 네이버쇼핑에서 실제로 검색할 만한 짧은 검색어 형태로.",
   "예(패딩): 남자패딩, 명품패딩, 남자점퍼, 명품자켓, 명품패딩자켓, 겨울패딩, 남자겨울아우터 / (니트): 남자니트, 명품니트, 남자스웨터.",
   "상품 특징과 다른 태그 금지(예: 하프집업인데 브이넥, 레귤러핏인데 오버핏). 렉스몬드 정보·상품명에 맞는 것만.",
-  "규칙: 띄어쓰기 없이, 2~10글자. 브랜드명(한글·영문)·스토어명(로우나)·품번 금지. 상품과 직접 관련된 것만(성별+아이템, 명품+아이템, 스타일·소재·계절·용도+아이템, 선물용 등).",
+  "규칙: 띄어쓰기 없이, 2~10글자. 브랜드명(한글·영문)·스토어명(로우나)·매입처명(렉스몬드)·품번 금지. 상품과 직접 관련된 것만(성별+아이템, 명품+아이템, 스타일·소재·계절·용도+아이템, 선물용 등).",
   "서로 다른 20개를 중요한 순서로. 출력은 json으로: {\"tags\":[\"...\"]}"
 ].join("\n");
 async function makeTags(t, rex, have) {
   var r = await ERP.helperAsk("ai", { body: { model: AIM, response_format: { type: "json_object" }, messages: [{ role: "user", content: TAGP + "\n\n상품명: " + t.name + "\n카테고리: " + t.cat + "\n브랜드(쓰지 말 것): " + t.brand + (rex && rex.found ? "\n렉스몬드 정보:\n" + rex.info.slice(0, 1200) : "") + (have && have.length ? "\n이미 있는 태그(제외): " + have.join(", ") : "") }] } });
   if (r.usage) { TOK.i += r.usage.prompt_tokens || 0; TOK.o += r.usage.completion_tokens || 0; }
   var j = JSON.parse(r.content || "{}"), b = String(t.brand || "").replace(/\s+/g, ""), seen = {};
-  return (j.tags || []).map(function (x) { return String(x).replace(/[#\s]/g, ""); }).filter(function (x) { if (!x || x.length > 15 || seen[x] || (b && x.indexOf(b) >= 0) || /로우나/.test(x)) return false; seen[x] = 1; return true; });
+  return (j.tags || []).map(function (x) { return String(x).replace(/[#\s]/g, ""); }).filter(function (x) { if (!x || x.length > 15 || seen[x] || (b && x.indexOf(b) >= 0) || /로우나|렉스몬드/.test(x)) return false; seen[x] = 1; return true; });
 }
 var TAGSEL = "#anchor-tag .input-tag select", CHIPS = "#anchor-tag .choice-tag";
 function parseChips(html) { var out = []; String(html || "").replace(/<strong[^>]*>\s*#\s*([^<]+?)\s*<\/strong>/g, function (_, t) { out.push(t.trim()); }); return out; }
