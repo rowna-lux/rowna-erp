@@ -52,7 +52,7 @@ function list() {
   var st = { "초안": 0, "승인": 0, "등록완료": 0, "오류": 0 }; D.forEach(function (d) { st[d.status] = (st[d.status] || 0) + 1; });
   var basis = set("ss_margin_basis", "cost");
   return '<div class="head"><div><h1>스마트스토어 매입상품 등록</h1><p>사진·정보 입력 → 초안 → 승인 → PC에서 등록 (샤넬 지갑류 상품을 틀로 복사)</p></div><div class="tools">' +
-    '<button class="btn primary" data-act="ssunew">새 상품</button><button class="btn primary" data-act="ssusabang">사방넷 엑셀 + 사진 (' + st["승인"] + ')</button><button class="btn" data-act="ssuexport" title="스마트스토어 API 직등록용(PC 스크립트)">API용 내보내기 (' + st["승인"] + ')</button><button class="btn" data-act="ssuimport">결과 불러오기</button></div></div>' +
+    '<button class="btn primary" data-act="ssunew">새 상품</button><button class="btn primary" data-act="ssuserver">서버로 스스 등록 (' + st["승인"] + ')</button><button class="btn" data-act="ssusabang">사방넷 엑셀 + 사진 (' + st["승인"] + ')</button><button class="btn" data-act="ssuexport" title="스마트스토어 API 직등록용(PC 스크립트)">API용 내보내기 (' + st["승인"] + ')</button><button class="btn" data-act="ssuimport">결과 불러오기</button></div></div>' +
     '<p class="warn">시험 운영 중이에요. 이상한 점은 알려주세요. 스마트스토어 실제 등록은 PC 스크립트에서 --apply를 붙일 때만 돼요.</p>' +
     '<div class="card"><h3>가격·틀 설정</h3><div class="grid2">' +
     '<div class="fd"><label for="ssu-fee">스마트스토어 수수료율 (%)</label><input class="ctl" id="ssu-fee" type="number" step="0.01" value="' + (f == null ? "" : +(f * 100).toFixed(2)) + '" placeholder="정산 내역 기준으로 입력">' + (f == null ? '<small class="warn">수수료율을 넣어야 판매가가 계산돼요.</small>' : "") + "</div>" +
@@ -137,6 +137,41 @@ ERP.acts.ssudel = async function () {
   var d = V.edit; if (!confirm("이 초안과 사진을 삭제할까요?" + (d.productNo ? "\n(스마트스토어에 이미 등록된 상품은 그대로 남아요)" : ""))) return;
   var paths = (d.photos || []).map(function (p) { return p.path; }); if (paths.length) await S.sb.storage.from(BUCKET).remove(paths);
   await saveDrafts(drafts().filter(function (x) { return x.id !== d.id; })); V.edit = null; ERP.render();
+};
+/* 승인분 → 소희봇 서버가 스마트스토어에 바로 등록 (PC·파일 없음, 2026-11-21) */
+var SOHEE = "https://54-180-19-139.sslip.io";
+async function apiItem(d) {
+  var urls = [];
+  for (var j = 0; j < (d.photos || []).length; j++) { var r = await S.sb.storage.from(BUCKET).createSignedUrl(d.photos[j].path, 3600); if (r.error) throw new Error("사진 주소 만들기 실패"); urls.push(r.data.signedUrl); }
+  return { id: d.id, name: d.name, salePrice: d.salePrice, tagPrice: d.tagPrice || tagPrice(d.salePrice), sellerCode: d.code + (d.color ? "-" + d.color : ""), photos: urls, detailHtml: detail(d, ["{{IMG}}"]).replace(/<p><img src="\{\{IMG\}\}"[^>]*><\/p>/, "{{IMAGES}}") };
+}
+async function serverCall(item, opt) {
+  var ss = await S.sb.auth.getSession(), tk = ss.data && ss.data.session && ss.data.session.access_token;
+  var res = await fetch(SOHEE + "/x/ss_register", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(Object.assign({ token: tk, item: item, templateChannelProductNo: String(S.SET.ss_template_no || ""), returnFee: num(set("ss_return_fee", 25000)), exchangeFee: num(set("ss_exchange_fee", 50000)) }, opt)) });
+  return res.json();
+}
+ERP.acts.ssuserver = async function () {
+  if (!S.SET.ss_template_no) { ERP.toast("가격·틀 설정에서 틀 상품번호를 넣어 주세요."); return; }
+  var A = drafts().filter(function (d) { return d.status === "승인"; }); if (!A.length) { ERP.toast("승인된 상품이 없어요."); return; }
+  try {
+    if (confirm("먼저 '점검'만 할까요? (등록하지 않고 틀·가격·즉시할인만 확인)\n확인 = 점검 / 취소 = 실제 등록으로")) {
+      ERP.toast("점검 중이에요…");
+      var c = await serverCall(await apiItem(A[0]), { dryRun: true });
+      alert(c.ok ? "점검 결과 (" + A[0].name + ")\n" + JSON.stringify(c.check, null, 1) : "점검 실패: " + c.error); return;
+    }
+    var sus = confirm(A.length + "개를 등록할게요.\n'전시 중지'로 올릴까요? (판매자센터에서 확인 후 전시 켜기 — 첫 등록 권장)\n확인 = 전시 중지 / 취소 = 바로 판매");
+    var D = drafts(), ok = 0, bad = [];
+    for (var i = 0; i < A.length; i++) {
+      ERP.toast("등록 중 " + (i + 1) + "/" + A.length + " · " + A[i].name);
+      var r; try { r = await serverCall(await apiItem(A[i]), { suspend: sus }); } catch (e) { r = { ok: false, error: e.message }; }
+      var d = D.filter(function (x) { return x.id === A[i].id; })[0]; if (!d) continue;
+      if (r.ok) { ok++; d.status = "등록완료"; d.productNo = String(r.channelProductNo || ""); d.originNo = String(r.originProductNo || ""); d.registeredAt = r.at; d.error = ""; d.suspended = !!r.suspended; }
+      else { d.status = "오류"; d.error = String(r.error || "").slice(0, 200); bad.push(d.name + ": " + d.error); }
+      await saveDrafts(D);
+    }
+    ERP.render(); ERP.toast(ok + "개 등록 완료" + (bad.length ? " · 오류 " + bad.length + "개" : ""));
+    if (bad.length) alert("오류\n" + bad.join("\n"));
+  } catch (e) { ERP.toast("서버 연결 실패: " + e.message); }
 };
 /* 승인분 → PC 스크립트용 JSON (사진은 24시간짜리 다운로드 주소) */
 ERP.acts.ssuexport = async function () {
