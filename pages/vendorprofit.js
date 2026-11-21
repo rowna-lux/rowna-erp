@@ -22,13 +22,15 @@ function normVendor(v) {
 function groups() {
   var sMap = {}; ERP.list("sales").forEach(function (s) { sMap[s.id] = s; });
   var G = {}, today = U.today();
+  var CUT30 = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);  /* 30일 전 */
   ERP.list("purchases").forEach(function (p) {
     if (v.vpM && (p.date || "").slice(0, 7) !== v.vpM) return;
     var k = normVendor(p.vendor);
-    var g = G[k] = G[k] || { key: k, n: 0, total: 0, effTotal: 0, inStock: 0, inStockVal: 0, sold: 0, soldVal: 0, cancelled: 0, margin: 0, marginN: 0, turnDays: 0, turnN: 0, oldestStock: "" };
+    var g = G[k] = G[k] || { key: k, n: 0, total: 0, effTotal: 0, inStock: 0, inStockVal: 0, sold: 0, soldVal: 0, cancelled: 0, margin: 0, marginN: 0, turnDays: 0, turnN: 0, oldestStock: "", recent30: 0, recent30Val: 0 };
     g.n++;
     var cost = num(p.unitCost), eff = num(p.effectiveUnitCost) || cost;
     g.total += cost; g.effTotal += eff;
+    if (p.date && p.date >= CUT30) { g.recent30++; g.recent30Val += eff; }
     if (p.status === "cancelled") { g.cancelled++; return; }
     if (p.status === "in_stock") {
       g.inStock++; g.inStockVal += eff;
@@ -47,10 +49,13 @@ function groups() {
     }
   });
   return Object.values(G).map(function (g) {
-    g.sellRate = (g.sold + g.inStock + g.cancelled) ? g.sold / (g.sold + g.inStock + g.cancelled) : 0;
+    /* 최근 30일 신규 매입은 전환율 계산에서 제외 (아직 팔릴 시간 없음) */
+    var matureN = g.n - g.recent30, matureSold = g.sold, matureInStock = g.inStock - Math.max(0, g.recent30 - (g.n - g.inStock));
+    g.sellRate = matureN > 0 ? matureSold / matureN : null;
+    g.isNewMostly = g.n > 0 && g.recent30 / g.n >= 0.8;  /* 80% 이상이 신규 매입이면 "신규" 플래그 */
     g.avgTurn = g.turnN ? Math.round(g.turnDays / g.turnN) : null;
     g.avgMargin = g.marginN ? Math.round(g.margin / g.marginN) : null;
-    g.avgMarginPer = g.marginN && g.soldVal ? g.margin / g.soldVal : null;  /* 매입액 대비 마진율 */
+    g.avgMarginPer = g.marginN && g.soldVal ? g.margin / g.soldVal : null;
     g.stockAge = g.oldestStock ? Math.round((Date.parse(U.today()) - Date.parse(g.oldestStock)) / 864e5) : null;
     return g;
   }).sort(function (a, b) { return b.total - a.total; });
@@ -69,15 +74,18 @@ function render() {
 
   h += '<div class="panel"><h2>💰 공급처별 수익성 (매입액순)</h2><div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>공급처</th><th class="r">매입</th><th class="r">매입액</th><th class="r">판매</th><th class="r">재고</th><th class="r">취소</th><th class="r">판매 전환율</th><th class="r">평균 회전일</th><th class="r">판매당 마진</th><th class="r">매입가 대비 마진율</th><th class="r">재고 묶인 돈</th></tr></thead><tbody>' +
     G.map(function (g, i) {
-      var rateCls = g.sellRate >= 0.7 ? "p-good" : g.sellRate < 0.3 ? "neg" : "";
+      var rateCls = g.sellRate == null ? "" : g.sellRate >= 0.7 ? "p-good" : g.sellRate < 0.3 ? "neg" : "";
       var turnCls = g.avgTurn != null && g.avgTurn > 60 ? "neg" : g.avgTurn != null && g.avgTurn < 30 ? "p-good" : "";
       var marCls = g.avgMarginPer != null && g.avgMarginPer < 0 ? "neg" : g.avgMarginPer != null && g.avgMarginPer >= 0.3 ? "p-good" : "";
       var oldCls = g.stockAge != null && g.stockAge > 90 ? "neg" : "";
-      return "<tr><td>" + (i + 1) + "</td><td><b>" + esc(g.key) + "</b>" + (g.stockAge != null && g.stockAge > 90 ? '<br><small class="neg">최오래 재고 ' + g.stockAge + '일</small>' : "") + '</td><td class="r num">' + g.n + '</td><td class="r num">' + won(g.total) + '</td><td class="r num">' + g.sold + '</td><td class="r num">' + g.inStock + '</td><td class="r num">' + (g.cancelled || "-") + '</td><td class="r num ' + rateCls + '"><b>' + pct(g.sellRate) + '</b></td><td class="r num ' + turnCls + '">' + (g.avgTurn != null ? g.avgTurn + "일" : "-") + '</td><td class="r num">' + (g.avgMargin != null ? won(g.avgMargin) : "-") + '</td><td class="r num ' + marCls + '">' + (g.avgMarginPer != null ? pct(g.avgMarginPer) : "-") + '</td><td class="r num ' + oldCls + '">' + won(g.inStockVal) + "</td></tr>";
-    }).join("") + "</tbody></table></div><p class=\"note\">판매 전환율 70%+ 녹색, 30% 미만 빨강 · 평균 회전일 30일 미만 녹색, 60일+ 빨강 · 매입가 대비 마진율 30%+ 녹색, 마이너스 빨강.</p></div>";
+      var rateCell = g.sellRate != null ? '<b>' + pct(g.sellRate) + '</b>' : '<span class="pill p-warn" style="font-size:10px">⏳ 신규</span>';
+      var vendorLabel = esc(g.key) + (g.isNewMostly ? ' <span class="pill p-warn" style="font-size:10px;margin-left:4px">🆕 신규</span>' : '');
+      var ageLine = g.stockAge != null && g.stockAge > 90 && !g.isNewMostly ? '<br><small class="neg">최오래 재고 ' + g.stockAge + '일</small>' : (g.recent30 > 0 && g.recent30 < g.n ? '<br><small class="muted">최근 30일 매입 ' + g.recent30 + '건</small>' : "");
+      return "<tr><td>" + (i + 1) + "</td><td><b>" + vendorLabel + "</b>" + ageLine + '</td><td class="r num">' + g.n + '</td><td class="r num">' + won(g.total) + '</td><td class="r num">' + g.sold + '</td><td class="r num">' + g.inStock + '</td><td class="r num">' + (g.cancelled || "-") + '</td><td class="r num ' + rateCls + '">' + rateCell + '</td><td class="r num ' + turnCls + '">' + (g.avgTurn != null ? g.avgTurn + "일" : "-") + '</td><td class="r num">' + (g.avgMargin != null ? won(g.avgMargin) : "-") + '</td><td class="r num ' + marCls + '">' + (g.avgMarginPer != null ? pct(g.avgMarginPer) : "-") + '</td><td class="r num ' + oldCls + '">' + won(g.inStockVal) + "</td></tr>";
+    }).join("") + "</tbody></table></div><p class=\"note\">판매 전환율 70%+ 녹색, 30% 미만 빨강 · 평균 회전일 30일 미만 녹색, 60일+ 빨강 · 매입가 대비 마진율 30%+ 녹색, 마이너스 빨강. <b>🆕 신규 = 매입의 80%+ 가 최근 30일 이내</b> — 전환율 계산 안 함(팔릴 시간 부족).</p></div>";
 
-  /* 액션 아이템 */
-  var bad = G.filter(function (g) { return g.n >= 3 && g.sellRate < 0.3; });
+  /* 액션 아이템 — 신규 공급처는 제외(아직 판단 이름) */
+  var bad = G.filter(function (g) { return g.n >= 3 && g.sellRate != null && g.sellRate < 0.3 && !g.isNewMostly; });
   var slow = G.filter(function (g) { return g.avgTurn != null && g.avgTurn > 60 && g.marginN >= 2; });
   var star = G.filter(function (g) { return g.avgMarginPer != null && g.avgMarginPer >= 0.3 && g.marginN >= 3; }).sort(function (a, b) { return b.margin - a.margin; });
   if (bad.length || slow.length || star.length) {
