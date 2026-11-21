@@ -39,11 +39,13 @@ function rows() {
   var items = Object.values(ks).filter(function (x) { return x.st === "정산완료" || x.st === "판매완료"; });
   return items.map(function (it) {
     var m = findMatch(it);
-    var revenue = num(it["정산금액"]);
+    var revenue = num(it["정산금액"]);  /* 판매완료는 0 (정산 전) */
     var cost = m ? m.cost : 0;
-    var profit = m && cost ? revenue - cost : null;
+    var isSettled = it.st === "정산완료" && revenue > 0;
+    var profit = isSettled && m && cost ? revenue - cost : null;
     var rate = (profit != null && revenue) ? profit / revenue : null;
     return {
+      status: it.st,
       date: d8(it["정산일"]) || "",
       brand: m ? m.brand : "",
       model: it.model || "",
@@ -51,7 +53,8 @@ function rows() {
       name: m ? m.name : (it.name || ""),
       revenue: revenue, cost: cost, profit: profit, rate: rate,
       match: !!m, source: m ? m.kind : "매칭안됨", supplier: m ? m.source : "-",
-      kreamId: it.id
+      kreamId: it.id,
+      isSettled: isSettled
     };
   }).sort(function (a, b) { return b.date.localeCompare(a.date); });
 }
@@ -61,10 +64,15 @@ function months(R) { var m = {}; R.forEach(function (r) { if (r.date) m[r.date.s
 function render() {
   var R = rows(), ms = months(R);
   if (!v.kpM) v.kpM = "";
-  var matched = R.filter(function (r) { return r.match && r.cost > 0; });
-  var unmatched = R.filter(function (r) { return !r.match || !r.cost; });
+  /* 정산완료 (실제 수익 계산 가능) */
+  var settled = R.filter(function (r) { return r.isSettled; });
+  var settledMatched = settled.filter(function (r) { return r.match && r.cost > 0; });
+  var settledUnmatched = settled.filter(function (r) { return !r.match || !r.cost; });
+  /* 판매완료 (정산 대기 — revenue 아직 없음) */
+  var pending = R.filter(function (r) { return !r.isSettled; });
+  var matched = settledMatched;  /* 호환용 */
   var mRows = v.kpM ? matched.filter(function (r) { return r.date.slice(0, 7) === v.kpM; }) : matched;
-  var uRows = v.kpM ? unmatched.filter(function (r) { return r.date.slice(0, 7) === v.kpM; }) : unmatched;
+  var uRows = v.kpM ? settledUnmatched.filter(function (r) { return r.date.slice(0, 7) === v.kpM; }) : settledUnmatched;
   var totalRev = mRows.reduce(function (a, r) { return a + r.revenue; }, 0);
   var totalCost = mRows.reduce(function (a, r) { return a + r.cost; }, 0);
   var totalProfit = totalRev - totalCost;
@@ -83,10 +91,10 @@ function render() {
 
   /* 타일 */
   h += '<div class="tiles">' +
-    ERP.tile("정산완료 (매칭)", matched.length + "건", "매입 매칭됨") +
-    ERP.tile("정산완료 (매칭 안됨)", unmatched.length + "건", "매입 입력 필요", unmatched.length > 0 ? "hl" : "") +
+    ERP.tile("정산완료", settled.length + "건", "매칭 " + settledMatched.length + " · 매칭안됨 " + settledUnmatched.length) +
+    ERP.tile("판매완료 (정산 대기)", pending.length + "건", "크림이 정산 전 상태") +
     ERP.tile("총 매출 (정산)", won(totalRev) + "원", v.kpM || "전체") +
-    ERP.tile("순수익", won(totalProfit) + "원", pct(totalRate) + " 수익률", totalProfit < 0 ? "" : "hl") + "</div>";
+    ERP.tile("순수익", won(totalProfit) + "원", pct(totalRate) + " 수익률", totalProfit >= 0 ? "hl" : "") + "</div>";
 
   /* 월별 */
   if (Object.keys(byM).length) {
@@ -115,6 +123,14 @@ function render() {
     mRows.map(function (r) { var cls = r.profit < 0 ? "neg" : r.profit > 0 ? "p-good" : ""; return '<tr><td class="num">' + esc(r.date) + '</td><td>' + esc(((r.brand || "") + " " + (r.name || "")).slice(0, 40)) + ' <small class="num muted">' + esc(r.model) + '</small></td><td>' + esc(r.size) + '</td><td><small class="pill">' + esc(r.source) + ' · ' + esc(r.supplier) + '</small></td><td class="r num">' + won(r.revenue) + '</td><td class="r num">' + won(r.cost) + '</td><td class="r num ' + cls + '"><b>' + won(r.profit || 0) + '</b></td><td class="r num ' + cls + '">' + (r.rate != null ? pct(r.rate) : "-") + "</td></tr>"; }).join("") +
     "</tbody></table></div>" : '<p class="muted">선택 기간에 매칭된 정산완료 건이 없어요.</p>') + "</div>";
 
+  /* 판매완료 대기 (정산 전 - 예상 수익만) */
+  if (pending.length) {
+    var pMatched = pending.filter(function (r) { return r.match && r.cost; });
+    var pendingCost = pMatched.reduce(function (a, r) { return a + r.cost; }, 0);
+    h += '<div class="panel"><h2>⏳ 판매완료 · 정산 대기 (' + pending.length + '건 · 매입가 ' + won(pendingCost) + '원)</h2><p class="note">크림에서 이미 판매는 됐지만 정산금액이 아직 안 들어옴. 정산되면 매출로 들어가요.</p><div class="tbl-wrap"><table class="tbl"><thead><tr><th>모델번호</th><th>상품명</th><th>사이즈</th><th>매입처</th><th class="r">매입가</th></tr></thead><tbody>' +
+      pending.map(function (r) { return '<tr><td class="num">' + esc(r.model) + '</td><td>' + esc(((r.brand || "") + " " + (r.name || "")).slice(0, 40)) + '</td><td>' + esc(r.size) + '</td><td><small>' + esc(r.match ? (r.supplier + ' · ' + r.source) : '매칭 안됨') + '</small></td><td class="r num">' + (r.cost ? won(r.cost) : '-') + '</td></tr>'; }).join("") +
+      '</tbody></table></div></div>';
+  }
   /* 매입 연결 안된 것 */
   if (uRows.length) {
     h += '<div class="panel"><h2>⚠ 매입 연결 안됨 (' + uRows.length + '건) · 수익 계산 못 함</h2><p class="note">정산완료됐는데 크림 매입·로우나 재고 어디에서도 매칭 못 찾았어요. 품번·사이즈 표기 다르거나 매입 기록 자체가 없어요.<br>→ 크림 매입에서 <b>품번(SKU)을 크림 모델번호와 같게</b> 고치거나, 로우나 재고에 재고 추가하면 자동 매칭돼요.</p><div class="tbl-wrap"><table class="tbl"><thead><tr><th>정산일</th><th>모델번호</th><th>상품명</th><th>사이즈</th><th class="r">정산금액</th></tr></thead><tbody>' +
