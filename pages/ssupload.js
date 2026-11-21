@@ -58,7 +58,7 @@ function list() {
   var st = { "초안": 0, "승인": 0, "등록완료": 0, "오류": 0 }; D.forEach(function (d) { st[d.status] = (st[d.status] || 0) + 1; });
   var basis = set("ss_margin_basis", "cost");
   return '<div class="head"><div><h1>스마트스토어 매입상품 등록</h1><p>사진·정보 입력 → 초안 → 승인 → PC에서 등록 (샤넬 지갑류 상품을 틀로 복사)</p></div><div class="tools">' +
-    '<button class="btn primary" data-act="ssunew">새 상품</button><button class="btn primary" data-act="ssuserver">서버로 스스 등록 (' + st["승인"] + ')</button><button class="btn" data-act="ssusabang">사방넷 엑셀 + 사진 (' + st["승인"] + ')</button><button class="btn" data-act="ssuexport" title="스마트스토어 API 직등록용(PC 스크립트)">API용 내보내기 (' + st["승인"] + ')</button><button class="btn" data-act="ssuimport">결과 불러오기</button></div></div>' +
+    '<button class="btn primary" data-act="ssunew">새 상품</button><button class="btn primary" data-act="ssuserver">스스 등록·판매중지 (' + st["승인"] + ')</button><button class="btn" data-act="ssucheck" title="등록하지 않고 틀·가격만 확인">점검만</button><button class="btn" data-act="ssusabang">사방넷 엑셀 + 사진 (' + st["승인"] + ')</button><button class="btn" data-act="ssuexport" title="스마트스토어 API 직등록용(PC 스크립트)">API용 내보내기 (' + st["승인"] + ')</button><button class="btn" data-act="ssuimport">결과 불러오기</button></div></div>' +
     '<p class="warn">시험 운영 중이에요. 이상한 점은 알려주세요. 스마트스토어 실제 등록은 PC 스크립트에서 --apply를 붙일 때만 돼요.</p>' +
     '<div class="card"><h3>가격·틀 설정</h3><div class="grid2">' +
     '<div class="fd"><label for="ssu-fee">스마트스토어 수수료율 (%)</label><input class="ctl" id="ssu-fee" type="number" step="0.01" value="' + (f == null ? "" : +(f * 100).toFixed(2)) + '" placeholder="정산 내역 기준으로 입력">' + (f == null ? '<small class="warn">수수료율을 넣어야 판매가가 계산돼요.</small>' : "") + "</div>" +
@@ -163,12 +163,8 @@ ERP.acts.ssuserver = async function () {
   if (!S.SET.ss_template_no) { ERP.toast("가격·틀 설정에서 틀 상품번호를 넣어 주세요."); return; }
   var A = drafts().filter(function (d) { return d.status === "승인"; }); if (!A.length) { ERP.toast("승인된 상품이 없어요."); return; }
   try {
-    if (confirm("먼저 '점검'만 할까요? (등록하지 않고 틀·가격·즉시할인만 확인)\n확인 = 점검 / 취소 = 실제 등록으로")) {
-      ERP.toast("점검 중이에요…");
-      var c = await serverCall(await apiItem(A[0]), { dryRun: true });
-      alert(c.ok ? "점검 결과 (" + A[0].name + ")\n" + JSON.stringify(c.check, null, 1) : "점검 실패: " + c.error); return;
-    }
-    var sus = confirm(A.length + "개를 등록할게요.\n'전시 중지'로 올릴까요? (판매자센터에서 확인 후 전시 켜기 — 첫 등록 권장)\n확인 = 전시 중지 / 취소 = 바로 판매");
+    if (!confirm(A.length + "개를 스마트스토어에 '판매중지' 상태로 등록할게요.\n등록 후 판매자센터에서 상세설명을 다듬고 판매중으로 바꿔 주세요.\n\n" + A.map(function (d) { return "· " + d.name; }).join("\n"))) return;
+    var sus = true;
     var D = drafts(), ok = 0, bad = [];
     for (var i = 0; i < A.length; i++) {
       ERP.toast("등록 중 " + (i + 1) + "/" + A.length + " · " + A[i].name);
@@ -183,6 +179,10 @@ ERP.acts.ssuserver = async function () {
   } catch (e) { ERP.toast("서버 연결 실패: " + e.message); }
 };
 /* 승인분 → PC 스크립트용 JSON (사진은 24시간짜리 다운로드 주소) */
+ERP.acts.ssucheck = async function () {
+  var A = drafts().filter(function (d) { return d.status === "승인"; }); if (!A.length) { ERP.toast("승인된 상품이 없어요."); return; }
+  try { ERP.toast("점검 중이에요… (등록 안 함)"); var c = await serverCall(await apiItem(A[0]), { dryRun: true }); alert(c.ok ? "점검 결과 — 등록 안 됨 (" + A[0].name + ")\n" + JSON.stringify(c.check, null, 1) : "점검 실패: " + c.error); } catch (e) { ERP.toast("서버 연결 실패: " + e.message); }
+};
 ERP.acts.ssuexport = async function () {
   if (!S.SET.ss_template_no) { ERP.toast("API용은 가격·틀 설정에서 틀 상품번호(샤넬 지갑류)를 넣어야 해요."); return; }
   var A = drafts().filter(function (d) { return d.status === "승인"; }); if (!A.length) { ERP.toast("승인된 상품이 없어요."); return; }
