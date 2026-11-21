@@ -59,6 +59,50 @@ function rows() {
   }).sort(function (a, b) { return b.date.localeCompare(a.date); });
 }
 
+/* 크림 수수료 — Level 1 기본 6% + 2,500원 (시세 변동 있을 수 있음, 앱 설정 kream_fee_rate/kream_fee_cap 우선) */
+function kreamFee(sellPrice) {
+  var rate = num(S.SET.kream_fee_rate) || 0.06;
+  var base = 2500;
+  var fee = Math.floor(sellPrice * rate) + base;
+  var cap = num(S.SET.kream_fee_cap); if (cap && fee > cap) fee = cap;
+  return fee;
+}
+/* 보관 중 · 판매 중 (아직 안 팔린 보판) - 예상 수익 */
+function liveRows() {
+  var ks = (S.SET.kream_sync || {}).items || {};
+  var items = Object.values(ks).filter(function (x) { return /^(판매 중|보관|창고|입고|검수|발송|신청)/.test(x.st || ""); });
+  return items.map(function (it) {
+    var m = findMatch(it);
+    var hope = num(it["판매 희망가"]) || 0;
+    var recent = num(it["최근 거래가"]) || 0;
+    var instant = num(it["즉시 판매가"]) || 0;
+    var cost = m ? m.cost : 0;
+    /* 예상 정산 = 희망가 - 크림 수수료 */
+    var settleEst = hope ? hope - kreamFee(hope) : null;
+    var profitEst = (m && cost && settleEst != null) ? settleEst - cost : null;
+    var breakEven = cost ? cost + kreamFee(cost) + Math.ceil((cost * 0.065 + 2500) * 0.1) : null;  /* 손해 안 보는 최저 희망가 (대략) */
+    return {
+      status: it.st,
+      model: it.model || "",
+      size: it["사이즈"] || "",
+      name: m ? m.name : (it.name || ""),
+      brand: m ? m.brand : "",
+      cost: cost,
+      hope: hope,
+      recent: recent,
+      instant: instant,
+      settleEst: settleEst,
+      profitEst: profitEst,
+      breakEven: breakEven,
+      match: !!m,
+      source: m ? m.source : "-",
+      kreamId: it.id,
+      /* 희망가가 매입가보다 낮으면 위험! */
+      risk: m && cost && hope > 0 && (settleEst != null) && settleEst < cost
+    };
+  }).sort(function (a, b) { return (b.risk ? 1 : 0) - (a.risk ? 1 : 0) || b.cost - a.cost; });
+}
+
 function months(R) { var m = {}; R.forEach(function (r) { if (r.date) m[r.date.slice(0, 7)] = 1; }); return Object.keys(m).sort().reverse(); }
 
 function render() {
@@ -123,6 +167,23 @@ function render() {
     mRows.map(function (r) { var cls = r.profit < 0 ? "neg" : r.profit > 0 ? "p-good" : ""; return '<tr><td class="num">' + esc(r.date) + '</td><td>' + esc(((r.brand || "") + " " + (r.name || "")).slice(0, 40)) + ' <small class="num muted">' + esc(r.model) + '</small></td><td>' + esc(r.size) + '</td><td><small class="pill">' + esc(r.source) + ' · ' + esc(r.supplier) + '</small></td><td class="r num">' + won(r.revenue) + '</td><td class="r num">' + won(r.cost) + '</td><td class="r num ' + cls + '"><b>' + won(r.profit || 0) + '</b></td><td class="r num ' + cls + '">' + (r.rate != null ? pct(r.rate) : "-") + "</td></tr>"; }).join("") +
     "</tbody></table></div>" : '<p class="muted">선택 기간에 매칭된 정산완료 건이 없어요.</p>') + "</div>";
 
+  /* 📦 보관중/판매중 - 예상 수익 + 위험 알림 (매입가 ↔ 희망가 비교) */
+  var live = liveRows();
+  if (live.length) {
+    var risky = live.filter(function (r) { return r.risk; });
+    var totalCostLive = live.filter(function (r) { return r.cost; }).reduce(function (a, r) { return a + r.cost; }, 0);
+    var totalProfitEstLive = live.filter(function (r) { return r.profitEst != null; }).reduce(function (a, r) { return a + r.profitEst; }, 0);
+    h += '<div class="panel"><h2>📦 보관중·판매중 ' + live.length + '건 · 매입 묶인 돈 ' + won(totalCostLive) + '원 · 예상 순수익 ' + (totalProfitEstLive >= 0 ? '+' : '') + won(totalProfitEstLive) + '원</h2>';
+    if (risky.length) h += '<p class="note" style="background:rgba(255,77,109,.1);padding:8px;border-radius:6px;color:#ff4d6d"><b>⚠ 희망가가 매입가보다 낮은 위험 상품 ' + risky.length + '건</b> — 지금 팔면 손해! 희망가 올리거나 보류.</p>';
+    h += '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>상태</th><th>상품</th><th>사이즈</th><th>출처</th><th class="r">매입가</th><th class="r">최근 거래가</th><th class="r">희망가</th><th class="r">예상 정산 (−수수료)</th><th class="r">예상 순수익</th><th class="r">최저 희망가 (손해無)</th></tr></thead><tbody>' +
+      live.slice(0, 80).map(function (r) {
+        var stCls = /판매 중/.test(r.status) ? "p-good" : "";
+        var pcls = r.profitEst == null ? "" : r.profitEst < 0 ? "neg" : r.profitEst > 0 ? "p-good" : "";
+        var hopeCls = r.risk ? "neg" : "";
+        return '<tr' + (r.risk ? ' style="background:rgba(255,77,109,.06)"' : '') + '><td><span class="pill ' + stCls + '">' + esc(r.status) + '</span></td><td>' + esc(((r.brand || "") + " " + (r.name || "")).slice(0, 35)) + ' <small class="num muted">' + esc(r.model) + '</small></td><td>' + esc(r.size) + '</td><td><small>' + esc(r.source) + '</small></td><td class="r num"><b>' + (r.cost ? won(r.cost) : '<span class="pill p-crit" style="font-size:10px">매입 미매칭</span>') + '</b></td><td class="r num"><small>' + (r.recent ? won(r.recent) : "-") + '</small></td><td class="r num ' + hopeCls + '"><b>' + (r.hope ? won(r.hope) : "-") + '</b></td><td class="r num">' + (r.settleEst != null ? won(r.settleEst) : "-") + '</td><td class="r num ' + pcls + '"><b>' + (r.profitEst != null ? ((r.profitEst >= 0 ? "+" : "") + won(r.profitEst)) : "-") + '</b></td><td class="r num"><small>' + (r.breakEven ? won(r.breakEven) : "-") + '</small></td></tr>';
+      }).join("") +
+      '</tbody></table></div><p class="note">크림 수수료 Level1 기준(6% + 2,500원, 설정에서 변경 가능). 매입가 안 뜨는 상품 = 크림 매입이나 로우나 재고에 매칭 안 됨 → 품번 맞추거나 재고 추가 필요. <b>희망가 수정은 크림 앱/웹에서</b>.</p></div>';
+  }
   /* 판매완료 대기 (정산 전 - 예상 수익만) */
   if (pending.length) {
     var pMatched = pending.filter(function (r) { return r.match && r.cost; });
