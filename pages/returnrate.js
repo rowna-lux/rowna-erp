@@ -26,10 +26,13 @@ function months() { var m = {}; ERP.list("sales").forEach(function (s) { if (s.d
 
 function tbl(rows) {
   if (!rows.length) return '<p class="muted">데이터 없음</p>';
-  return '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>상품</th><th class="r">주문</th><th class="r">반품</th><th class="r">반품률</th><th class="r">매출</th><th class="r">반품 손실</th></tr></thead><tbody>' +
+  return '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>상품</th><th class="r">주문</th><th class="r">반품</th><th class="r">반품률</th><th class="r">매출</th><th class="r">반품 순손익</th></tr></thead><tbody>' +
     rows.map(function (g, i) {
       var cls = g.rate >= 0.2 ? "neg" : g.rate >= 0.1 ? "hl" : "";
-      return "<tr><td>" + (i + 1) + "</td><td>" + esc(g.brand) + " <small>" + esc(g.code || "") + "</small> " + esc((g.name || "").slice(0, 45)) + '</td><td class="r num">' + g.orders + '</td><td class="r num">' + g.returns + '</td><td class="r num ' + cls + '"><b>' + pct(g.rate) + '</b></td><td class="r num">' + won(g.rev) + '</td><td class="r num ' + (g.loss > 0 ? "neg" : "") + '">' + won(g.loss) + "</td></tr>";
+      /* 순손익 = 배송비지출 - 고객부담 반품비 + 환불손실. 양수 = 실제 손실(빨강), 음수 = 반품비 더 받아서 수익(녹색) */
+      var lossCls = g.loss > 0 ? "neg" : g.loss < 0 ? "p-good" : "";
+      var lossDisp = g.loss === 0 ? "-" : (g.loss > 0 ? "손실 " + won(g.loss) : "수익 " + won(-g.loss));
+      return "<tr><td>" + (i + 1) + "</td><td>" + esc(g.brand) + " <small>" + esc(g.code || "") + "</small> " + esc((g.name || "").slice(0, 45)) + '</td><td class="r num">' + g.orders + '</td><td class="r num">' + g.returns + '</td><td class="r num ' + cls + '"><b>' + pct(g.rate) + '</b></td><td class="r num">' + won(g.rev) + '</td><td class="r num ' + lossCls + '">' + lossDisp + "</td></tr>";
     }).join("") +
     "</tbody></table></div>";
 }
@@ -45,9 +48,11 @@ function render() {
   var adRev = withOrders.reduce(function (a, g) { return a + g.rev; }, 0) / Math.max(1, withOrders.length);  /* 평균 매출 = 중상위 기준 */
   var adCandidates = withOrders.filter(function (g) { return g.orders >= 3 && g.returns === 0 && g.rev >= adRev; }).sort(function (a, b) { return b.rev - a.rev; }).slice(0, 20);
   var h = '<div class="head"><div><h1>반품률 분석</h1><p>반품 많은 상품 = 상세페이지 개선 or 접기 · 반품 없는 상품 = 안정적 재구매 상품</p></div><div class="tools"><select class="ctl" id="rr-m"><option value="">전체 기간</option>' + ms.map(function (m) { return "<option" + (m === v.rrM ? " selected" : "") + ">" + m + "</option>"; }).join("") + "</select></div></div>";
-  h += '<div class="tiles">' + ERP.tile("전체 반품률", (overall.o ? (overall.r / overall.o * 100).toFixed(1) : 0) + "%", overall.r + " / " + overall.o + "건") + ERP.tile("반품률 10% 넘는 상품", topRate.filter(function (g) { return g.rate >= 0.1; }).length + "개", "주문 3건 이상 기준") + ERP.tile("반품 손실 합계", won(withOrders.reduce(function (a, g) { return a + g.loss; }, 0)) + "원", "배송비+환불 등") + ERP.tile("광고 후보 상품", adCandidates.length + "개", "반품 0건 + 매출 중상위 (주문 3건+)") + "</div>";
+  var totalLoss = withOrders.reduce(function (a, g) { return a + g.loss; }, 0);
+  var lossLabel = totalLoss > 0 ? ("손실 " + won(totalLoss) + "원") : totalLoss < 0 ? ("수익 " + won(-totalLoss) + "원") : "0원";
+  h += '<div class="tiles">' + ERP.tile("전체 반품률", (overall.o ? (overall.r / overall.o * 100).toFixed(1) : 0) + "%", overall.r + " / " + overall.o + "건") + ERP.tile("반품률 10% 넘는 상품", topRate.filter(function (g) { return g.rate >= 0.1; }).length + "개", "주문 3건 이상 기준") + ERP.tile("반품 순손익 합계", lossLabel, "배송비지출 − 고객부담 반품비 + 환불손실", totalLoss > 0 ? "" : "hl") + ERP.tile("광고 후보 상품", adCandidates.length + "개", "반품 0건 + 매출 중상위 (주문 3건+)") + "</div>";
   h += '<div class="panel"><h2>⚠ 반품률 Top 30 (주문 3건 이상)</h2>' + tbl(topRate) + '<p class="note">반품률 20% 넘으면 빨강. 상세페이지 사이즈·소재·사진 다시 보거나 공급처에 품질 확인 요청.</p></div>';
-  h += '<div class="panel"><h2>💸 반품 손실 Top 20</h2>' + tbl(topLoss) + '<p class="note">배송비 왕복·환불 손실 합계 큰 상품. 반품 조건 재검토(수선·반품불가·교환 정책).</p></div>';
+  h += '<div class="panel"><h2>💸 반품 손실 Top 20 (실제 손실만)</h2>' + tbl(topLoss) + '<p class="note">배송비 지출이 고객 반품비 + 환불손실보다 큰 상품만. 반품 조건 재검토(수선·반품불가·교환 정책). 반대로 반품비를 고객한테 더 받은 경우는 손익이 음수(수익)로 표시 — 위 Top 30/반품 0건 섹션에서 확인.</p></div>';
   h += '<div class="panel"><h2>⭐ 반품 0건 · 매출 Top 20 (안정 상품)</h2>' + tbl(zeroR) + '<p class="note">주문 5건 이상인데 반품 한 건도 없는 상품. 재구매·광고 집중 대상.</p></div>';
   h += '<div class="panel"><h2>📢 광고 후보 Top 20 (반품 0 + 매출 중상위) <button class="btn pri sm" data-act="rrCsv" style="margin-left:8px">📥 CSV 다운로드</button></h2>' + tbl(adCandidates) + '<p class="note">주문 3건 이상, 반품 한 건도 없고, 매출이 평균 이상인 상품만. 머스트잇 그로스패키지·네이버쇼핑·구글 상품광고 등록할 상품 후보. CSV 눌러 받으면 품번·상품명·매출 포함된 엑셀로 열림.</p></div>';
   return h;
