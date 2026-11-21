@@ -11,32 +11,43 @@ function sizeNorm(s) { return String(s || "").replace(/[\s\-()]/g, "").toLowerCa
 function sizeHit(a, b) { var A = sizeNorm(a), B = sizeNorm(b); if (!A || !B) return true; return A === B || A.indexOf(B) >= 0 || B.indexOf(A) >= 0; }
 function d8(s) { var m = String(s || "").match(/(\d{2})\/(\d{2})\/(\d{2})/); return m ? "20" + m[1] + "-" + m[2] + "-" + m[3] : ""; }
 
+/* FIFO lot 할당 추적용 — 호출 전 resetAlloc()로 리셋 */
+var _usedLots = {}, _usedKw = {};
+function resetAlloc() { _usedLots = {}; _usedKw = {}; }
 function findMatch(it) {
-  /* 1순위: kream_wholesale (크림 매입 - 도매가 가장 정확) */
+  /* 1순위: kream_wholesale (크림 매입 - 도매가 가장 정확). 여러 건 매칭되면 FIFO (매입일 오래된 순) */
   var kw = ERP.list("kream_wholesale").filter(function (r) {
     if (r.decision !== "매입") return false;
     var skuOrModel = r.sku || r.model || "";
     if (!modelHit(skuOrModel, it.model)) return false;
     return !r.size || sizeHit(r.size, it["사이즈"]);
-  });
-  if (kw.length) {
-    var r = kw[0];
+  }).sort(function (a, b) { return String((a.extra || {}).buyDate || "").localeCompare(String((b.extra || {}).buyDate || "")); });
+  var kwAvail = kw.filter(function (r) { return !_usedKw[r.id]; });
+  if (kwAvail.length) {
+    var r = kwAvail[0]; _usedKw[r.id] = true;
     return { kind: "크림 매입", source: r.supplier || "열무", cost: num(r.wholesalePrice), id: r.id, brand: r.brand || "", name: r.name || "", buyDate: (r.extra || {}).buyDate || "" };
   }
-  /* 2순위: stock_inventory (로우나 재고) */
+  /* 2순위: stock_inventory (로우나 재고). lot이 여러 개면 FIFO 할당 */
   var I = (S.SET.stock_inventory || {}).items || {};
   var hitK = Object.keys(I).filter(function (k) { var s = I[k]; return s && modelHit(s.model, it.model) && sizeHit(s.opt || "", it["사이즈"]); });
   if (hitK.length) {
     var kk = hitK[0], s = I[kk];
-    var lot = (s.lots || []).find(function (l) { return !l.out && num(l.price); }) || (s.lots || [])[0];
-    return { kind: "로우나 재고", source: "재고 실사", cost: lot ? num(lot.price) : 0, id: kk, brand: s.brand || "", name: s.name || "", buyDate: lot ? (lot.date || "") : "" };
+    var lots = (s.lots || []).map(function (l, i) { return { lot: l, idx: i }; }).filter(function (x) { return !x.lot.out && num(x.lot.price); });
+    lots.sort(function (a, b) { return String(a.lot.date || "").localeCompare(String(b.lot.date || "")); });
+    _usedLots[kk] = _usedLots[kk] || {};
+    var picked = lots.find(function (x) { return !_usedLots[kk][x.idx]; }) || lots[0];
+    if (picked) { _usedLots[kk][picked.idx] = true; return { kind: "로우나 재고", source: "재고 실사", cost: num(picked.lot.price), id: kk, brand: s.brand || "", name: s.name || "", buyDate: picked.lot.date || "" }; }
   }
+  /* kw/stock 둘 다 할당 끝났으면 재할당 없이 가장 오래된 (가장 비싼 리스크) 반환 */
+  if (kw.length) { var r2 = kw[0]; return { kind: "크림 매입", source: r2.supplier || "열무", cost: num(r2.wholesalePrice), id: r2.id, brand: r2.brand || "", name: r2.name || "", buyDate: (r2.extra || {}).buyDate || "" }; }
   return null;
 }
 
 function rows() {
+  resetAlloc();  /* lot 할당 리셋 */
   var ks = (S.SET.kream_sync || {}).items || {};
-  var items = Object.values(ks).filter(function (x) { return x.st === "정산완료" || x.st === "판매완료"; });
+  /* 정산일/상태 오래된 순으로 할당 (FIFO) */
+  var items = Object.values(ks).filter(function (x) { return x.st === "정산완료" || x.st === "판매완료"; }).sort(function (a, b) { return (d8(a["정산일"]) || "").localeCompare(d8(b["정산일"]) || ""); });
   return items.map(function (it) {
     var m = findMatch(it);
     var revenue = num(it["정산금액"]);  /* 판매완료는 0 (정산 전) */
@@ -67,10 +78,13 @@ function kreamFee(sellPrice) {
   var cap = num(S.SET.kream_fee_cap); if (cap && fee > cap) fee = cap;
   return fee;
 }
-/* 보관 중 · 판매 중 (아직 안 팔린 보판) - 예상 수익 */
+/* 보관 중 · 판매 중 (아직 안 팔린 보판) - 예상 수익.
+   중요: rows() 다음에 호출될 것이라 가정 - rows()가 정산/판매완료에 lot을 먼저 할당하고
+   남은 lot을 보관중/판매중에 할당. 리셋하지 않음. */
 function liveRows() {
   var ks = (S.SET.kream_sync || {}).items || {};
-  var items = Object.values(ks).filter(function (x) { return /^(판매 중|보관|창고|입고|검수|발송|신청)/.test(x.st || ""); });
+  /* 판매중/보관중도 오래된 순 (크림 ID 기준) */
+  var items = Object.values(ks).filter(function (x) { return /^(판매 중|보관|창고|입고|검수|발송|신청)/.test(x.st || ""); }).sort(function (a, b) { return String(a.id).localeCompare(String(b.id)); });
   return items.map(function (it) {
     var m = findMatch(it);
     var hope = num(it["판매 희망가"]) || 0;
