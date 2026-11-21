@@ -10,6 +10,12 @@ var ERP = window.ERP, U = ERP.U, S = ERP.S, esc = U.esc, won = U.won, num = U.nu
 var STORE = "https://smartstore.naver.com/lowna/products/", BUCKET = "evidence";
 var V = { edit: null, files: [] };
 var BOX = [["fullset", "매장 풀구성품/인보이스"], ["kca", "한국명품감정원 보증서"], ["dept", "국내백화점/국내재고"], ["quick", "서울·경기 당일 퀵"], ["gift", "선물포장 가능"]];
+/* 11/21 추가: 지금까진 "샤넬 지갑류"만 가정하고 속성분류코드(004)·성별(여성) 고정이었음 →
+   가방/신발/의류 매입 올리면 사방넷에 카테고리·성별이 잘못 들어감. 품목종류·성별을 직접 고르게 함 */
+var KINDS = [["wallet", "지갑/잡화", "004"], ["bag", "가방", "003"], ["shoes", "신발", "002"], ["clothing", "의류", "001"]];
+var GENDERS = [["female", "여성", 2], ["male", "남성", 1], ["unisex", "공용", 3]];
+function kindInfo(k) { return KINDS.filter(function (x) { return x[0] === k; })[0] || KINDS[0]; }
+function genderInfo(g) { return GENDERS.filter(function (x) { return x[0] === g; })[0] || GENDERS[0]; }
 
 function drafts() { return (S.SET.ss_upload_drafts || []).slice(); }
 async function saveDrafts(d) { await ERP.saveSetting("ss_upload_drafts", d); }
@@ -34,7 +40,7 @@ function calcLine(cost, manual) {
 function profit(d) { var f = feeRate(); return d.salePrice && f != null ? Math.round(d.salePrice * (1 - f) - num(d.cost)) : null; }
 
 function title(d) {
-  return [d.brand, d.model, d.code, d.color, d.box && d.box.dept ? "백화점" : "", "정품"].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+  return [d.brand, kindInfo(d.kind)[1], d.model, d.code, d.color, d.box && d.box.dept ? "백화점" : "", "정품"].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
 }
 /* 상세: 가운데 정렬, 사진, 정품 안내(입력한 항목만). 소재·사이즈 등 입력하지 않은 사양은 쓰지 않음 */
 function detail(d, urls) {
@@ -76,7 +82,10 @@ function editor() {
   return '<div class="head"><div><h1>' + (d.name ? esc(d.name) : "새 상품") + "</h1><p>" + esc(d.status) + " · " + esc(d.date) + '</p></div><div class="tools"><button class="btn" data-act="ssuback">목록</button>' +
     (ro ? "" : '<button class="btn" data-act="ssusave">초안 저장</button><button class="btn primary" data-act="ssuapprove">' + (d.status === "승인" ? "승인 취소" : "확인 완료 · 승인") + "</button>") +
     '<button class="btn danger" data-act="ssudel">삭제</button></div></div>' +
-    '<div class="grid2">' + w("브랜드", "brand", d.brand) + w("모델명", "model", d.model) + w("품번", "code", d.code) + w("색상 (확실한 것만)", "color", d.color) + w("옵션·사이즈 (있으면)", "option", d.option) +
+    '<div class="grid2">' + w("브랜드", "brand", d.brand) +
+    '<div class="fd"><label for="se-kind">품목종류</label><select class="ctl" id="se-kind"' + (ro ? " disabled" : "") + ">" + KINDS.map(function (k) { return '<option value="' + k[0] + '"' + (k[0] === (d.kind || "wallet") ? " selected" : "") + ">" + k[1] + "</option>"; }).join("") + "</select></div>" +
+    '<div class="fd"><label for="se-gender">성별</label><select class="ctl" id="se-gender"' + (ro ? " disabled" : "") + ">" + GENDERS.map(function (g) { return '<option value="' + g[0] + '"' + (g[0] === (d.gender || "female") ? " selected" : "") + ">" + g[1] + "</option>"; }).join("") + "</select></div>" +
+    w("모델명", "model", d.model) + w("품번", "code", d.code) + w("색상 (확실한 것만)", "color", d.color) + w("옵션·사이즈 (있으면)", "option", d.option) +
     w("매입가 (원)", "cost", d.cost, "number") + w("매입일", "pdate", d.pdate, "date") + w("매입처 (백화점·지점)", "vendor", d.vendor) +
     w("판매가 (비우면 자동 계산)", "salePrice", d.priceManual ? d.salePrice : "", "number") +
     '<div class="fd full"><div class="card" id="se-calc" aria-live="polite">' + calcLine(d.cost, d.priceManual ? d.salePrice : "") + "</div></div>" +
@@ -91,7 +100,7 @@ function render() { return V.edit ? editor() : list(); }
 
 function grab() {
   var d = V.edit, g = function (k) { var e = document.getElementById("se-" + k); return e ? e.value.trim() : ""; };
-  ["brand", "model", "code", "color", "option", "vendor", "pdate"].forEach(function (k) { d[k] = g(k); });
+  ["brand", "model", "code", "color", "option", "vendor", "pdate", "kind", "gender"].forEach(function (k) { d[k] = g(k); });
   d.code = d.code.toUpperCase(); d.cost = num(g("cost")); d.note = g("note");
   d.box = {}; document.querySelectorAll(".se-box").forEach(function (c) { d.box[c.dataset.k] = c.checked; });
   var sp = num(g("salePrice")); d.priceManual = !!sp; d.salePrice = sp || price(d.cost);
@@ -115,7 +124,7 @@ async function thumbs(root) {
   for (var i = 0; i < imgs.length; i++) { var r = await S.sb.storage.from(BUCKET).createSignedUrl(imgs[i].dataset.path, 600); if (!r.error) imgs[i].src = r.data.signedUrl; }
 }
 
-ERP.acts.ssunew = function () { V.edit = { id: U.uid(), date: U.today(), status: "초안", brand: "", model: "", code: "", color: "", option: "", cost: "", pdate: U.today(), vendor: "", box: { fullset: true, dept: true }, photos: [], note: "" }; ERP.render(); };
+ERP.acts.ssunew = function () { V.edit = { id: U.uid(), date: U.today(), status: "초안", brand: "", model: "", code: "", color: "", option: "", cost: "", pdate: U.today(), vendor: "", kind: "wallet", gender: "female", box: { fullset: true, dept: true }, photos: [], note: "" }; ERP.render(); };
 ERP.acts.ssuopen = function (b) { V.edit = drafts().filter(function (d) { return d.id === b.dataset.id; })[0] || null; ERP.render(); };
 ERP.acts.ssuback = function () { V.edit = null; ERP.render(); };
 ERP.acts.ssusave = async function () { await store(); ERP.render(); };
@@ -234,14 +243,15 @@ ERP.acts.ssusabang = async function () {
     if (!ns.length) { warn.push(code + ": 사진이 없어 뺐어요"); continue; }
     var urls = ns.map(function (n) { return esmUrl(folder, no, code, n); });
     var r = new Array(H[1].length).fill("");
+    var ki = kindInfo(d.kind), gi = genderInfo(d.gender);
     r[SBC.name] = d.name || title(d); r[SBC.model] = d.model || code; r[SBC.modelNo] = code; r[SBC.brandEn] = ""; r[SBC.sku] = code; r[SBC.kw] = d.brand || "";
-    r[SBC.kind] = 3; r[SBC.maker] = d.brand || ""; r[SBC.origin] = "상세참조"; r[SBC.gender] = 2;
+    r[SBC.kind] = 3; r[SBC.maker] = d.brand || ""; r[SBC.origin] = "상세참조"; r[SBC.gender] = gi[2];
     r[SBC.state] = 2; r[SBC.region] = 1; r[SBC.tax] = 1; r[SBC.shipKind] = 1; r[SBC.shipFee] = 0;
     r[SBC.cost] = num(d.cost); r[SBC.sale] = d.salePrice; r[SBC.tag] = d.tagPrice || tagPrice(d.salePrice);
     r[SBC.opt1] = "색상"; r[SBC.opt1v] = d.color || "상세참조";
     r[SBC.img] = urls[0]; [SBC.add6, SBC.add7, SBC.add8].forEach(function (c, k) { if (urls[k + 1]) r[c] = urls[k + 1]; });
     r[SBC.detail] = detail(d, urls);
-    r[SBC.certNo] = "없음"; r[SBC.certField] = "없음"; r[SBC.stock] = "N"; r[SBC.memo] = "로우나 하이엔드"; r[SBC.optEdit] = 2; r[SBC.attrCode] = "004";
+    r[SBC.certNo] = "없음"; r[SBC.certField] = "없음"; r[SBC.stock] = "N"; r[SBC.memo] = "로우나 하이엔드"; r[SBC.optEdit] = 2; r[SBC.attrCode] = ki[2];
     for (var q = 1; q <= 14; q++) r[SBC.attrCode + q] = "상세참조";
     rows.push({ d: d, no: no, r: r });
   }
