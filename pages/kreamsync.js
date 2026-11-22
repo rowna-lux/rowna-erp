@@ -160,7 +160,38 @@ async function morning() {
   R.forEach(function (r) { var c = ERP.kreamCalc ? ERP.kreamCalc(r) : null; if (!c) return; var q = qty(r); tot += c.real * q; if (r.extra.buyEst != null) est += num(r.extra.buyEst) * q; if (c.real < 0) bad.push((r.brand || "") + " " + (r.sku || "") + " " + (r.size || "") + " " + won(Math.round(c.real)) + "원×" + q); });
   if (R.length) out.push("📈 크림 매입 미판매 " + R.length + "줄 · 지금 시세로 팔면 " + won(Math.round(tot)) + "원" + (est ? " (매입 때 예상 " + won(Math.round(est)) + "원)" : ""));
   if (bad.length) out.push("⚠ 지금 팔면 손해 " + bad.length + "줄\n· " + bad.slice(0, 6).join("\n· "));
-  out.push("ERP: 크림 › 크림 보판 현황 / 크림 매입");
+
+  /* 2026-11-22 대표님 요청: 보관중·판매중 보판 중 "희망가 < 매입가" (손해가격 설정) 상품 즉시 알림 */
+  var live = I.filter(function (it) { return /^(판매 중|보관|창고|입고|검수|발송|신청)/.test(it.st || ""); });
+  var feeRate = num(S.SET.kream_fee_rate) || 0.06;
+  var usedKw = {}, usedLots = {};
+  function nkl(x) { return String(x || "").toLowerCase().replace(/[-\s.]/g, ""); }
+  function mhit(a, b) { var A = nkl(a); if (A.length < 4) return false; return String(b || "").split("/").map(nkl).filter(Boolean).some(function (B) { return A === B || (A.length >= 5 && B.indexOf(A) === 0) || (B.length >= 5 && A.indexOf(B) === 0); }); }
+  function shit(a, b) { var A = String(a || "").replace(/[\s\-()]/g, "").toLowerCase(), B = String(b || "").replace(/[\s\-()]/g, "").toLowerCase(); if (!A || !B) return true; return A === B || A.indexOf(B) >= 0 || B.indexOf(A) >= 0; }
+  function findCost(it) {
+    var kwList = ERP.list("kream_wholesale").filter(function (r) { return r.decision === "매입" && mhit(r.sku || r.model || "", it.model) && (!r.size || shit(r.size, it["사이즈"])); }).sort(function (a, b) { return String((a.extra || {}).buyDate || "").localeCompare(String((b.extra || {}).buyDate || "")); });
+    var kwAvail = kwList.find(function (r) { return !usedKw[r.id]; });
+    if (kwAvail) { usedKw[kwAvail.id] = true; return num(kwAvail.wholesalePrice); }
+    var INV = (S.SET.stock_inventory || {}).items || {};
+    var sk = Object.keys(INV).find(function (k) { return mhit(INV[k].model, it.model) && shit(INV[k].opt || "", it["사이즈"]); });
+    if (sk) {
+      var s = INV[sk], lots = (s.lots || []).map(function (l, i) { return { lot: l, idx: i }; }).filter(function (x) { return !x.lot.out && num(x.lot.price); });
+      lots.sort(function (a, b) { return String(a.lot.date || "").localeCompare(String(b.lot.date || "")); });
+      usedLots[sk] = usedLots[sk] || {};
+      var picked = lots.find(function (x) { return !usedLots[sk][x.idx]; });
+      if (picked) { usedLots[sk][picked.idx] = true; return num(picked.lot.price); }
+    }
+    return 0;
+  }
+  var risky = [];
+  live.forEach(function (it) {
+    var cost = findCost(it), hope = num(it["판매 희망가"]); if (!cost || !hope) return;
+    var fee = Math.floor(hope * feeRate) + 2500, settleEst = hope - fee;
+    if (settleEst < cost) risky.push({ name: (it.name || "").slice(0, 25), size: it["사이즈"] || "", cost: cost, hope: hope, loss: cost - settleEst });
+  });
+  if (risky.length) out.push("🚨 보판 손해가격 설정 " + risky.length + "건 (지금 팔리면 손해!)\n" + risky.slice(0, 5).map(function (x) { return "· " + x.name + " " + x.size + " · 매입 " + won(x.cost) + " · 희망 " + won(x.hope) + " · 손해 " + won(x.loss); }).join("\n") + "\n크림 앱에서 희망가 올리세요");
+
+  out.push("ERP: 크림 › 크림 보판 현황 / 크림 매입 / 크림 보판 수익");
   ERP.tgSend(out.join("\n"));
 }
 setInterval(function () { try { if (S.SET && S.profile) morning(); } catch (e) {} }, 5 * 60e3);
