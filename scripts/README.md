@@ -1,0 +1,139 @@
+# 로우나 서브컴 자동화 스크립트 (2026-11-22 작성)
+
+서브컴(사무실2 PC)에서 24/7 돌리는 매출 증대·자동화 스크립트 모음.
+
+## 🚀 설치 (최초 1회)
+
+```powershell
+# Python 3.10+ 설치되어 있다고 가정
+cd C:\Users\ADMIN\Downloads\로우나_AI작업
+git clone https://github.com/rowna-lux/rowna-erp.git
+cd rowna-erp\scripts
+
+# 전체 공통 패키지 설치
+pip install selenium webdriver-manager requests beautifulsoup4 lxml python-dotenv pandas bcrypt
+```
+
+## 🔧 .env 설정
+
+`scripts/.env` 파일 생성 후:
+
+```
+TELEGRAM_BOT_TOKEN=xxxxx
+TELEGRAM_CHAT_ID=xxxxx
+
+NAVER_COMMERCE_CLIENT_ID=xxxxx
+NAVER_COMMERCE_CLIENT_SECRET=xxxxx
+```
+
+- 텔레그램 봇 토큰: ERP > 설정 > 텔레그램 봇 토큰 (이미 있음)
+- 네이버 커머스 API: https://apicenter.commerce.naver.com/ 가입
+
+---
+
+## ① 크림 보판 손해가격 알림
+**이미 ERP에 내장됨** — 서브컴 스크립트 불필요. 매일 아침 9시 자동 발송.
+
+## ② 열무 도매 알림
+**이미 ERP 텔레그램 봇**으로 동작 중 — 카톡에서 열무 도매 리스트 사진 받으면 → **텔레그램 봇에 forward** → 자동 계산.
+자동 모니터링(사이트 긁기)은 user가 사이트 URL 알려주시면 추가.
+
+## ③ 네이버 블로그 자동 업로드 (`blog/upload_blog.py`)
+
+```powershell
+# 최초 1회 (수동 로그인)
+cd scripts\blog
+python upload_blog.py --login
+# 브라우저 열리면 수동 로그인 → 완료 후 콘솔에서 Enter
+
+# 일상 실행 (cron/작업 스케줄러에 등록)
+python upload_blog.py           # 최대 3개 발행
+python upload_blog.py --max 5   # 최대 5개
+```
+
+**발행 대기 글 넣는 위치:**
+`C:\Users\ADMIN\Downloads\로우나_AI작업\rowna_blog_auto\to_upload\<폴더명>\`
+
+각 폴더에:
+- `post.json`: `{"title": "...", "body_text": "...", "tags": ["샤넬", "지갑"]}`
+- `images/` 폴더 (선택): `.jpg`, `.png` 파일들
+
+**추천 스케줄:** 작업 스케줄러로 **매일 오전 10시, 오후 2시** 실행.
+
+## ④ 블랙프라이데이 명품 세일 모니터링 (`blackfriday/bf_monitor.py`)
+
+**11/28(금) D-6. 지금 바로 시작!**
+
+```powershell
+cd scripts\blackfriday
+python bf_monitor.py          # 1회 체크
+python bf_monitor.py --loop   # 2시간마다 무한 반복 (서브컴에서 24/7)
+```
+
+- SSENSE·Mytheresa·Farfetch 자동 체크
+- 로우나 취급 브랜드 50%+ 세일 발견 시 **즉시 텔레그램**
+- 봇 차단 피하려 2시간 간격 + 랜덤 딜레이
+
+**브랜드 리스트 수정:** `bf_monitor.py` 상단 `TARGET_BRANDS` 배열
+
+## ⑤ 머스트잇 그로스패키지 광고 자동 등록 (`mustit/mustit_ad_auto.py`)
+
+**현재 반쪽자리** — 머스트잇 셀러센터 UI 모르기 때문.
+
+user가 **광고 등록 1회 수동으로 해보고 스크린샷**(각 버튼·입력란 캡처) 보내주시면 바로 완성.
+
+## ⑥ 스마트스토어 리뷰 자동 요청 (`review/review_request.py`)
+
+```powershell
+cd scripts\review
+python review_request.py          # 1회 (배송완료 D+7 고객 리뷰 요청)
+python review_request.py --loop   # 매일 09시 자동
+```
+
+**사전 작업:** 네이버 커머스 API 가입 → CLIENT_ID/SECRET을 `.env`에 저장.
+
+**대안 (API 안 쓸 때):** 스마트스토어 센터 > 알림톡 설정에서 "배송완료 7일 후 자동 알림톡" 기능 사용 (유료, 건당 20~30원).
+
+## ⑦ 일본 구매대행 상품 모니터링 (`japan/japan_monitor.py`)
+
+```powershell
+cd scripts\japan
+python japan_monitor.py          # 1회
+python japan_monitor.py --loop   # 4시간마다
+```
+
+**감시 상품 리스트:** `scripts/japan/watch_list.json` (처음 실행 시 자동 생성 → 수정)
+
+- 아마존재팬 자동 체크
+- 환율 + 배송비(¥1,500 가정) + 관세 자동 계산 (한국 150달러 이하 면세)
+- 조건 맞으면 텔레그램 알림
+
+---
+
+## 🕐 작업 스케줄러 등록 (Windows)
+
+서브컴에서 24/7 돌리려면 Windows 작업 스케줄러에 등록:
+
+1. 작업 스케줄러 열기 → "기본 작업 만들기"
+2. 트리거: 매일 특정 시간 or 컴퓨터 부팅 시
+3. 동작: "프로그램 시작"
+   - 프로그램: `python.exe` (전체 경로)
+   - 인수: `C:\Users\ADMIN\Downloads\로우나_AI작업\rowna-erp\scripts\blackfriday\bf_monitor.py --loop`
+4. 저장
+
+**추천 스케줄:**
+- ③ 블로그: 매일 10시·14시
+- ④ 블랙프: 부팅 시 자동 시작 (`--loop`)
+- ⑤ 머스트잇 광고: 매주 월요일 09시
+- ⑥ 리뷰 요청: 매일 09시
+- ⑦ 일본 매물: 부팅 시 자동 시작 (`--loop`)
+
+---
+
+## ⚠ 중요 안전수칙
+
+1. **쿠키 파일(cookies.pkl, mustit_cookies.pkl)은 비밀번호와 동일** — git에 올리지 말기 (`.gitignore` 추가됨)
+2. **.env 파일도 git 제외**
+3. 모든 스크립트는 **랜덤 딜레이 + 저빈도** 설정 — 사이트 차단 방지
+4. 머스트잇·네이버·크림 사이트 **UI가 바뀌면 selector 수정 필요** — 실패 시 로그 확인
+5. 블로그 업로드는 **하루 5개 넘으면 네이버가 스팸으로 분류** 위험 — 기본 3개 제한

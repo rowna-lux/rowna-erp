@@ -1,0 +1,11 @@
+# 자동화 스크립트 — 비밀/상태 파일 제외
+.env
+*.pkl
+cookies.pkl
+mustit_cookies.pkl
+seen_items.json
+sent_review_requests.json
+jp_seen.json
+ad_log_*.txt
+__pycache__/
+*.pyc
