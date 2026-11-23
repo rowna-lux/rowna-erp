@@ -187,7 +187,18 @@ function copyEditor() {
     sec("재고수량", cf("재고수량", "stock", d.stock, "number")) +
     sec("판매자상품코드", cf("판매자상품코드 (예: 품번-색상 · 같은 코드는 두 번 등록 안 돼요)", "sellerCode", d.sellerCode)) +
     sec("상품이미지 <small>(대표이미지 1장 + 추가이미지 최대 9장 · 상세설명과 따로)</small>", "<div>" + imgs.map(function (x, n) { return '<span style="display:inline-block;margin:4px;text-align:center">' + x.html + "<br>" + (n === 0 ? "<small><b>대표이미지</b></small>" : "<small>추가이미지 " + n + "</small><br>") + (n === 0 || ro ? "" : '<button class="btn sm" data-act="ssucimg" data-op="main" data-k="' + x.kind + '" data-i="' + x.i + '">대표로</button>') + (ro ? "" : ' <button class="btn sm" data-act="ssucimg" data-op="del" data-k="' + x.kind + '" data-i="' + x.i + '">빼기</button>') + "</span>"; }).join("") + "</div>" + (ro ? "" : '<input type="file" id="sc-files" accept="image/*" multiple>')) +
-    sec("상세설명", '<label for="sc-detail">HTML (원본 상세를 그대로 불러왔어요 · 고칠 부분만 수정 · <code>{{사진}}</code>을 쓰면 위 대표·추가이미지가 그 자리에, <code>{{상품명}}</code>은 상품명으로 바뀌어요)</label><textarea class="ctl" id="sc-detail" rows="10" style="font-family:monospace;font-size:12px"' + (ro ? " disabled" : "") + ">" + esc(d.detailHtml || "") + '</textarea><div style="margin-top:8px"><b>미리보기</b><div id="sc-preview" class="card" style="max-height:600px;overflow:auto;background:#fff;color:#111">' + (d.detailHtml || "") + "</div></div>") +
+    sec("상세설명 <small>(스마트에디터처럼 바로 고치기 · 사진은 커서 위치에 들어가요)</small>", ro ? '<div class="card" style="background:#fff;color:#111;max-width:860px;margin:0 auto">' + (d.detailHtml || "") + "</div>" :
+      '<div id="sc-tb" style="position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;gap:4px;padding:6px;background:var(--panel,#111a2e);border:1px solid #2a3a5c;border-radius:6px">' +
+      '<button class="btn sm primary" data-ed="photo">📷 사진 넣기</button><input type="file" id="sc-edfile" accept="image/*" multiple style="display:none">' +
+      '<select class="ctl" id="sc-fs" style="width:auto"><option value="">글자 크기</option><option value="2">작게</option><option value="3">보통</option><option value="4">크게</option><option value="5">더 크게</option><option value="6">제목</option></select>' +
+      '<button class="btn sm" data-ed="bold"><b>B</b></button><button class="btn sm" data-ed="italic"><i>I</i></button><button class="btn sm" data-ed="underline"><u>U</u></button>' +
+      '<input type="color" id="sc-fc" value="#000000" title="글자색" style="width:34px;height:30px;padding:0;border:0"><input type="color" id="sc-bg" value="#fff200" title="형광펜" style="width:34px;height:30px;padding:0;border:0">' +
+      '<button class="btn sm" data-ed="justifyLeft">왼쪽</button><button class="btn sm" data-ed="justifyCenter">가운데</button><button class="btn sm" data-ed="justifyRight">오른쪽</button>' +
+      '<button class="btn sm" data-ed="insertHorizontalRule">구분선</button><button class="btn sm" data-ed="text">글 상자 추가</button><button class="btn sm" data-ed="removeFormat">서식 지우기</button>' +
+      '<button class="btn sm" data-ed="undo">↶</button><button class="btn sm" data-ed="redo">↷</button><button class="btn sm" data-ed="html">HTML 보기</button></div>' +
+      '<p class="muted" style="margin:4px 0">사진·글을 클릭해서 고치고, 사진은 클릭 후 Delete로 지워요. 사진 위치에 <code>{{사진}}</code>을 쓰면 대표·추가이미지가 그 자리에 들어가요.</p>' +
+      '<div id="sc-ed" contenteditable="true" style="background:#fff;color:#111;max-width:860px;min-height:400px;margin:0 auto;padding:12px;outline:2px solid #3b82f6;overflow:auto">' + (d.detailHtml || "") + "</div>" +
+      '<textarea class="ctl" id="sc-detail" rows="16" style="display:none;font-family:monospace;font-size:12px">' + esc(d.detailHtml || "") + "</textarea>") +
     sec("상품주요정보", '<div class="grid2">' + cf("브랜드", "brand", d.brand) + cf("모델명", "model", d.model) + "</div>") +
     sec("원본 그대로 복사되는 정보 <small>(바꾸려면 원본 상품에서 수정 후 다시 불러오기)</small>", '<table><tbody>' + Object.keys(fx).map(function (k) { return "<tr><th style=\"text-align:left;padding-right:12px\">" + esc(k) + "</th><td>" + esc(fx[k] == null ? "" : String(fx[k])) + "</td></tr>"; }).join("") + "</tbody></table>");
 }
@@ -195,7 +206,8 @@ function grabCopy() {
   var d = V.edit, g = function (k) { var e = document.getElementById("sc-" + k); return e ? e.value : null; };
   ["name", "sellerCode", "brand", "model", "vendor", "pdate"].forEach(function (k) { var v = g(k); if (v != null) d[k] = v.trim(); });
   ["price", "discount", "stock", "cost", "market"].forEach(function (k) { var v = g(k); if (v != null) d[k] = num(v); });
-  var dt = g("detail"); if (dt != null) d.detailHtml = dt;
+  var ed = document.getElementById("sc-ed"), ta = document.getElementById("sc-detail");
+  if (ed && ta) d.detailHtml = ta.style.display === "none" ? ed.innerHTML : ta.value;
 }
 async function storeCopy() { grabCopy(); var D = drafts(), k = D.findIndex(function (x) { return x.id === V.edit.id; }); if (k < 0) D.push(V.edit); else D[k] = V.edit; await saveDrafts(D); }
 ERP.acts.ssucsave = async function () { await storeCopy(); ERP.toast("저장했어요."); ERP.render(); };
@@ -215,8 +227,9 @@ ERP.acts.ssucreg = async function () {
   try {
     ERP.toast("등록 중이에요… (사진이 많으면 1분쯤 걸려요)");
     var np = []; for (var j = 0; j < (d.photos || []).length; j++) { var s = await S.sb.storage.from(BUCKET).createSignedUrl(d.photos[j].path, 3600); if (!s.error) np.push(s.data.signedUrl); }
-    var imgs = d.images || [];
-    var r = await xpost("/x/ss_copy", { no: d.srcNo, edit: { name: d.name, price: d.price, discount: d.discount, stock: d.stock, images: imgs, newFirst: !!d.newFirst, newPhotos: np, detail: d.detailHtml, sellerCode: d.sellerCode, brand: d.brand, model: d.model } });
+    var imgs = d.images || [], box = document.createElement("div"); box.innerHTML = d.detailHtml || "";
+    var dimg = box.querySelectorAll("img[data-path]"); for (var q = 0; q < dimg.length; q++) { var sg = await S.sb.storage.from(BUCKET).createSignedUrl(dimg[q].getAttribute("data-path"), 3600); if (!sg.error) dimg[q].setAttribute("src", sg.data.signedUrl); }
+    var r = await xpost("/x/ss_copy", { no: d.srcNo, edit: { name: d.name, price: d.price, discount: d.discount, stock: d.stock, images: imgs, newFirst: !!d.newFirst, newPhotos: np, detail: box.innerHTML, sellerCode: d.sellerCode, brand: d.brand, model: d.model } });
     if (r.ok) { d.status = "등록완료"; d.productNo = String(r.channelProductNo || ""); d.originNo = String(r.originProductNo || ""); d.registeredAt = r.at; d.error = ""; d.salePrice = num(d.price) - num(d.discount); d.code = d.sellerCode; }
     else { d.status = "오류"; d.error = String(r.error || "").slice(0, 1500); }
     await storeCopy(); ERP.render();
@@ -229,9 +242,38 @@ ERP.acts.ssucreg = async function () {
   } catch (e) { alert("서버 연결 실패: " + e.message); }
 };
 function bindCopy(root) {
-  var calc = root.querySelector("#sc-calc"), pv = root.querySelector("#sc-preview"), dt = root.querySelector("#sc-detail"), nm = root.querySelector("#sc-name"), cnt = root.querySelector("#sc-namecnt");
+  var calc = root.querySelector("#sc-calc"), nm = root.querySelector("#sc-name"), cnt = root.querySelector("#sc-namecnt");
+  var ed = root.querySelector("#sc-ed"), ta = root.querySelector("#sc-detail"), ef = root.querySelector("#sc-edfile"), range = null;
+  if (ed) {
+    var keep = function () { var sel = window.getSelection(); if (sel.rangeCount && ed.contains(sel.anchorNode)) range = sel.getRangeAt(0).cloneRange(); };
+    var back = function () { ed.focus(); if (range) { var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range); } };
+    ed.onkeyup = keep; ed.onmouseup = keep; ed.oninput = keep;
+    ed.onclick = function (e) { if (e.target.tagName === "IMG") { var r = document.createRange(); r.selectNode(e.target); var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r); range = r.cloneRange(); } };
+    root.querySelectorAll("#sc-tb [data-ed]").forEach(function (bt) { bt.onmousedown = function (e) { e.preventDefault(); }; bt.onclick = function (e) {
+      e.preventDefault(); e.stopPropagation(); var c = bt.dataset.ed;
+      if (c === "photo") { keep(); ef.click(); return; }
+      if (c === "html") { var on = ta.style.display === "none"; if (on) { ta.value = ed.innerHTML; ta.style.display = ""; ed.style.display = "none"; bt.textContent = "편집 화면"; } else { ed.innerHTML = ta.value; ta.style.display = "none"; ed.style.display = ""; bt.textContent = "HTML 보기"; } return; }
+      back();
+      if (c === "text") document.execCommand("insertHTML", false, '<p style="text-align:center">여기에 글을 쓰세요</p>');
+      else document.execCommand(c, false, null);
+      keep();
+    }; });
+    var fs = root.querySelector("#sc-fs"); if (fs) fs.onchange = function () { if (!fs.value) return; back(); document.execCommand("fontSize", false, fs.value); fs.value = ""; keep(); };
+    var fc = root.querySelector("#sc-fc"); if (fc) fc.oninput = function () { back(); document.execCommand("foreColor", false, fc.value); keep(); };
+    var bg = root.querySelector("#sc-bg"); if (bg) bg.oninput = function () { back(); document.execCommand("hiliteColor", false, bg.value); keep(); };
+    if (ef) ef.onchange = async function () {
+      var d = V.edit, html = "";
+      for (var i = 0; i < ef.files.length; i++) {
+        var f = ef.files[i], path = "ssup/" + d.id + "/detail_" + Date.now() + "_" + i + "." + ((f.name.split(".").pop() || "jpg").toLowerCase());
+        var up = await S.sb.storage.from(BUCKET).upload(path, f, { contentType: f.type || "image/jpeg", upsert: false });
+        if (up.error) { ERP.toast("사진 올리기 실패: " + ERP.errMsg(up.error)); return; }
+        var sg = await S.sb.storage.from(BUCKET).createSignedUrl(path, 604800); if (sg.error) continue;
+        html += '<p style="text-align:center"><img src="' + sg.data.signedUrl + '" data-path="' + path + '" style="max-width:100%"></p>';
+      }
+      ef.value = ""; back(); document.execCommand("insertHTML", false, html); keep(); ERP.toast("사진을 넣었어요. [저장]을 눌러 주세요.");
+    };
+  }
   ["price", "discount", "cost", "market"].forEach(function (k) { var e = root.querySelector("#sc-" + k); if (e) e.oninput = function () { grabCopy(); if (calc) calc.innerHTML = copyCalc(V.edit); }; });
-  if (dt && pv) dt.oninput = function () { pv.innerHTML = dt.value; };
   if (nm && cnt) nm.oninput = function () { cnt.textContent = nm.value.length + "/100"; };
   var fi = root.querySelector("#sc-files"); if (fi) fi.onchange = async function () { grabCopy(); fi.disabled = true; var n = (V.edit.images || []).length; V.edit.photos = V.edit.photos || []; var room = 10 - n - V.edit.photos.length; if (room <= 0) { ERP.toast("사진은 최대 10장이에요."); fi.disabled = false; return; } await uploadPhotos(Array.prototype.slice.call(fi.files, 0, room)); await storeCopy(); ERP.render(); };
   thumbs(root);
