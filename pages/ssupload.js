@@ -165,6 +165,10 @@ ERP.acts.ssuload = async function () {
     var D = drafts(); D.push(d); await saveDrafts(D); V.edit = d; ERP.render();
   } catch (e) { alert("서버 연결 실패: " + e.message); }
 };
+function imgOrder(d) {
+  if (!d.imgOrder) { var o = (d.images || []).map(function (u) { return { k: "old", v: u }; }), n = (d.photos || []).map(function (p) { return { k: "new", v: p.path }; }); d.imgOrder = d.newFirst ? n.concat(o) : o.concat(n); }
+  return d.imgOrder;
+}
 function cf(l, k, v, type, extra) { var ro = V.edit.status === "등록완료" || V.edit.status === "판매완료"; return '<div class="fd"><label for="sc-' + k + '">' + l + '</label><input class="ctl" id="sc-' + k + '" type="' + (type || "text") + '" value="' + esc(v == null ? "" : v) + '"' + (ro ? " disabled" : "") + (extra || "") + "></div>"; }
 function copyCalc(d) {
   var p = num(d.price), dc = num(d.discount), fin = p - dc, f = feeRate(), c = num(d.cost);
@@ -176,8 +180,7 @@ function copyCalc(d) {
 }
 function copyEditor() {
   var d = V.edit, ro = d.status === "등록완료" || d.status === "판매완료", sec = function (t, body) { return '<div class="card"><h3>' + t + "</h3>" + body + "</div>"; };
-  var imgs = (d.images || []).map(function (u, i) { return { kind: "old", i: i, html: '<img src="' + esc(u) + '" alt="" style="width:110px;height:110px;object-fit:cover">' }; })
-    .concat((d.photos || []).map(function (p, i) { return { kind: "new", i: i, html: '<img data-path="' + esc(p.path) + '" alt="" style="width:110px;height:110px;object-fit:cover">' }; }));
+  var imgs = imgOrder(d).map(function (x) { return { html: x.k === "old" ? '<img src="' + esc(x.v) + '" alt="" draggable="false" style="width:110px;height:110px;object-fit:cover">' : '<img data-path="' + esc(x.v) + '" alt="" draggable="false" style="width:110px;height:110px;object-fit:cover">' }; });
   var fx = d.fixed || {};
   return '<div class="head"><div><h1>' + esc(d.name || "불러온 상품") + "</h1><p>" + esc(d.status) + " · 원본 상품번호 " + esc(d.srcNo) + " (" + esc(d.srcName || "") + ") — 원본은 바뀌지 않아요" + (d.productNo ? ' · 새 상품번호 <a href="' + STORE + esc(d.productNo) + '" target="_blank" rel="noopener">' + esc(d.productNo) + "</a>" : "") + "</p>" + (d.error ? '<p class="warn">' + esc(d.error) + "</p>" : "") + '</div><div class="tools"><button class="btn" data-act="ssuback">목록</button>' +
     (ro ? "" : '<button class="btn" data-act="ssucsave">저장</button><button class="btn primary" data-act="ssucreg">새 상품으로 등록 (판매중지)</button>') + '<button class="btn danger" data-act="ssudel">삭제</button></div></div>' +
@@ -186,7 +189,7 @@ function copyEditor() {
     sec("판매가", '<div class="grid2">' + cf("판매가 (원)", "price", d.price, "number") + cf("즉시할인 (원)", "discount", d.discount, "number") + "</div>" + (d.discountNote ? '<p class="warn">' + esc(d.discountNote) + "</p>" : "") + '<div class="card" id="sc-calc" aria-live="polite">' + copyCalc(d) + "</div>") +
     sec("재고수량", cf("재고수량", "stock", d.stock, "number")) +
     sec("판매자상품코드", cf("판매자상품코드 (예: 품번-색상 · 같은 코드는 두 번 등록 안 돼요)", "sellerCode", d.sellerCode)) +
-    sec("상품이미지 <small>(대표이미지 1장 + 추가이미지 최대 9장 · 상세설명과 따로)</small>", "<div>" + imgs.map(function (x, n) { return '<span style="display:inline-block;margin:4px;text-align:center">' + x.html + "<br>" + (n === 0 ? "<small><b>대표이미지</b></small>" : "<small>추가이미지 " + n + "</small><br>") + (n === 0 || ro ? "" : '<button class="btn sm" data-act="ssucimg" data-op="main" data-k="' + x.kind + '" data-i="' + x.i + '">대표로</button>') + (ro ? "" : ' <button class="btn sm" data-act="ssucimg" data-op="del" data-k="' + x.kind + '" data-i="' + x.i + '">빼기</button>') + "</span>"; }).join("") + "</div>" + (ro ? "" : '<input type="file" id="sc-files" accept="image/*" multiple>')) +
+    sec("상품이미지 <small>(대표이미지 1장 + 추가이미지 최대 9장 · 상세설명과 따로)</small>", (ro ? "" : '<p class="muted" style="margin:4px 0">사진을 끌어서 순서를 바꾸세요 — 맨 앞이 대표이미지</p>') + '<div id="sc-imgs" style="display:flex;flex-wrap:wrap">' + imgs.map(function (x, n) { return '<span class="sc-img" data-pos="' + n + '"' + (ro ? "" : ' draggable="true"') + ' style="display:inline-block;margin:4px;padding:4px;text-align:center;border:2px solid ' + (n === 0 ? "#3b82f6" : "transparent") + ';border-radius:6px;cursor:' + (ro ? "default" : "grab") + '">' + x.html + "<br>" + (n === 0 ? "<small><b>대표이미지</b></small>" : "<small>추가이미지 " + n + "</small>") + (ro ? "" : '<br>' + (n === 0 ? "" : '<button class="btn sm" data-act="ssucimg" data-op="main" data-i="' + n + '">대표로</button> ') + '<button class="btn sm" data-act="ssucimg" data-op="del" data-i="' + n + '">빼기</button>') + "</span>"; }).join("") + "</div>" + (ro ? "" : '<input type="file" id="sc-files" accept="image/*" multiple>')) +
     sec("상세설명 <small>(스마트에디터처럼 바로 고치기 · 사진은 커서 위치에 들어가요)</small>", ro ? '<div class="card" style="background:#fff;color:#111;max-width:860px;margin:0 auto">' + (d.detailHtml || "") + "</div>" :
       '<div id="sc-tb" style="position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;gap:4px;padding:6px;background:var(--panel,#111a2e);border:1px solid #2a3a5c;border-radius:6px">' +
       '<button class="btn sm primary" data-ed="photo">📷 사진 넣기</button><input type="file" id="sc-edfile" accept="image/*" multiple style="display:none">' +
@@ -212,24 +215,24 @@ function grabCopy() {
 async function storeCopy() { grabCopy(); var D = drafts(), k = D.findIndex(function (x) { return x.id === V.edit.id; }); if (k < 0) D.push(V.edit); else D[k] = V.edit; await saveDrafts(D); }
 ERP.acts.ssucsave = async function () { await storeCopy(); ERP.toast("저장했어요."); ERP.render(); };
 ERP.acts.ssucrec = async function () { grabCopy(); var d = V.edit, rec = autoPrice(d.cost, d.market); if (!rec) return; d.price = tagPrice(rec); d.discount = d.price - rec; await storeCopy(); ERP.render(); };
+function syncImgs(d) { var o = imgOrder(d); d.images = o.filter(function (x) { return x.k === "old"; }).map(function (x) { return x.v; }); d.photos = o.filter(function (x) { return x.k === "new"; }).map(function (x) { return { path: x.v }; }); }
+async function moveImg(from, to) { grabCopy(); var o = imgOrder(V.edit); if (from === to || from < 0 || to < 0 || from >= o.length) return; var x = o.splice(from, 1)[0]; o.splice(Math.min(to, o.length), 0, x); syncImgs(V.edit); await storeCopy(); ERP.render(); }
 ERP.acts.ssucimg = async function (b) {
-  grabCopy(); var d = V.edit, i = +b.dataset.i, arr = b.dataset.k === "old" ? d.images : d.photos;
-  if (b.dataset.op === "del") arr.splice(i, 1);
-  else { var x = arr.splice(i, 1)[0]; if (b.dataset.k === "old") d.images.unshift(x); else { d.photos.unshift(x); d.newFirst = true; } }
-  if (b.dataset.k === "old") d.newFirst = false;
-  await storeCopy(); ERP.render();
+  var i = +b.dataset.i;
+  if (b.dataset.op === "del") { grabCopy(); imgOrder(V.edit).splice(i, 1); syncImgs(V.edit); await storeCopy(); ERP.render(); }
+  else await moveImg(i, 0);
 };
 ERP.acts.ssucreg = async function () {
   await storeCopy(); var d = V.edit, miss = [];
-  if (!d.name) miss.push("상품명"); if (!num(d.price)) miss.push("판매가"); if (!d.sellerCode) miss.push("판매자상품코드"); if (!(d.images || []).length && !(d.photos || []).length) miss.push("사진");
+  if (!d.name) miss.push("상품명"); if (!num(d.price)) miss.push("판매가"); if (!d.sellerCode) miss.push("판매자상품코드"); if (!imgOrder(d).length) miss.push("사진");
   if (miss.length) { ERP.toast("빠진 정보: " + miss.join(", ")); return; }
   if (!confirm("새 상품으로 등록할게요 (판매중지 상태).\n\n" + d.name + "\n판매가 " + won(d.price) + " − 할인 " + won(d.discount) + " = 결제가 " + won(num(d.price) - num(d.discount)) + "원\n원본 " + d.srcNo + "은 바뀌지 않아요.")) return;
   try {
     ERP.toast("등록 중이에요… (사진이 많으면 1분쯤 걸려요)");
-    var np = []; for (var j = 0; j < (d.photos || []).length; j++) { var s = await S.sb.storage.from(BUCKET).createSignedUrl(d.photos[j].path, 3600); if (!s.error) np.push(s.data.signedUrl); }
+    var il = [], ord = imgOrder(d); for (var j = 0; j < ord.length; j++) { if (ord[j].k === "old") il.push({ url: ord[j].v }); else { var s = await S.sb.storage.from(BUCKET).createSignedUrl(ord[j].v, 3600); if (!s.error) il.push({ url: s.data.signedUrl, new: true }); } }
     var imgs = d.images || [], box = document.createElement("div"); box.innerHTML = d.detailHtml || "";
     var dimg = box.querySelectorAll("img[data-path]"); for (var q = 0; q < dimg.length; q++) { var sg = await S.sb.storage.from(BUCKET).createSignedUrl(dimg[q].getAttribute("data-path"), 3600); if (!sg.error) dimg[q].setAttribute("src", sg.data.signedUrl); }
-    var r = await xpost("/x/ss_copy", { no: d.srcNo, edit: { name: d.name, price: d.price, discount: d.discount, stock: d.stock, images: imgs, newFirst: !!d.newFirst, newPhotos: np, detail: box.innerHTML, sellerCode: d.sellerCode, brand: d.brand, model: d.model } });
+    var r = await xpost("/x/ss_copy", { no: d.srcNo, edit: { name: d.name, price: d.price, discount: d.discount, stock: d.stock, imageList: il, detail: box.innerHTML, sellerCode: d.sellerCode, brand: d.brand, model: d.model } });
     if (r.ok) { d.status = "등록완료"; d.productNo = String(r.channelProductNo || ""); d.originNo = String(r.originProductNo || ""); d.registeredAt = r.at; d.error = ""; d.salePrice = num(d.price) - num(d.discount); d.code = d.sellerCode; }
     else { d.status = "오류"; d.error = String(r.error || "").slice(0, 1500); }
     await storeCopy(); ERP.render();
@@ -275,7 +278,15 @@ function bindCopy(root) {
   }
   ["price", "discount", "cost", "market"].forEach(function (k) { var e = root.querySelector("#sc-" + k); if (e) e.oninput = function () { grabCopy(); if (calc) calc.innerHTML = copyCalc(V.edit); }; });
   if (nm && cnt) nm.oninput = function () { cnt.textContent = nm.value.length + "/100"; };
-  var fi = root.querySelector("#sc-files"); if (fi) fi.onchange = async function () { grabCopy(); fi.disabled = true; var n = (V.edit.images || []).length; V.edit.photos = V.edit.photos || []; var room = 10 - n - V.edit.photos.length; if (room <= 0) { ERP.toast("사진은 최대 10장이에요."); fi.disabled = false; return; } await uploadPhotos(Array.prototype.slice.call(fi.files, 0, room)); await storeCopy(); ERP.render(); };
+  var fi = root.querySelector("#sc-files"); if (fi) fi.onchange = async function () { grabCopy(); fi.disabled = true; var n = (V.edit.images || []).length; V.edit.photos = V.edit.photos || []; var room = 10 - imgOrder(V.edit).length; if (room <= 0) { ERP.toast("사진은 최대 10장이에요."); fi.disabled = false; return; } var before = V.edit.photos.length; await uploadPhotos(Array.prototype.slice.call(fi.files, 0, room)); var o = imgOrder(V.edit); V.edit.photos.slice(before).forEach(function (p) { o.push({ k: "new", v: p.path }); }); await storeCopy(); ERP.render(); };
+  var drag = -1;
+  root.querySelectorAll(".sc-img[draggable]").forEach(function (el) {
+    el.ondragstart = function (e) { drag = +el.dataset.pos; e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", String(drag)); } catch (x) {} el.style.opacity = "0.4"; };
+    el.ondragend = function () { el.style.opacity = ""; };
+    el.ondragover = function (e) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; el.style.borderColor = "#22c55e"; };
+    el.ondragleave = function () { el.style.borderColor = +el.dataset.pos === 0 ? "#3b82f6" : "transparent"; };
+    el.ondrop = function (e) { e.preventDefault(); var to = +el.dataset.pos; if (drag >= 0) moveImg(drag, to); drag = -1; };
+  });
   thumbs(root);
 }
 /* 승인분 → 소희봇 서버가 스마트스토어에 바로 등록 (PC·파일 없음, 2026-11-21) */
