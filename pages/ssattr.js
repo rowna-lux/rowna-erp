@@ -307,18 +307,21 @@ ERP.acts.ssattrauto = async function () {
     setTimeout(function () { location.reload(); }, 20000);
   }, 60000);
   autoOn = true; var tries = 0;
+  var stallAlerted = false;   /* 11/23: 로그인 풀림·도우미 끊김을 토스트로만 알리면 대표님이 못 보고 지나감 → 텔레그램으로도 한 번만 보냄(복구되면 다시 알릴 수 있게 리셋) */
+  function stallAlert(msg) { if (stallAlerted) return; stallAlerted = true; try { if (ERP.tgOn && ERP.tgOn()) ERP.tgSend("⚠ 속성 자동화 멈춤: " + msg); } catch (e) {} }
   try {
     for (;;) {
-      if (!(ERP.helperOn && ERP.helperOn())) { ERP.toast("로우나 도우미 연결을 기다리는 중…"); await new Promise(function (r) { setTimeout(r, 60000); }); continue; }
+      if (!(ERP.helperOn && ERP.helperOn())) { ERP.toast("로우나 도우미 연결을 기다리는 중…"); stallAlert("도우미(크롬 확장) 연결 끊김"); await new Promise(function (r) { setTimeout(r, 60000); }); continue; }
       var redo = await ERP.acts.ssattrrun({ dataset: { redo: "1" } });
       if (redo && redo.stopped) break;
-      if (redo && redo.loggedOut) { await new Promise(function (r) { setTimeout(r, 300000); }); continue; }   /* 5분마다 로그인 확인 후 이어서 */
-      if (redo && redo.failStop) { if (++tries > 30) break; ERP.toast("연속 실패라 1분 쉬고 다시 해요(스마트스토어 로그인이 풀렸으면 로그인해 주세요)."); await new Promise(function (r) { setTimeout(r, 60000); }); continue; }
+      if (redo && redo.loggedOut) { stallAlert("스마트스토어 로그인 풀림 — 로그인하면 자동으로 이어서 해요"); await new Promise(function (r) { setTimeout(r, 300000); }); continue; }   /* 5분마다 로그인 확인 후 이어서 */
+      if (redo && redo.failStop) { if (++tries > 30) break; ERP.toast("연속 실패라 1분 쉬고 다시 해요(스마트스토어 로그인이 풀렸으면 로그인해 주세요)."); stallAlert("연속 실패(로그인 풀림 추정)"); await new Promise(function (r) { setTimeout(r, 60000); }); continue; }
       var full = await ERP.acts.ssattrrun({ dataset: {} });
       if (full && full.stopped) break;
-      if (full && full.loggedOut) { await new Promise(function (r) { setTimeout(r, 300000); }); continue; }   /* 5분마다 로그인 확인 후 이어서 */
-      if (full && full.failStop) { if (++tries > 30) break; ERP.toast("연속 실패라 1분 쉬고 다시 해요(스마트스토어 로그인이 풀렸으면 로그인해 주세요)."); await new Promise(function (r) { setTimeout(r, 60000); }); continue; }
+      if (full && full.loggedOut) { stallAlert("스마트스토어 로그인 풀림 — 로그인하면 자동으로 이어서 해요"); await new Promise(function (r) { setTimeout(r, 300000); }); continue; }   /* 5분마다 로그인 확인 후 이어서 */
+      if (full && full.failStop) { if (++tries > 30) break; ERP.toast("연속 실패라 1분 쉬고 다시 해요(스마트스토어 로그인이 풀렸으면 로그인해 주세요)."); stallAlert("연속 실패(로그인 풀림 추정)"); await new Promise(function (r) { setTimeout(r, 60000); }); continue; }
       if (full && full.left <= 0) { ERP.toast("전체 상품 끝 — 실패 모음을 한 번에 다시 해요."); await ERP.acts.ssattrrun({ dataset: { fails: "1" } }); break; }
+      stallAlerted = false;   /* 한 사이클 정상 진행 → 다음에 또 멈추면 다시 알림 */
     }
   } finally { autoOn = false; clearInterval(beat); clearInterval(dog); }
 };
