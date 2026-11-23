@@ -198,7 +198,7 @@ ERP.acts.ssusold = async function (silent) {
   } catch (e) { if (silent !== true) ERP.toast("서버 연결 실패: " + e.message); }
 };
 ERP.acts.ssucheck = async function () {
-  var A = drafts().filter(function (d) { return d.status === "승인"; }); if (!A.length) { ERP.toast("승인된 상품이 없어요."); return; }
+  var A = drafts().filter(function (d) { return d.status !== "등록완료" && d.status !== "판매완료" && d.salePrice && (d.photos || []).length; }); if (!A.length) { ERP.toast("점검할 상품이 없어요 (판매가·사진이 있는 미등록 상품 필요)."); return; }
   try { ERP.toast("점검 중이에요… (등록 안 함)"); var c = await serverCall(await apiItem(A[0]), { dryRun: true }); alert(c.ok ? "점검 결과 — 등록 안 됨 (" + A[0].name + ")\n" + JSON.stringify(c.check, null, 1) : "점검 실패: " + c.error); } catch (e) { ERP.toast("서버 연결 실패: " + e.message); }
 };
 ERP.acts.ssuexport = async function () {
