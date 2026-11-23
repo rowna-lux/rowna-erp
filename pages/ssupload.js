@@ -29,13 +29,18 @@ function price(cost) {
   var p = b === "price" ? cost / (1 - f - m) : cost * (1 + m) / (1 - f);
   return p > 0 && isFinite(p) ? Math.ceil(p / 1000) * 1000 : 0;
 }
+/* 시세(크림 최근 체결가 등)를 넣으면 판매가 = min(마진 가격, 시세) — 제안① 2026-11-23 */
+function autoPrice(cost, market) { var p = price(cost); market = num(market); return market && p ? Math.min(p, Math.floor(market / 1000) * 1000) : p; }
 function tagMul() { return Number(set("ss_tag_mul", 1.2)) || 1.2; }
 function tagPrice(sp) { return sp ? Math.ceil(sp * tagMul() / 1000) * 1000 : 0; }
-function calcLine(cost, manual) {
-  var sp = num(manual) || price(cost), tp = tagPrice(sp), f = feeRate();
+function calcLine(cost, manual, market) {
+  var sp = num(manual) || autoPrice(cost, market), tp = tagPrice(sp), f = feeRate(), mp = price(cost);
   if (!num(cost)) return "매입가를 넣으면 판매가·태그가가 계산돼요.";
   if (!sp) return "수수료율을 설정해야 판매가가 계산돼요.";
-  return "판매가 <b>" + won(sp) + "</b>원 · 태그가 <b>" + won(tp) + "</b>원 (판매가×" + tagMul() + ")" + (f == null ? "" : " · 예상 이익 " + won(sp * (1 - f) - num(cost)) + "원");
+  var pf = f == null ? null : sp * (1 - f) - num(cost), pr = pf == null ? null : pf / sp;
+  var warn = pr == null ? "" : pr < 0 ? ' <b style="color:#ff6b6b">⚠ 손해 판매</b>' : pr < 0.05 ? ' <b style="color:#ffb020">⚠ 마진 ' + (pr * 100).toFixed(1) + "% — 크림·교환 검토</b>" : "";
+  var mk = num(market) && !num(manual) && sp < mp ? " · 시세 " + won(num(market)) + "원에 맞춤(마진 가격 " + won(mp) + "원)" : "";
+  return "판매가 <b>" + won(sp) + "</b>원 · 태그가 <b>" + won(tp) + "</b>원 (판매가×" + tagMul() + ")" + (pf == null ? "" : " · 예상 이익 " + won(pf) + "원") + mk + warn;
 }
 function profit(d) { var f = feeRate(); return d.salePrice && f != null ? Math.round(d.salePrice * (1 - f) - num(d.cost)) : null; }
 
@@ -55,10 +60,10 @@ function detail(d, urls) {
 
 function list() {
   var D = drafts(), f = feeRate();
-  var st = { "초안": 0, "승인": 0, "등록완료": 0, "오류": 0 }; D.forEach(function (d) { st[d.status] = (st[d.status] || 0) + 1; });
+  var st = { "초안": 0, "승인": 0, "등록완료": 0, "오류": 0, "판매완료": 0 }; D.forEach(function (d) { st[d.status] = (st[d.status] || 0) + 1; });
   var basis = set("ss_margin_basis", "cost");
   return '<div class="head"><div><h1>스마트스토어 매입상품 등록</h1><p>사진·정보 입력 → 초안 → 승인 → PC에서 등록 (샤넬 지갑류 상품을 틀로 복사)</p></div><div class="tools">' +
-    '<button class="btn primary" data-act="ssunew">새 상품</button><button class="btn primary" data-act="ssuserver">스스 등록·판매중지 (' + (st["승인"] + (st["오류"] || 0)) + ')</button><button class="btn" data-act="ssucheck" title="등록하지 않고 틀·가격만 확인">점검만</button><button class="btn" data-act="ssusabang">사방넷 엑셀 + 사진 (' + st["승인"] + ')</button><button class="btn" data-act="ssuexport" title="스마트스토어 API 직등록용(PC 스크립트)">API용 내보내기 (' + st["승인"] + ')</button><button class="btn" data-act="ssuimport">결과 불러오기</button></div></div>' +
+    '<button class="btn primary" data-act="ssunew">새 상품</button><button class="btn primary" data-act="ssuserver">스스 등록·판매중지 (' + (st["승인"] + (st["오류"] || 0)) + ')</button><button class="btn" data-act="ssucheck" title="등록하지 않고 틀·가격만 확인">점검만</button><button class="btn" data-act="ssusold">판매 확인</button><button class="btn" data-act="ssusabang">사방넷 엑셀 + 사진 (' + st["승인"] + ')</button><button class="btn" data-act="ssuexport" title="스마트스토어 API 직등록용(PC 스크립트)">API용 내보내기 (' + st["승인"] + ')</button><button class="btn" data-act="ssuimport">결과 불러오기</button></div></div>' +
     '<p class="warn">시험 운영 중이에요. 이상한 점은 알려주세요. 스마트스토어 실제 등록은 PC 스크립트에서 --apply를 붙일 때만 돼요.</p>' +
     '<div class="card"><h3>가격·틀 설정</h3><div class="grid2">' +
     '<div class="fd"><label for="ssu-fee">스마트스토어 수수료율 (%)</label><input class="ctl" id="ssu-fee" type="number" step="0.01" value="' + (f == null ? "" : +(f * 100).toFixed(2)) + '" placeholder="정산 내역 기준으로 입력">' + (f == null ? '<small class="warn">수수료율을 넣어야 판매가가 계산돼요.</small>' : "") + "</div>" +
@@ -87,8 +92,8 @@ function editor() {
     '<div class="fd"><label for="se-gender">성별</label><select class="ctl" id="se-gender"' + (ro ? " disabled" : "") + ">" + GENDERS.map(function (g) { return '<option value="' + g[0] + '"' + (g[0] === (d.gender || "female") ? " selected" : "") + ">" + g[1] + "</option>"; }).join("") + "</select></div>" +
     w("모델명", "model", d.model) + w("품번", "code", d.code) + w("색상 (확실한 것만)", "color", d.color) + w("옵션·사이즈 (있으면)", "option", d.option) +
     w("매입가 (원)", "cost", d.cost, "number") + w("매입일", "pdate", d.pdate, "date") + w("매입처 (백화점·지점)", "vendor", d.vendor) +
-    w("판매가 (비우면 자동 계산)", "salePrice", d.priceManual ? d.salePrice : "", "number") +
-    '<div class="fd full"><div class="card" id="se-calc" aria-live="polite">' + calcLine(d.cost, d.priceManual ? d.salePrice : "") + "</div></div>" +
+    w("시세 (크림 최근 체결가 등, 선택)", "market", d.market || "", "number") + w("판매가 (비우면 자동 계산)", "salePrice", d.priceManual ? d.salePrice : "", "number") +
+    '<div class="fd full"><div class="card" id="se-calc" aria-live="polite">' + calcLine(d.cost, d.priceManual ? d.salePrice : "", d.market) + "</div></div>" +
     '<div class="fd full"><label>정품 안내 상자에 넣을 것 (실제로 있는 것만)</label><div>' + BOX.map(function (b) { return '<label style="margin-right:12px"><input type="checkbox" class="se-box" data-k="' + b[0] + '"' + (d.box && d.box[b[0]] ? " checked" : "") + (ro ? " disabled" : "") + "> " + b[1] + "</label>"; }).join("") + "</div></div>" +
     '<div class="fd full"><label for="se-note">상세 추가 문구 (선택 · 사실만)</label><textarea class="ctl" rows="3" id="se-note"' + (ro ? " disabled" : "") + ">" + esc(d.note || "") + "</textarea></div>" +
     '<div class="fd full"><label for="se-name">상품명 (비우면 자동: ' + esc(title(d)) + ')</label><input class="ctl" id="se-name" maxlength="100" value="' + esc(d.nameManual ? d.name : "") + '"' + (ro ? " disabled" : "") + "></div>" +
@@ -103,7 +108,7 @@ function grab() {
   ["brand", "model", "code", "color", "option", "vendor", "pdate", "kind", "gender"].forEach(function (k) { d[k] = g(k); });
   d.code = d.code.toUpperCase(); d.cost = num(g("cost")); d.note = g("note");
   d.box = {}; document.querySelectorAll(".se-box").forEach(function (c) { d.box[c.dataset.k] = c.checked; });
-  var sp = num(g("salePrice")); d.priceManual = !!sp; d.salePrice = sp || price(d.cost);
+  d.market = num(g("market")); var sp = num(g("salePrice")); d.priceManual = !!sp; d.salePrice = sp || autoPrice(d.cost, d.market);
   d.tagPrice = tagPrice(d.salePrice); var nm = g("name"); d.nameManual = !!nm; d.name = nm || title(d);
 }
 async function store() {
@@ -152,7 +157,9 @@ var SOHEE = "https://54-180-19-139.sslip.io";
 async function apiItem(d) {
   var urls = [];
   for (var j = 0; j < (d.photos || []).length; j++) { var r = await S.sb.storage.from(BUCKET).createSignedUrl(d.photos[j].path, 3600); if (r.error) throw new Error("사진 주소 만들기 실패"); urls.push(r.data.signedUrl); }
-  return { id: d.id, name: d.name, salePrice: d.salePrice, tagPrice: d.tagPrice || tagPrice(d.salePrice), sellerCode: d.code + (d.color ? "-" + d.color : ""), photos: urls, detailHtml: detail(d, ["{{IMG}}"]).replace(/<p><img src="\{\{IMG\}\}"[^>]*><\/p>/, "{{IMAGES}}") };
+  return { id: d.id, name: d.name, salePrice: d.salePrice, tagPrice: d.tagPrice || tagPrice(d.salePrice), sellerCode: d.code + (d.color ? "-" + d.color : ""), photos: urls, detailHtml: detail(d, ["{{IMG}}"]).replace(/<p><img src="\{\{IMG\}\}"[^>]*><\/p>/, "{{IMAGES}}"),
+    brand: d.brand || "", model: d.model || "", code: d.code || "", color: d.color || "", note: d.note || "",
+    boxHtml: BOX.filter(function (b) { return d.box && d.box[b[0]]; }).map(function (b) { return "· " + b[1]; }).join("<br>") };
 }
 async function serverCall(item, opt) {
   var ss = await S.sb.auth.getSession(), tk = ss.data && ss.data.session && ss.data.session.access_token;
@@ -179,6 +186,17 @@ ERP.acts.ssuserver = async function () {
   } catch (e) { ERP.toast("서버 연결 실패: " + e.message); }
 };
 /* 승인분 → PC 스크립트용 JSON (사진은 24시간짜리 다운로드 주소) */
+/* 등록완료 상품 판매 여부 — 재고 0·품절이면 '판매완료' (제안③ 2026-11-23). 목록을 열 때 30분에 한 번 자동 */
+ERP.acts.ssusold = async function (silent) {
+  var D = drafts(), R = D.filter(function (d) { return d.status === "등록완료" && d.productNo; }); if (!R.length) { if (silent !== true) ERP.toast("확인할 등록완료 상품이 없어요."); return; }
+  try {
+    var ss = await S.sb.auth.getSession(), tk = ss.data && ss.data.session && ss.data.session.access_token;
+    var res = await (await fetch(SOHEE + "/x/ss_check", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: tk, nos: R.map(function (d) { return d.productNo; }) }) })).json();
+    if (!res.ok) { if (silent !== true) ERP.toast("판매 확인 실패: " + res.error); return; }
+    var n = 0; R.forEach(function (d) { var x = res.items[d.productNo]; if (x && !x.error && (x.stock === 0 || x.status === "OUTOFSTOCK")) { d.status = "판매완료"; d.soldAt = new Date().toISOString(); n++; } });
+    V.soldChecked = Date.now(); if (n) { await saveDrafts(D); ERP.render(); } if (silent !== true || n) ERP.toast(n ? n + "개 판매완료로 바꿨어요." : "새로 팔린 상품이 없어요.");
+  } catch (e) { if (silent !== true) ERP.toast("서버 연결 실패: " + e.message); }
+};
 ERP.acts.ssucheck = async function () {
   var A = drafts().filter(function (d) { return d.status === "승인"; }); if (!A.length) { ERP.toast("승인된 상품이 없어요."); return; }
   try { ERP.toast("점검 중이에요… (등록 안 함)"); var c = await serverCall(await apiItem(A[0]), { dryRun: true }); alert(c.ok ? "점검 결과 — 등록 안 됨 (" + A[0].name + ")\n" + JSON.stringify(c.check, null, 1) : "점검 실패: " + c.error); } catch (e) { ERP.toast("서버 연결 실패: " + e.message); }
@@ -285,12 +303,13 @@ function bind(root) {
   sv("ssu-m", "ss_margin", function (x) { return num(x) / 100; });
   sv("ssu-b", "ss_margin_basis", String); sv("ssu-tpl", "ss_template_no", function (x) { return x.replace(/\D/g, ""); });
   sv("ssu-rf", "ss_return_fee", num); sv("ssu-tag", "ss_tag_mul", function (x) { return num(x) || 1.2; }); sv("ssu-xf", "ss_exchange_fee", num);
-  var ci = root.querySelector("#se-cost"), si = root.querySelector("#se-salePrice"), out = root.querySelector("#se-calc");
-  var live = function () { if (out) out.innerHTML = calcLine(ci ? ci.value : 0, si ? si.value : ""); };
-  if (ci) ci.oninput = live; if (si) si.oninput = live;
+  var ci = root.querySelector("#se-cost"), si = root.querySelector("#se-salePrice"), mi = root.querySelector("#se-market"), out = root.querySelector("#se-calc");
+  var live = function () { if (out) out.innerHTML = calcLine(ci ? ci.value : 0, si ? si.value : "", mi ? mi.value : ""); };
+  if (ci) ci.oninput = live; if (si) si.oninput = live; if (mi) mi.oninput = live;
   var fi = root.querySelector("#se-files");
   if (fi) fi.onchange = async function () { grab(); fi.disabled = true; await uploadPhotos(fi.files); await store(); ERP.render(); };
   if (V.edit) thumbs(root);
+  else if (!V.soldChecked || Date.now() - V.soldChecked > 1800000) { V.soldChecked = Date.now(); setTimeout(function () { ERP.acts.ssusold(true); }, 500); }
 }
 ERP.page({ id: "ss-upload", title: "매입상품 등록 (시험)", wide: true, roles: ["owner"], render: render, bind: bind, live: function () { if (!V.edit) ERP.render(); } });
 })();
