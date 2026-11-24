@@ -1,11 +1,11 @@
 """
-도매 리스트 사진 → Gemini Vision 분석 → 구조화된 품목 리스트
+도매 리스트 사진 → OpenAI Vision 분석 → 구조화된 품목 리스트
+(Gemini의 AQ. 키 호환 문제로 OpenAI로 전환 - 2026-11-24)
 """
 import os
 import re
 import json
 import base64
-import io
 from pathlib import Path
 
 try:
@@ -14,13 +14,17 @@ try:
 except ImportError:
     pass
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = "gemini-2.0-flash-exp"
-
-# Gemini REST API 직접 호출 (SDK 의존성 최소화)
 import requests
 
-GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+# 폴백: GEMINI_API_KEY 자리에 OpenAI 키 들어있어도 사용
+if not OPENAI_API_KEY:
+    maybe = os.getenv("GEMINI_API_KEY", "").strip()
+    if maybe.startswith("sk-"):
+        OPENAI_API_KEY = maybe
+
+OPENAI_MODEL = "gpt-4o-mini"  # 저렴 + 비전 성능 충분
+OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 
 
 PROMPT = """
@@ -59,64 +63,58 @@ JSON 형식:
 
 def analyze_image(image_bytes):
     """
-    이미지 바이트를 Gemini로 분석.
+    이미지 바이트를 OpenAI로 분석.
     반환: parsed dict or {'error': '...'}
     """
-    if not GEMINI_API_KEY:
-        return {"error": "GEMINI_API_KEY not set in .env"}
+    if not OPENAI_API_KEY:
+        return {"error": "OPENAI_API_KEY not set in .env"}
 
     b64 = base64.b64encode(image_bytes).decode()
 
     payload = {
-        "contents": [
+        "model": OPENAI_MODEL,
+        "messages": [
             {
-                "parts": [
-                    {"text": PROMPT},
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": PROMPT},
                     {
-                        "inline_data": {
-                            "mime_type": "image/png",
-                            "data": b64,
-                        }
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{b64}",
+                            "detail": "high",  # 작은 글씨 읽기 위해
+                        },
                     },
-                ]
+                ],
             }
         ],
-        "generationConfig": {
-            "temperature": 0.1,
-            "response_mime_type": "application/json",
-        },
+        "response_format": {"type": "json_object"},
+        "temperature": 0.1,
+        "max_tokens": 4000,
     }
 
-    # 키 포맷에 따라 인증 방식 다름
-    # AIza... = API 키 (x-goog-api-key 헤더)
-    # AQ.... = OAuth2 액세스 토큰 (Authorization: Bearer)
-    if GEMINI_API_KEY.startswith("AQ."):
-        auth_headers = {"Authorization": f"Bearer {GEMINI_API_KEY}", "Content-Type": "application/json"}
-    else:
-        auth_headers = {"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"}
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json",
+    }
 
     try:
-        r = requests.post(
-            GEMINI_URL,
-            headers=auth_headers,
-            json=payload,
-            timeout=45,
-        )
+        r = requests.post(OPENAI_URL, headers=headers, json=payload, timeout=60)
     except Exception as e:
         return {"error": f"request failed: {e}"}
 
     if r.status_code != 200:
-        return {"error": f"gemini status {r.status_code}: {r.text[:300]}"}
+        return {"error": f"openai status {r.status_code}: {r.text[:300]}"}
 
     try:
         data = r.json()
-        text = data["candidates"][0]["content"]["parts"][0]["text"]
+        text = data["choices"][0]["message"]["content"]
     except (KeyError, IndexError) as e:
         return {"error": f"unexpected response: {str(data)[:300]}"}
 
-    # JSON 추출
+    # JSON 파싱
     try:
-        # 혹시 코드블록으로 감싸져있으면 제거
+        # 코드블록 제거
         m = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
         if m:
             text = m.group(1)
@@ -136,7 +134,6 @@ def analyze_image(image_bytes):
 
 
 if __name__ == "__main__":
-    # 테스트: 파일 경로 인자
     import sys
     if len(sys.argv) < 2:
         print("Usage: python analyzer.py <image_path>")
