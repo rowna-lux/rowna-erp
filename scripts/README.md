@@ -19,15 +19,28 @@ pip install selenium webdriver-manager requests beautifulsoup4 lxml python-doten
 `scripts/.env` 파일 생성 후:
 
 ```
-TELEGRAM_BOT_TOKEN=xxxxx
-TELEGRAM_CHAT_ID=xxxxx
+# Gmail 알림 (텔레그램 대체 - 2026-11-24)
+GMAIL_USER=shinmy777@gmail.com
+GMAIL_APP_PASSWORD=xxxxxxxxxxxxxxxx
+GMAIL_TO=shinmy777@gmail.com
 
+# 네이버 커머스 API (리뷰 요청용)
 NAVER_COMMERCE_CLIENT_ID=xxxxx
 NAVER_COMMERCE_CLIENT_SECRET=xxxxx
 ```
 
-- 텔레그램 봇 토큰: ERP > 설정 > 텔레그램 봇 토큰 (이미 있음)
-- 네이버 커머스 API: https://apicenter.commerce.naver.com/ 가입
+- **Gmail 앱 비밀번호**: https://myaccount.google.com/apppasswords 발급 (2단계 인증 필수)
+- **네이버 커머스 API**: https://apicenter.commerce.naver.com/ 가입
+
+### 알림 테스트
+```powershell
+cd scripts
+python -m common.notify          # Gmail 테스트 메일 발송
+python blackfriday/bf_monitor.py --test   # 블프 모니터 알림 테스트
+python japan/japan_monitor.py --test       # 일본 모니터 알림 테스트
+```
+
+메일이 `GMAIL_TO` 받은편지함에 뜨면 성공. 핸드폰 Gmail 앱에 푸시 알림 옴.
 
 ---
 

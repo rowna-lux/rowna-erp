@@ -9,3 +9,6 @@ jp_seen.json
 ad_log_*.txt
 __pycache__/
 *.pyc
+
+# 알림 로그
+notify.log

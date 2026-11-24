@@ -1,33 +1,37 @@
 """
 블랙프라이데이 명품 세일 모니터링 (대표님 요청 2026-11-22)
 타겟 사이트: SSENSE·Mytheresa·Farfetch·NAP·MR PORTER·24S
-로우나 취급 브랜드 50%+ 할인 시 텔레그램 알림.
+로우나 취급 브랜드 50%+ 할인 시 Gmail 알림.
 
 사용법:
 1. pip install requests beautifulsoup4 lxml python-dotenv
-2. .env 파일에 TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID 넣기
+2. scripts/.env 파일에 GMAIL_USER, GMAIL_APP_PASSWORD 넣기
 3. python bf_monitor.py           → 1회 체크
 4. python bf_monitor.py --loop    → 2시간마다 무한 반복 (서브컴에서 24/7)
+5. python bf_monitor.py --test    → 알림 테스트 (크롤링 X, 메일만 발송)
 
-11/28(금) D-6. 블랙프 피크 11/27-12/02.
+11/28(금) D-4. 블랙프 피크 11/27-12/02.
 """
 import os, sys, time, json, random, argparse, re
 from datetime import datetime
 from pathlib import Path
 
+# scripts/ 를 sys.path에 추가 (common.notify 임포트용)
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 try:
     import requests
     from bs4 import BeautifulSoup
     from dotenv import load_dotenv
-except ImportError:
-    print("[설치 필요] pip install requests beautifulsoup4 lxml python-dotenv")
+    from common.notify import send as notify_send
+except ImportError as e:
+    print(f"[설치 필요] pip install requests beautifulsoup4 lxml python-dotenv")
+    print(f"import 실패: {e}")
     sys.exit(1)
 
 load_dotenv()
 
 # ===== 설정 =====
-TG_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-TG_CHAT = os.getenv("TELEGRAM_CHAT_ID", "")
 LOOP_INTERVAL = 2 * 60 * 60  # 2시간
 MIN_DISCOUNT = 50  # 50%+ 세일만 알림
 STATE_FILE = Path(__file__).parent / "seen_items.json"
@@ -55,19 +59,14 @@ def log(msg):
 
 
 def tg_send(text):
-    if not TG_TOKEN or not TG_CHAT:
-        log("⚠ 텔레그램 미설정 (.env 확인)")
-        return
-    try:
-        r = requests.post(
-            f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
-            json={"chat_id": TG_CHAT, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True},
-            timeout=10,
-        )
-        if not r.ok:
-            log(f"텔레그램 실패: {r.text[:200]}")
-    except Exception as e:
-        log(f"텔레그램 오류: {e}")
+    """Gmail 알림 발송 (호환성 위해 이름은 tg_send 유지)"""
+    # HTML 태그 제거 (Gmail 평문으로)
+    plain = re.sub(r"<[^>]+>", "", text)
+    # 첫 줄을 제목으로
+    lines = plain.strip().split("\n", 1)
+    subject = lines[0][:100] if lines else "블프 세일"
+    body = plain
+    notify_send(subject, body)
 
 
 def load_seen():
@@ -203,13 +202,17 @@ def check_all():
         time.sleep(random.uniform(5, 10))  # 사이트 간 간격
     save_seen(seen)
 
-    # 텔레그램 전송
+    # Gmail 알림 발송
     if new_items:
-        msg = f"🔥 <b>블랙프라이데이 신규 세일 {len(new_items)}건</b>\n\n"
-        for it in new_items[:15]:
-            msg += f"· <b>{it['brand'].upper()}</b> {it['discount']}% off [{it['site']}]\n{it['name'][:60]}\n{it['url'][:80]}\n\n"
-        tg_send(msg[:4000])
-        log(f"📬 텔레그램 발송: 신규 {len(new_items)}건")
+        subject = f"블프 신규 세일 {len(new_items)}건 (50%+)"
+        body_lines = [f"🔥 블랙프라이데이 신규 세일 {len(new_items)}건\n"]
+        for it in new_items[:20]:
+            body_lines.append(f"· {it['brand'].upper()} {it['discount']}% off [{it['site']}]")
+            body_lines.append(f"  {it['name'][:80]}")
+            body_lines.append(f"  {it['url']}")
+            body_lines.append("")
+        notify_send(subject, "\n".join(body_lines))
+        log(f"📬 Gmail 발송: 신규 {len(new_items)}건")
     else:
         log("신규 세일 없음")
 
@@ -220,11 +223,23 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--loop", action="store_true", help=f"무한 반복 ({LOOP_INTERVAL//3600}시간 간격)")
     parser.add_argument("--reset", action="store_true", help="본 적 있는 리스트 초기화")
+    parser.add_argument("--test", action="store_true", help="알림 테스트 (크롤링 X, Gmail 발송만)")
     args = parser.parse_args()
 
     if args.reset:
         STATE_FILE.unlink(missing_ok=True)
         log("✅ seen_items.json 초기화")
+        return
+
+    if args.test:
+        log("🧪 알림 테스트 모드")
+        subject = "블프 모니터 테스트"
+        body = f"로우나 블프 모니터 알림 테스트입니다.\n\n발송 시각: {datetime.now()}\n\n이 메일이 보이면 블프 모니터 알림 설정 완료입니다."
+        ok = notify_send(subject, body)
+        if ok:
+            log(f"✅ 테스트 메일 발송 완료. Gmail 확인하세요.")
+        else:
+            log(f"❌ 테스트 메일 발송 실패. .env 확인.")
         return
 
     if args.loop:

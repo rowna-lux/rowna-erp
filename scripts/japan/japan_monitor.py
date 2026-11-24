@@ -6,9 +6,10 @@
 
 사용법:
 1. pip install requests beautifulsoup4 lxml python-dotenv
-2. .env 설정 (TELEGRAM_BOT_TOKEN/CHAT_ID)
+2. scripts/.env 설정 (GMAIL_USER, GMAIL_APP_PASSWORD)
 3. python japan_monitor.py       → 1회
 4. python japan_monitor.py --loop → 매 4시간
+5. python japan_monitor.py --test → 알림 테스트
 
 주의:
 - 아마존재팬·라쿠텐은 봇 차단 있음. 저빈도(4시간) + 랜덤딜레이 필수
@@ -19,18 +20,20 @@ import os, sys, time, json, random, argparse, re
 from datetime import datetime
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 try:
     import requests
     from bs4 import BeautifulSoup
     from dotenv import load_dotenv
-except ImportError:
-    print("[설치 필요] pip install requests beautifulsoup4 lxml python-dotenv")
+    from common.notify import send as notify_send
+except ImportError as e:
+    print(f"[설치 필요] pip install requests beautifulsoup4 lxml python-dotenv")
+    print(f"import 실패: {e}")
     sys.exit(1)
 
 load_dotenv()
 
-TG_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-TG_CHAT = os.getenv("TELEGRAM_CHAT_ID", "")
 STATE_FILE = Path(__file__).parent / "jp_seen.json"
 WATCH_LIST_FILE = Path(__file__).parent / "watch_list.json"
 
@@ -56,16 +59,11 @@ def log(msg):
 
 
 def tg_send(text):
-    if not TG_TOKEN or not TG_CHAT:
-        return
-    try:
-        requests.post(
-            f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
-            json={"chat_id": TG_CHAT, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True},
-            timeout=10,
-        )
-    except Exception as e:
-        log(f"텔레그램 실패: {e}")
+    """Gmail 알림 발송 (호환성 위해 이름은 tg_send 유지)"""
+    plain = re.sub(r"<[^>]+>", "", text)
+    lines = plain.strip().split("\n", 1)
+    subject = lines[0][:100] if lines else "일본 구매대행"
+    notify_send(subject, plain)
 
 
 def get_jpy_krw_rate():
@@ -169,9 +167,9 @@ def check_all():
     if new_items:
         msg = f"🇯🇵 <b>일본 신규 매물 {len(new_items)}건</b>\n환율: 100엔 = {rate:.0f}원\n\n"
         for it in new_items[:10]:
-            msg += f"· {it['watch_name']}\n  {it['name'][:60]}\n  ¥{it['price_jpy']:,} → <b>₩{it['total_krw']:,}</b> (배송+관세 포함)\n  {it['url'][:80]}\n\n"
+            msg += f"· {it['watch_name']}\n  {it['name'][:60]}\n  ¥{it['price_jpy']:,} → ₩{it['total_krw']:,} (배송+관세 포함)\n  {it['url']}\n\n"
         tg_send(msg[:4000])
-        log(f"📬 텔레그램: {len(new_items)}건")
+        log(f"📬 Gmail: {len(new_items)}건")
     else:
         log("신규 매물 없음")
 
@@ -179,7 +177,17 @@ def check_all():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--loop", action="store_true", help="4시간마다 반복")
+    parser.add_argument("--test", action="store_true", help="알림 테스트")
     args = parser.parse_args()
+
+    if args.test:
+        log("🧪 알림 테스트")
+        ok = notify_send(
+            "일본 구매대행 모니터 테스트",
+            f"일본 구매대행 모니터 알림 테스트입니다.\n\n발송 시각: {datetime.now()}"
+        )
+        log("✅ 테스트 발송 완료" if ok else "❌ 실패. .env 확인.")
+        return
 
     if args.loop:
         log("🔄 매 4시간 반복. Ctrl+C로 중단")
