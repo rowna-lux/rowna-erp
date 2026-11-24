@@ -32,7 +32,7 @@ var v = ERP.view; v.ofSel = v.ofSel || "";
     ".of-cat{position:absolute;transform:translate(-50%,0);padding:0 5px;border-radius:5px;background:rgba(255,255,255,.9);color:#3b2a1c;font-size:clamp(6px,1.05cqw,11px);font-weight:800;pointer-events:none;white-space:nowrap;border:1px solid #3b2a1c}",
     ".of-chip.boss{background:#fff3cf}",
     ".of-zone{position:absolute;transform:translate(-50%,0);font-size:clamp(6px,1.2cqw,12px);font-weight:800;color:#6b4a2f;background:rgba(255,248,238,.85);padding:1px 8px;border-radius:999px;pointer-events:none;letter-spacing:.04em}",
-    ".of-bar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;margin-top:12px}",
+    ".of-bar{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-top:12px}",
     ".of-chip{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:12px;background:var(--of-paper);color:var(--of-ink);border:2px solid transparent;min-width:0}",
     ".of-chip:hover{border-color:var(--of-line)}.of-chip.on{border-color:var(--of-accent)}.of-chip:focus-visible{outline:2px solid var(--of-accent)}",
     ".of-chip canvas{width:28px;height:28px;image-rendering:pixelated;flex:none;border-radius:8px;background:var(--of-paper2)}",
@@ -69,35 +69,57 @@ var v = ERP.view; v.ofSel = v.ofSel || "";
 })();
 
 /* ---------- 직원 ---------- */
+/* 직원 = 프로젝트. 칸은 3개: doing(진행중) / wait(대표님 결정 대기) / auto(자동작업)
+   기본값은 아래에 두고, Claude가 ERP.officeLog(id,{doing,wait,auto})로 덮어쓰면 그 값을 씀 */
 var STAFF = [
-  { id: "books", name: "장부", role: "재무관리 (ERP·사방넷 주문·매입매출)", hair: "#111", shirt: "#20b486", skin: "#e9bb8f", tab: "sales",
+  { id: "books", name: "장부", role: "재무 (ERP·매출매입·세무·정산)", hair: "#111", shirt: "#20b486", skin: "#e9bb8f", tab: "sales",
     steps: ["사방넷 주문 가져오기", "매입 연결(원가)", "매출·매입 기록", "정산 확인", "반품·취소 반영", "월 마감·부가세"],
     tabs: ["sales", "purchases", "returns", "channels", "tax", "reports", "documents"],
-    projects: ["예약: 매일 07:47 아침 매출·정산 정리 → ERP", "롯데온·11번가 판매자센터 다시 로그인 (정산 자동 반영용)", "사방넷 클레임 8건 ERP 반품 등록 확인", "홈택스 1~6월 매입자료 → 1기 부가세"] },
-  { id: "stock", name: "바코", role: "재고관리 (바코드·선입선출)", hair: "#2b1d14", shirt: "#3c96ff", skin: "#f2c9a0", tab: "stock",
+    doing: ["MD 행사 메뉴 (4910 행사 시트)", "통장·카드 화면 (돈의 흐름)"],
+    wait: ["홈택스 1~6월 매입자료 3종 → 1기 부가세", "매출 원가 자동 채우기용 소싱폼 기준일", "롯데온·11번가 판매자센터 다시 로그인 (정산 자동 반영)", "08:52 '사방넷 주문 → 렛저' 예약: ERP로 바꿀지 끌지"],
+    auto: ["매일 07:47 아침 매출·정산 정리 → ERP", "매일 08:52 사방넷 주문 → 렛저 (정리 대기)"] },
+  { id: "stock", name: "바코", role: "재고 (바코드·선입선출)", hair: "#2b1d14", shirt: "#3c96ff", skin: "#f2c9a0", tab: "stock",
     steps: ["바코드 등록", "입고일·매입가 입력", "라벨 출력·부착", "선입선출 출고 −1", "실사 마감·사방넷 대조"],
     tabs: ["stock", "purchases"],
-    projects: ["재고 바코드 작업 (쇼핑몰 PC2 — 스캐너·라벨프린터)", "라벨 도우미: 입고일 줄(sub2) 인쇄 수정", "예약: 매주 월 10:30 재고정합성 리마인드", "재고정리: 품절 728 미반영 원인, 재입고 107, 수동확인 29"] },
-  { id: "rex", name: "렉스몬드", role: "렉스몬드의 모든 일 (사진 소싱·AI 썸네일)", hair: "#333", shirt: "#f59e0b", skin: "#eec39a", tab: "rex-sourcing",
+    doing: ["재고 바코드 작업 (PC2 — 스캐너·라벨프린터)", "라벨 도우미: 입고일 줄(sub2) 인쇄 수정"],
+    wait: ["재고정리: 품절 728 미반영 원인, 재입고 107, 수동확인 29"],
+    auto: ["매주 월 10:30 재고정합성 리마인드"] },
+  { id: "rex", name: "렉스몬드", role: "렉스몬드 (소싱·사방넷 등록·원가)", hair: "#333", shirt: "#f59e0b", skin: "#eec39a", tab: "rex-sourcing",
     steps: ["상품 소싱", "구글링 사진 수집", "(필요 시) AI 썸네일", "매입 기록", "재고·품절 확인"],
     tabs: ["rex-sourcing", "purchases"],
-    projects: ["예약: 매일 09:20 렉스몬드 매입 → ERP", "예약: 3시간마다 소싱 매입가 링크 확인", "로우나몬드 포토 판독기 (첫 시험 대기)", "톰브라운 AI 사진 49개 (쇼핑몰 PC2)", "사방넷 원가 6,400건 업로드 (테스트 3건 먼저)", "렉스몬드 재고정합성 점검 (일시중지·완전품절)"] },
+    doing: ["로우나몬드 포토 판독기 첫 시험", "톰브라운 AI 사진 49개 (PC2)", "렉스몬드 재고정합성 (일시중지·완전품절)"],
+    wait: ["사방넷 원가 6,400건 업로드 (테스트 3건 먼저)"],
+    auto: ["매일 09:20 렉스몬드 매입 → ERP", "3시간마다 소싱 매입가 링크 확인"] },
   { id: "musinsa", name: "무신사", role: "무신사의 모든 일", hair: "#1f2937", shirt: "#111827", skin: "#e8b88a", tab: "kream-yeolmu",
     steps: ["세일 상품 수집", "크림 시세 비교", "결제카드 배정", "매입", "기록"],
     tabs: ["kream-yeolmu", "settings"],
-    projects: ["로우나 리셀 도우미 (무신사·크림 전용 확장)", "무신사 신발 세일 → 크림 비교", "결제카드 표 (ERP '채널·카드')", "확인 필요: 알림 기준(마진 원/%), 매입 부가세 공제(세무사)"] },
-  { id: "kream", name: "크림", role: "크림 관련 모든 일 (열무 크림도매·로우나재고 크림)", hair: "#4a2a12", shirt: "#ef4444", skin: "#f1c7a1", tab: "kream-yeolmu",
+    doing: ["무신사 신발 세일 → 크림 비교", "로우나 리셀 도우미 (무신사·크림 전용 확장)"],
+    wait: [],
+    auto: [] },
+  { id: "kream", name: "크림", role: "크림 (열무 도매·리셀 소싱·로우나재고)", hair: "#4a2a12", shirt: "#ef4444", skin: "#f1c7a1", tab: "kream-yeolmu",
     steps: ["도매 리스트 읽기", "크림 시세 조회(95점 제외)", "마진 계산", "매입·판매입찰", "정산"],
     tabs: ["kream-yeolmu", "kream-stock"],
-    projects: ["열무 크림도매 (열무·무우 등 도매 리스트)", "열무 크림도매 도우미 (메인 PC 크롬에 설치 필요)", "11/9 이전 계산분 다시 조회 (95점 기준 변경)", "확인 필요: 크림 보관·빠른배송 수수료"] },
-  { id: "blog", name: "블리", role: "블로그·SNS (로우나명품 홍보)", hair: "#7c2d12", shirt: "#f97316", skin: "#f7d6b4", tab: "blog",
+    doing: ["열무 크림도매 (리스트별 페이지)", "리셀 소싱 — 크림 사이즈별 마진"],
+    wait: ["리셀 소싱: 알림 기준(마진 원/%), 매입 부가세 공제(세무사), 크림 보관·빠른배송 수수료"],
+    auto: ["매시간 09~23 소싱 알림 → 휴대폰"] },
+  { id: "blog", name: "블리", role: "블로그·SNS", hair: "#7c2d12", shirt: "#f97316", skin: "#f7d6b4", tab: "blog",
     steps: ["상품 선정", "블로그 글 작성", "SNS 게시물", "발행·게시", "유입 확인"],
     tabs: ["blog"],
-    projects: ["예약: 매일 15:37 블로그 자동 글쓰기 (지금 클라우드 실행 → PC로 옮기기 필요)", "글 안에 마케팅 링크 필수", "다음 대상: 셀린느 → 프라다 → 미우미우"] },
-  { id: "ads", name: "애드", role: "쇼핑몰별 가격·CM쿠폰·광고", hair: "#0f172a", shirt: "#eab308", skin: "#e6b487",
+    doing: ["다음 대상: 셀린느 → 프라다 → 미우미우 (마케팅 링크 필수)"],
+    wait: ["블로그 예약 작업 2개가 같은 시각(15:37) — 하나로 정리"],
+    auto: ["매일 15:37 블로그 초안 자동작성", "매일 15:37 블로그 자동 글쓰기 (PC) — 중복"] },
+  { id: "ads", name: "애드", role: "몰별 가격·MD 행사·광고", hair: "#0f172a", shirt: "#eab308", skin: "#e6b487",
     steps: ["몰별 가격 점검", "어긋난 가격 수정파일", "CM쿠폰 설정", "광고 운영", "효과 확인"],
     tabs: ["channels", "pricing"],
-    projects: ["예약: 매일 09:23 사방넷 몰별가격 아침 자동 점검", "몰별 가격 1,540상품 수정파일 (sabang_mismatch_261105.csv 첨부 대기)", "몰별 가격 81개 추가 수정파일 업로드", "스토어봇 가격식 2주 효과 비교 (11/9)", "에이블리 블프 기획전 신청 (마감 11/11)"] }
+    doing: ["4910 MD 행사 상품 정리", "네이버 광고 자동화"],
+    wait: ["몰별 가격 1,540상품 수정파일 — sabang_mismatch_261105.csv 첨부", "몰별 가격 81개 추가 수정파일 업로드", "ERP '제목 키워드 테스트' 배포 여부", "에이블리 블프 기획전 (마감 11/11 지남 — 정리)"],
+    auto: ["매일 09:23 사방넷 몰별가격 아침 점검 (크롬 미지정으로 멈춤)"] },
+  { id: "import", name: "수입", role: "병행수입·구매대행 (이탈리아 부티크·일본)", hair: "#3b2416", shirt: "#0d9488", skin: "#efc49c", tab: "purchases",
+    steps: ["부티크 오더시트 받기", "코스트·마크업 계산", "크림·국내 시세 비교", "오더 확정·송금", "통관·입고"],
+    tabs: ["purchases"],
+    doing: ["이탈리아 부티크 오더 계산기 (엑셀 + ERP 계산기)", "일본 구매대행 준비 (초기)"],
+    wait: ["ERP '부티크 오더 계산기'(boutique-calc) 배포 여부 — 실제 시트 2종으로 시험"],
+    auto: [] }
 ];
 
 /* ---------- 데이터 ---------- */
@@ -111,6 +133,15 @@ function ago(iso) {
   if (m < 1) return "방금"; if (m < 60) return m + "분 전"; var h = Math.round(m / 60); if (h < 24) return h + "시간 전"; return Math.round(h / 24) + "일 전";
 }
 function safe(f, d) { try { return f(); } catch (e) { return d; } }
+function lst(x) { return Array.isArray(x) ? x.filter(Boolean) : x ? [x] : []; }
+function three(p) { var r = rec(p.id); return { doing: lst(r.doing !== undefined ? r.doing : p.doing), wait: lst(r.wait !== undefined ? r.wait : p.wait), auto: lst(r.auto !== undefined ? r.auto : p.auto) }; }
+/* 같은 내용이 반복되는 기록은 한 줄로 합침 (예: '크롬 미지정 · 5번') */
+function squash(log) {
+  var out = [];
+  (log || []).forEach(function (l) { var k = String(l.text || "").replace(/[0-9]+일째/g, "").trim(), o = out.length && out[out.length - 1];
+    if (o && o.k === k) { o.n++; o.at = l.at; } else out.push({ k: k, text: l.text, at: l.at, n: 1 }); });
+  return out.map(function (o) { return { at: o.at, text: o.n > 1 ? o.text + " · " + o.n + "번 반복" : o.text }; });
+}
 
 /* ERP에서 바로 읽는 직원 */
 function liveStock() {
@@ -152,14 +183,15 @@ function info(p) {
   if (live && !r.status) st = live.status;
   if (live && live.status === "alert") st = "alert";
   var bubble = (live && live.status === "alert" ? live.bubble : "") || r.note || (live && live.bubble) || (st === "none" ? "아직 기록 없음" : "대기 중");
-  return { r: r, live: live, step: step, status: st, bubble: bubble, todo: (live && live.todo) || r.todo || "", log: (r.log || []).slice(-8).reverse() };
+  return { r: r, live: live, step: step, status: st, bubble: bubble, todo: (live && live.todo) || r.todo || "", log: squash(r.log).slice(-8).reverse() };
 }
 
 function bossInfo(p) {
-  var r = rec(p.id), base = { r: r, live: null, step: -1, todo: r.todo || "", log: (r.log || []).slice(-8).reverse() };
+  var r = rec(p.id), base = { r: r, live: null, step: -1, todo: r.todo || "", log: squash(r.log).slice(-8).reverse() };
   if (p.id === "ceo") {
     var al = STAFF.filter(function (q) { return info(q).status === "alert"; }), wk = STAFF.filter(function (q) { return info(q).status === "work"; });
-    return Object.assign(base, { status: al.length ? "alert" : wk.length ? "work" : "idle", bubble: al.length ? "확인할 일 " + al.length + "건" : wk.length ? "직원 " + wk.length + "명 일하는 중" : "오늘도 화이팅!",
+    var nw = ALL.reduce(function (n, q) { return n + three(q).wait.length; }, 0);
+    return Object.assign(base, { status: al.length ? "alert" : wk.length ? "work" : "idle", bubble: nw ? "결정할 일 " + nw + "건" + (al.length ? " · 확인 " + al.length : "") : al.length ? "확인할 일 " + al.length + "건" : wk.length ? "직원 " + wk.length + "명 일하는 중" : "오늘도 화이팅!",
       checks: al.map(function (q) { return q.name + " · " + info(q).bubble; }), todo: al.length ? al.map(function (q) { return q.name + "(" + q.role + "): " + (info(q).todo || info(q).bubble); }).join(" / ") : "" });
   }
   return Object.assign(base, { status: r.status || "idle", bubble: r.note || "오늘도 화이팅!" });
@@ -169,14 +201,16 @@ var W = 480, H = 270, CORR = 150, MIDX = 240;
 var TEAMS = [
   { name: "운영팀", ids: ["books", "stock"], x: 10, y: 52, rug: ["#bcd7ef", "#a6c6e4", "#86acd2"] },
   { name: "소싱팀", ids: ["rex", "musinsa", "kream"], x: 294, y: 52, rug: ["#f5cfae", "#eebd95", "#dba077"] },
-  { name: "홍보·가격팀", ids: ["blog", "ads"], x: 10, y: 162, rug: ["#c4e6cf", "#acd9bb", "#8cc39f"] }
+  { name: "홍보·가격팀", ids: ["blog", "ads"], x: 10, y: 162, rug: ["#c4e6cf", "#acd9bb", "#8cc39f"] },
+  { name: "수입팀", ids: ["import"], x: 294, y: 162, rug: ["#d9cdf0", "#c8b8e8", "#a993d6"] }
 ];
-var HAIRSTYLE = { stock: "short", books: "bob", rex: "cap", musinsa: "short", kream: "bun", blog: "long", ads: "spiky" };
+var HAIRSTYLE = { stock: "short", books: "bob", rex: "cap", musinsa: "short", kream: "bun", blog: "long", ads: "spiky", import: "cap" };
 var SEAT = {};
 TEAMS.forEach(function (t) { t.ids.forEach(function (id, k) { var dx = t.x + 8 + k * 58; SEAT[id] = { dx: dx, dy: t.y + 40, x: dx + 23, y: t.y + 36, wy: t.y + 8, team: t }; }); });
 /* 대표석: 가운데 위 — 대표 신소희 + 옆자리 다정 */
 var BOSS = [
-  { id: "ceo", name: "신소희", role: "대표", hair: "#2b1d14", shirt: "#e07a3f", skin: "#f6d3b0", boss: true },
+  { id: "ceo", name: "신소희", role: "대표", hair: "#2b1d14", shirt: "#e07a3f", skin: "#f6d3b0", boss: true,
+    wait: ["예약 작업용 크롬 이름 지정 (09:23 점검·소싱 링크 확인이 크롬 미지정으로 계속 멈춤)", "컴퓨터 이름 정리: desktop-2031qeo · PC2가 어느 기기인지"] },
   { id: "dj", name: "임다정", role: "대표", hair: "#5a3a22", shirt: "#f4a7b9", skin: "#f3cfa8", boss: true }
 ];
 HAIRSTYLE.ceo = "bob"; HAIRSTYLE.dj = "long";
@@ -412,9 +446,10 @@ function card(p) {
   if (p.boss) {
     var chk = p.id === "ceo" ? (inf.checks && inf.checks.length ? '<h4>대표님 확인할 일</h4><ul class="of-log">' + inf.checks.map(function (x) { return "<li>❗ " + esc(x) + "</li>"; }).join("") + "</ul>" : '<h4>대표님 확인할 일</h4><p class="muted" style="font-size:13px;margin:0 0 12px">지금은 확인할 일이 없어요 ☕</p>') : "";
     var team = p.id === "ceo" ? '<h4>오늘 사무실</h4><div class="of-stats">' + [["work", "일하는 중"], ["alert", "확인 필요"], ["done", "완료"], ["idle", "대기"]].map(function (k) { var n = STAFF.filter(function (q) { var st = info(q).status; return k[0] === "idle" ? (st === "idle" || st === "none") : st === k[0]; }).length; return "<div><small>" + k[1] + "</small><b>" + n + "명</b></div>"; }).join("") + "</div>" : "";
+    var box = p.id === "ceo" ? '<h4>대표님 결정함 (직원별)</h4>' + (ALL.filter(function (q) { return three(q).wait.length; }).map(function (q) { return '<div style="margin:0 0 8px"><b style="font-size:13px">' + esc(q.boss ? "대표실" : q.name) + ' <small class="muted">' + three(q).wait.length + '건</small></b><ul class="of-log" style="margin:4px 0 0">' + three(q).wait.map(function (x) { return "<li>🟠 " + esc(x) + "</li>"; }).join("") + "</ul></div>"; }).join("") || '<p class="muted" style="font-size:13px;margin:0 0 12px">결정할 일이 없어요 ☕</p>') : "";
     var lg = inf.log.length ? '<h4>최근 기록</h4><ul class="of-log">' + inf.log.map(function (l) { return "<li><small>" + esc(ago(l.at)) + "</small> · " + esc(l.text) + "</li>"; }).join("") + "</ul>" : "";
     return '<div class="of-card"><div class="of-card-h"><canvas width="16" height="26" data-ava="' + p.id + '"></canvas><div><b>' + esc(p.name) + '</b><div class="muted">' + esc(p.role) + ' · 대표실</div></div><span class="of-st" style="background:' + SC[inf.status] + '">' + SN[inf.status] + "</span></div>" +
-      '<div class="of-bubble">💬 ' + esc(inf.bubble) + "</div>" + team + chk + lg + "</div>";
+      '<div class="of-bubble">💬 ' + esc(inf.bubble) + "</div>" + team + box + chk + lg + "</div>";
   }
   var steps = p.steps.map(function (s, i) {
     var cls = i < inf.step ? "ok" : i === inf.step ? "now" : "";
@@ -426,13 +461,14 @@ function card(p) {
     '<div class="of-bubble">💬 ' + esc(inf.bubble) + (r.updatedAt ? ' <small>· ' + esc(ago(r.updatedAt)) + "</small>" : "") + "</div>" + stats +
     "<h4>업무 단계</h4><ol class=\"of-steps\">" + steps + "</ol>" +
     (inf.todo ? '<h4>다음 할 일</h4><p class="of-todo">' + esc(inf.todo) + "</p>" : "") +
-    (p.projects && p.projects.length ? '<h4>연관 프로젝트</h4><ul class="of-log">' + p.projects.map(function (x) { return "<li>📁 " + esc(x) + "</li>"; }).join("") + "</ul>" : "") +
+    (function () { var t = three(p), sec = function (h, a, ic, empty) { return "<h4>" + h + " (" + a.length + ")</h4>" + (a.length ? '<ul class="of-log">' + a.map(function (x) { return "<li>" + ic + " " + esc(x) + "</li>"; }).join("") + "</ul>" : '<p class="muted" style="font-size:13px;margin:0 0 8px">' + empty + "</p>"); };
+      return sec("진행중", t.doing, "🔵", "없음") + sec("대표님 결정 대기", t.wait, "🟠", "없음") + sec("자동작업", t.auto, "⚙️", "없음"); })() +
     "<h4>최근 기록</h4>" + log +
     (!KIOSK ? '<div style="display:flex;gap:6px;flex-wrap:wrap">' + (p.tabs || (p.tab ? [p.tab] : [])).filter(function (t) { return ERP.pages[t]; }).map(function (t) { return '<button class="btn sm" data-ofgo="' + esc(t) + '">' + esc(ERP.pages[t].title) + " 열기</button>"; }).join("") + "</div>" : "") + "</div>";
 }
 function ticker() {
   var all = [];
-  STAFF.forEach(function (p) { (rec(p.id).log || []).forEach(function (l) { all.push({ at: l.at, t: p.name + " · " + l.text }); }); });
+  STAFF.forEach(function (p) { squash(rec(p.id).log).forEach(function (l) { all.push({ at: l.at, t: p.name + " · " + l.text }); }); });
   all.sort(function (a, b) { return String(b.at).localeCompare(String(a.at)); });
   return all.slice(0, 12).map(function (x) { return esc(ago(x.at)) + " " + esc(x.t); }).join("　·　") || "오늘도 로우나 사무실 영업 중 ☕ — 작업 기록이 생기면 여기에 흘러가요";
 }
@@ -452,7 +488,7 @@ function overlays() {
 function bar() {
   return ALL.map(function (p) {
     var inf = info(p);
-    return '<button type="button" class="of-chip' + (p.boss ? " boss" : "") + (v.ofSel === p.id ? " on" : "") + '" data-ofsel="' + p.id + '"><canvas width="16" height="16" data-ava="' + p.id + '"></canvas><span style="min-width:0"><b>' + esc(p.name) + "</b><small>" + esc(p.role) + '</small></span><span class="st" style="background:' + SC[inf.status] + '" title="' + SN[inf.status] + '"></span></button>';
+    return '<button type="button" class="of-chip' + (p.boss ? " boss" : "") + (v.ofSel === p.id ? " on" : "") + '" data-ofsel="' + p.id + '"><canvas width="16" height="16" data-ava="' + p.id + '"></canvas><span style="min-width:0"><b>' + esc(p.name) + "</b><small>" + esc(p.role) + '</small></span>' + (three(p).wait.length ? '<span style="flex:none;font-size:11px;font-weight:800;color:#fff;background:#e07a3f;border-radius:999px;padding:1px 6px">' + three(p).wait.length + "</span>" : "") + '<span class="st" style="background:' + SC[inf.status] + '" title="' + SN[inf.status] + '"></span></button>';
   }).join("");
 }
 function paintAvatars(root) { (root || document).querySelectorAll("canvas[data-ava]").forEach(function (cnv) { var p = ALL.find(function (x) { return x.id === cnv.dataset.ava; }); if (p) avatar(cnv, p); }); }
@@ -512,13 +548,15 @@ if (KIOSK) {
 }
 
 /* Claude가 작업 기록을 남길 때 쓰는 함수 — 대표 계정 브라우저에서만 저장됨
-   ERP.officeLog("rex", { step: 2, status: "work", note: "11장 재생성 중", todo: "판독기 검수", text: "톰브라운 11장 생성 시작" }) */
+   ERP.officeLog("rex", { step: 2, status: "work", note: "11장 재생성 중", todo: "판독기 검수", text: "톰브라운 11장 생성 시작" })
+   3칸 갱신(배열 통째로 바꿈): ERP.officeLog("ads", { doing: [...], wait: [...], auto: [...] })
+   직원 id: books 장부 / stock 바코 / rex 렉스몬드 / musinsa 무신사 / kream 크림 / blog 블리 / ads 애드 / import 수입 / ceo 대표실 */
 ERP.officeLog = async function (id, o) {
   var g = await S.sb.from("app_settings").select("value").eq("key", KEY).maybeSingle();
   if (g.error) throw g.error;
   var b = (g.data && g.data.value) || { staff: {} }; b.staff = b.staff || {};
   var r = b.staff[id] || {}; o = o || {};
-  ["step", "status", "note", "todo"].forEach(function (k) { if (o[k] !== undefined) r[k] = o[k]; });
+  ["step", "status", "note", "todo", "doing", "wait", "auto"].forEach(function (k) { if (o[k] !== undefined) r[k] = o[k]; });
   r.updatedAt = new Date().toISOString();
   if (o.text) { r.log = (r.log || []).concat([{ at: r.updatedAt, text: String(o.text).slice(0, 200) }]).slice(-50); }
   b.staff[id] = r; b.updatedAt = r.updatedAt;
