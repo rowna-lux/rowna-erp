@@ -34,7 +34,13 @@
 - `python scripts/status_check.py` 로 실행
 - Gmail로 결과 발송
 
-### 4. 코드 정리
+### 4. 블프 일괄 스캔 (`blackfriday/scan_all_sales.py`) - 신규
+- SSENSE·Mytheresa·NAP·24S·MR PORTER·Farfetch·29CM·W컨셉 10개 사이트 한번에 스캔
+- 각 사이트별 로우나 타겟 발견 결과를 Gmail로 받음
+- 사용법: `python scripts/blackfriday/scan_all_sales.py`
+- 소요: 2~5분, 비용 ~₩15
+
+### 5. 코드 정리
 - watcher.py: Gemini → OpenAI 레퍼런스 정정
 - OPENAI_API_KEY 환경변수 사용 (폴백으로 GEMINI_API_KEY 자리에 sk-* 허용)
 
@@ -67,7 +73,19 @@ python scripts\status_check.py
 ```
 → "자동화 상태 체크" 메일 받아보고 모든 ✅ 확인
 
-### 4. 블프 D-3 액션 리스트
+### 4. 블프 일괄 스캔 (⭐ 추천)
+10개 세일 사이트 한 번에 스캔. 2~5분 뒤 Gmail 10개 받아보시면 됨.
+```powershell
+cd C:\Users\MSI\Downloads\rowna-erp-main\rowna-erp-main
+python scripts\blackfriday\scan_all_sales.py
+```
+또는 서브컴에서:
+```powershell
+cd C:\Users\ADMIN\rowna-erp
+python scripts\blackfriday\scan_all_sales.py
+```
+
+### 5. 블프 D-3 액션 리스트
 - **11/28 금요일 블프 피크** (3일 남음)
 - 피크 기간: 11/27 ~ 12/02
 - 체크할 세일 사이트 (URL analyzer로 분석 가능):
