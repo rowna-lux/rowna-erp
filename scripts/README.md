@@ -104,19 +104,34 @@ python upload_blog.py --max 5   # 최대 5개
 
 ## ④ 블랙프라이데이 명품 세일 모니터링 (`blackfriday/bf_monitor.py`)
 
-**11/28(금) D-6. 지금 바로 시작!**
+**11/28(금) D-3. 지금 바로 시작!**
 
 ```powershell
 cd scripts\blackfriday
 python bf_monitor.py          # 1회 체크
 python bf_monitor.py --loop   # 2시간마다 무한 반복 (서브컴에서 24/7)
+python bf_monitor.py --test   # Gmail 알림 테스트
 ```
 
 - SSENSE·Mytheresa·Farfetch 자동 체크
-- 로우나 취급 브랜드 50%+ 세일 발견 시 **즉시 텔레그램**
+- 로우나 취급 브랜드 50%+ 세일 발견 시 **즉시 Gmail**
+- ⭐ 핵심 타겟 (Stone Island, CP Company, Margiela, Saint Laurent, Prada, Miu Miu) 우선 정렬
 - 봇 차단 피하려 2시간 간격 + 랜덤 딜레이
 
 **브랜드 리스트 수정:** `bf_monitor.py` 상단 `TARGET_BRANDS` 배열
+
+### ④-1 세일 URL 수동 분석기 (`blackfriday/url_analyzer.py`)
+
+**파서가 깨진 사이트 대안.** 세일 사이트 URL 발견하면 바로 분석:
+
+```powershell
+python scripts/blackfriday/url_analyzer.py "https://www.mytheresa.com/en-us/sale"
+```
+
+- URL HTML 가져옴 → OpenAI gpt-4o-mini로 분석
+- 로우나 타겟 브랜드 50%+만 필터링
+- ⭐ 핵심 타겟 우선 정렬 → Gmail 발송
+- 비용: 1회 ₩1~2
 
 ## ⑤ 머스트잇 그로스패키지 광고 자동 등록 (`mustit/mustit_ad_auto.py`)
 
@@ -148,7 +163,17 @@ python japan_monitor.py --loop   # 4시간마다
 
 - 아마존재팬 자동 체크
 - 환율 + 배송비(¥1,500 가정) + 관세 자동 계산 (한국 150달러 이하 면세)
-- 조건 맞으면 텔레그램 알림
+- 조건 맞으면 Gmail 알림
+
+## ⑧ 자동화 상태 체크 (`status_check.py`)
+
+```powershell
+python scripts\status_check.py           # 상태 확인 + Gmail 발송
+python scripts\status_check.py --quiet   # 콘솔만
+```
+
+- 환경변수, 패키지, 스크립트 존재, 로그 상태 한번에 확인
+- 메인PC / 서브컴 양쪽에서 각각 돌려서 ✅ 확인
 
 ---
 
