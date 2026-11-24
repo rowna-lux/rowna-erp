@@ -24,6 +24,9 @@ GMAIL_USER=shinmy777@gmail.com
 GMAIL_APP_PASSWORD=xxxxxxxxxxxxxxxx
 GMAIL_TO=shinmy777@gmail.com
 
+# Gemini API (크림 도매 리스트 분석용, 무료 등급)
+GEMINI_API_KEY=AQ.Ab8R...
+
 # 네이버 커머스 API (리뷰 요청용)
 NAVER_COMMERCE_CLIENT_ID=xxxxx
 NAVER_COMMERCE_CLIENT_SECRET=xxxxx
@@ -47,9 +50,35 @@ python japan/japan_monitor.py --test       # 일본 모니터 알림 테스트
 ## ① 크림 보판 손해가격 알림
 **이미 ERP에 내장됨** — 서브컴 스크립트 불필요. 매일 아침 9시 자동 발송.
 
-## ② 열무 도매 알림
-**이미 ERP 텔레그램 봇**으로 동작 중 — 카톡에서 열무 도매 리스트 사진 받으면 → **텔레그램 봇에 forward** → 자동 계산.
-자동 모니터링(사이트 긁기)은 user가 사이트 URL 알려주시면 추가.
+## ② 열무·수고개 도매 리스트 분석기 (`kream_wholesale/watcher.py`)
+
+**2026-11-24 신규 — 메인PC 또는 서브컴에서 백그라운드 실행**
+
+### 기능
+- 1초마다 클립보드 감시
+- 카톡·사진에서 도매 리스트 이미지 복사(Ctrl+C) → 자동 감지
+- Gemini Vision으로 OCR·파싱 (품번·브랜드·수량·매입가·크림 링크)
+- 크림 시세 자동 조회 → 수익 분석 (Level 1 수수료: 6% + 2,500)
+- Gmail + Windows 토스트 알림
+
+### 설치
+```powershell
+pip install pillow requests python-dotenv plyer
+cd scripts
+python kream_wholesale/watcher.py --test    # 설정 체크
+python kream_wholesale/watcher.py           # 감시 시작 (최소화하고 두기)
+```
+
+### 사용법
+1. 카톡에서 열무/수고개 도매 리스트 사진 받음
+2. **사진 우클릭 → "사진 복사"** (Ctrl+C)
+3. 5~10초 후 Gmail에 분석 리포트 도착
+4. 바탕화면 토스트 알림도 뜸
+
+### 수동 실행 (파일 지정)
+```powershell
+python kream_wholesale/watcher.py --file some_image.png
+```
 
 ## ③ 네이버 블로그 자동 업로드 (`blog/upload_blog.py`)
 
