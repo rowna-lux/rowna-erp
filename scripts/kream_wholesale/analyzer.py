@@ -87,10 +87,18 @@ def analyze_image(image_bytes):
         },
     }
 
+    # 키 포맷에 따라 인증 방식 다름
+    # AIza... = API 키 (x-goog-api-key 헤더)
+    # AQ.... = OAuth2 액세스 토큰 (Authorization: Bearer)
+    if GEMINI_API_KEY.startswith("AQ."):
+        auth_headers = {"Authorization": f"Bearer {GEMINI_API_KEY}", "Content-Type": "application/json"}
+    else:
+        auth_headers = {"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"}
+
     try:
         r = requests.post(
             GEMINI_URL,
-            headers={"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"},
+            headers=auth_headers,
             json=payload,
             timeout=45,
         )
