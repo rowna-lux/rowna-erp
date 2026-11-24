@@ -2,13 +2,13 @@
 크림 도매 리스트 사진 자동 분석기 (클립보드 감시형)
 
 사용법:
-1. pip install google-generativeai pillow pyperclip requests python-dotenv plyer
-2. scripts/.env 에 GEMINI_API_KEY 설정 (GMAIL_USER, GMAIL_APP_PASSWORD, GMAIL_TO 재사용)
+1. pip install pillow requests python-dotenv plyer
+2. scripts/.env 에 OPENAI_API_KEY 설정 (GMAIL_USER, GMAIL_APP_PASSWORD, GMAIL_TO 재사용)
 3. python scripts/kream_wholesale/watcher.py
 
 동작:
 - 1초마다 클립보드 감시
-- 새 이미지 감지 → Gemini로 도매 리스트 분석 → 크림 시세 조회 → Gmail + 바탕화면 알림
+- 새 이미지 감지 → OpenAI Vision으로 도매 리스트 분석 → 크림 시세 조회 → Gmail + 바탕화면 알림
 
 수동 실행:
 - python scripts/kream_wholesale/watcher.py --file <image.png>  (파일 직접 분석)
@@ -32,7 +32,7 @@ try:
     from kream_wholesale.analyzer import analyze_image
     from kream_wholesale.kream_api import enrich_items
 except ImportError as e:
-    print(f"[설치 필요] pip install pillow google-generativeai requests python-dotenv")
+    print(f"[설치 필요] pip install pillow requests python-dotenv plyer")
     print(f"import 실패: {e}")
     sys.exit(1)
 
@@ -134,15 +134,15 @@ def process_image(image_bytes, source="clipboard"):
     """이미지 분석 + 알림 발송"""
     log(f"📸 이미지 분석 시작 ({source})")
 
-    # 1. Gemini 분석
+    # 1. OpenAI Vision 분석
     parsed = analyze_image(image_bytes)
     if parsed.get("error"):
-        log(f"❌ Gemini 분석 실패: {parsed['error']}")
+        log(f"❌ OpenAI 분석 실패: {parsed['error']}")
         notify_send("도매 리스트 분석 실패", f"에러: {parsed['error']}")
         return
 
     items_count = len(parsed.get("items", []))
-    log(f"✓ Gemini 분석 완료: {items_count}개 품목")
+    log(f"✓ OpenAI 분석 완료: {items_count}개 품목")
 
     # 2. 크림 시세 조회
     log("🔍 크림 시세 조회 중...")
@@ -200,21 +200,25 @@ def main():
     args = parser.parse_args()
 
     # 설정 체크
-    gemini_key = os.getenv("GEMINI_API_KEY", "")
+    openai_key = os.getenv("OPENAI_API_KEY", "").strip()
+    gemini_fallback = os.getenv("GEMINI_API_KEY", "").strip()
+    # 폴백: 옛 .env에서 GEMINI_API_KEY 자리에 sk-* 넣어뒀을 수 있음
+    if not openai_key and gemini_fallback.startswith("sk-"):
+        openai_key = gemini_fallback
     gmail_user = os.getenv("GMAIL_USER", "")
-    print(f"GEMINI_API_KEY: {'(설정됨)' if gemini_key else '(미설정 ❌)'}")
+    print(f"OPENAI_API_KEY: {'(설정됨)' if openai_key else '(미설정 ❌)'}")
     print(f"GMAIL_USER: {gmail_user or '(미설정 ❌)'}")
     print(f"토스트 알림: {'OK' if _toast_available else '(plyer 미설치, Gmail만 사용)'}")
 
     if args.test:
-        if gemini_key and gmail_user:
+        if openai_key and gmail_user:
             print("\n✅ 설정 OK. 바로 감시 시작 가능.")
         else:
             print("\n❌ 설정 부족. .env 확인.")
         return
 
-    if not gemini_key:
-        print("\n❌ GEMINI_API_KEY 미설정. scripts/.env 에 추가 필요.")
+    if not openai_key:
+        print("\n❌ OPENAI_API_KEY 미설정. scripts/.env 에 추가 필요.")
         return
 
     if args.file:

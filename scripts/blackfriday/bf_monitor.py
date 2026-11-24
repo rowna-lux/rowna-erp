@@ -36,14 +36,26 @@ LOOP_INTERVAL = 2 * 60 * 60  # 2시간
 MIN_DISCOUNT = 50  # 50%+ 세일만 알림
 STATE_FILE = Path(__file__).parent / "seen_items.json"
 
-# 로우나가 취급하는 브랜드 (ERP 데이터 기반 — 추가/수정 필요하면 여기)
-TARGET_BRANDS = [
-    "stone island", "cp company", "c.p. company", "maison margiela",
-    "chloe", "chloé", "miu miu", "prada", "saint laurent", "ami",
-    "ami paris", "autry", "hoka", "golden goose", "bottega veneta",
-    "moncler", "balenciaga", "jacquemus", "burberry", "jil sander",
-    "toteme", "khaite", "the row", "acne studios", "lemaire",
+# 로우나가 취급하는 브랜드 (ERP + 열무/수고개 도매 리스트 기반, 2026-11-25 보강)
+# TOP_PRIORITY: 매입 빈도 높음 (최근 도매 리스트에 자주 등장)
+TOP_PRIORITY = [
+    "stone island", "cp company", "c.p. company",
+    "maison margiela", "margiela",
+    "saint laurent", "ysl",
+    "prada", "miu miu",
+]
+
+TARGET_BRANDS = TOP_PRIORITY + [
+    # 컨템포러리 디자이너
+    "chloe", "chloé", "ami", "ami paris", "autry", "hoka", "golden goose",
+    "bottega veneta", "moncler", "balenciaga", "jacquemus", "burberry",
+    "jil sander", "toteme", "khaite", "the row", "acne studios", "lemaire",
+    # 아웃도어/테크웨어
     "arc'teryx", "arcteryx", "barracuta", "roa",
+    # 하이엔드 (세일 가끔)
+    "loewe", "givenchy", "celine", "fendi",
+    # 추가 관심 브랜드
+    "isabel marant", "dries van noten", "wales bonner",
 ]
 
 HEADERS = {
@@ -202,17 +214,39 @@ def check_all():
         time.sleep(random.uniform(5, 10))  # 사이트 간 간격
     save_seen(seen)
 
-    # Gmail 알림 발송
+    # Gmail 알림 발송 (TOP_PRIORITY 우선 정렬)
     if new_items:
-        subject = f"블프 신규 세일 {len(new_items)}건 (50%+)"
-        body_lines = [f"🔥 블랙프라이데이 신규 세일 {len(new_items)}건\n"]
-        for it in new_items[:20]:
-            body_lines.append(f"· {it['brand'].upper()} {it['discount']}% off [{it['site']}]")
-            body_lines.append(f"  {it['name'][:80]}")
-            body_lines.append(f"  {it['url']}")
-            body_lines.append("")
+        # 우선순위별 분리
+        prio = [it for it in new_items if it["brand"].lower() in [b.lower() for b in TOP_PRIORITY]]
+        rest = [it for it in new_items if it["brand"].lower() not in [b.lower() for b in TOP_PRIORITY]]
+        # 할인율 기준 정렬
+        prio.sort(key=lambda x: x.get("discount", 0), reverse=True)
+        rest.sort(key=lambda x: x.get("discount", 0), reverse=True)
+
+        subject = f"블프 세일 {len(new_items)}건 (⭐ {len(prio)} + {len(rest)})"
+        body_lines = [f"🔥 블랙프라이데이 신규 세일 {len(new_items)}건 (50%+)\n"]
+
+        if prio:
+            body_lines.append(f"=" * 40)
+            body_lines.append(f"⭐ 핵심 타겟 ({len(prio)}건)")
+            body_lines.append(f"=" * 40)
+            for it in prio[:15]:
+                body_lines.append(f"\n· {it['brand'].upper()} {it['discount']}% off [{it['site']}]")
+                body_lines.append(f"  {it['name'][:80]}")
+                body_lines.append(f"  {it['url']}")
+
+        if rest:
+            body_lines.append(f"\n{'=' * 40}")
+            body_lines.append(f"추가 타겟 ({len(rest)}건)")
+            body_lines.append(f"=" * 40)
+            for it in rest[:10]:
+                body_lines.append(f"\n· {it['brand'].upper()} {it['discount']}% off [{it['site']}]")
+                body_lines.append(f"  {it['name'][:80]}")
+                body_lines.append(f"  {it['url']}")
+
+        body_lines.append(f"\n🕐 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         notify_send(subject, "\n".join(body_lines))
-        log(f"📬 Gmail 발송: 신규 {len(new_items)}건")
+        log(f"📬 Gmail 발송: 신규 {len(new_items)}건 (핵심 {len(prio)})")
     else:
         log("신규 세일 없음")
 
