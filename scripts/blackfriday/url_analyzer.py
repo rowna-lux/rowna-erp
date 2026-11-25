@@ -101,10 +101,35 @@ def extract_page_text(url, timeout=20):
     return text[:50000], None
 
 
+def _has_real_product_data(text):
+    """페이지에 실제 상품 데이터가 있는지 간단 체크 (JS 렌더링 사이트는 보통 빈 페이지)"""
+    if not text or len(text) < 500:
+        return False
+    # 가격 표기 패턴 (최소 5개 이상의 가격이 있어야 실제 상품 리스트로 봄)
+    price_patterns = re.findall(r"(?:USD|EUR|KRW|₩|\$|€|£)\s*\d{2,}", text)
+    if len(price_patterns) >= 5:
+        return True
+    # 숫자+%+off 패턴
+    discount_patterns = re.findall(r"\d{2,3}\s*%\s*(?:off|할인|OFF)", text, re.I)
+    if len(discount_patterns) >= 3:
+        return True
+    return False
+
+
 def analyze_with_openai(url, page_text):
     """OpenAI로 페이지 분석 → 세일 품목 JSON"""
     if not OPENAI_API_KEY:
         return {"error": "OPENAI_API_KEY not set"}
+
+    # 환각 방지: 실제 데이터 없으면 바로 empty 반환
+    if not _has_real_product_data(page_text):
+        return {
+            "site": url.split("/")[2] if "//" in url else url,
+            "url": url,
+            "found_count": 0,
+            "items": [],
+            "_note": "페이지에 상품 데이터 거의 없음 (JS 렌더링 사이트 가능성). AI 호출 생략.",
+        }
 
     prompt = f"""
 아래 텍스트는 명품/패션 세일 사이트 페이지입니다.
@@ -116,16 +141,21 @@ def analyze_with_openai(url, page_text):
 2. 할인율 50% 이상만 포함
 3. JSON으로 구조화
 
+중요 규칙:
+- 텍스트에 실제로 있는 상품만 추출. 모르거나 보이지 않으면 items 빈 배열 반환.
+- 품번·URL·가격을 발명하지 말 것. 텍스트에 없으면 null/빈값.
+- 브랜드명이 명확히 보이지 않으면 해당 항목 제외.
+
 JSON 형식:
 {{
-  "site": "사이트 이름 (SSENSE, Mytheresa 등)",
+  "site": "사이트 이름 (텍스트에서 추정 가능하면)",
   "url": "{url}",
-  "found_count": 발견_개수,
+  "found_count": 실제_추출한_개수,
   "items": [
     {{
       "brand": "브랜드명 (소문자)",
-      "name": "상품명 (영/한)",
-      "original_price": "원가 (원화 또는 달러 표기 그대로)",
+      "name": "상품명 (텍스트에 있는 그대로)",
+      "original_price": "원가 (텍스트에 보이는 그대로)",
       "sale_price": "세일가",
       "discount_pct": 할인율_숫자,
       "url": "상품 상세 URL (있으면)",
