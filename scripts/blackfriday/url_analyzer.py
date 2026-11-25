@@ -29,8 +29,9 @@ try:
     from bs4 import BeautifulSoup
     from dotenv import load_dotenv
     from common.notify import send as notify_send
+    from common.fetcher import fetch_page_text, is_available as playwright_available
 except ImportError as e:
-    print(f"[설치 필요] pip install requests beautifulsoup4 lxml python-dotenv")
+    print(f"[설치 필요] pip install requests beautifulsoup4 lxml python-dotenv playwright")
     print(f"import 실패: {e}")
     sys.exit(1)
 
@@ -80,25 +81,13 @@ ROWNA_BRANDS = {
 TOP_PRIORITY = {"stone island", "cp company", "c.p. company", "maison margiela", "saint laurent", "prada"}
 
 
-def extract_page_text(url, timeout=20):
-    """URL에서 핵심 텍스트 추출 (HTML → clean text)"""
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=timeout)
-        if r.status_code != 200:
-            return None, f"HTTP {r.status_code}"
-    except Exception as e:
-        return None, str(e)
-
-    soup = BeautifulSoup(r.text, "lxml")
-    # 스크립트·스타일 제거
-    for tag in soup(["script", "style", "noscript", "iframe", "svg"]):
-        tag.decompose()
-
-    # body 텍스트 (상품 정보 위주)
-    text = soup.get_text(" ", strip=True)
-    text = re.sub(r"\s+", " ", text)
-    # 너무 크면 자르기 (OpenAI 토큰 비용)
-    return text[:50000], None
+def extract_page_text(url, timeout=30):
+    """URL에서 핵심 텍스트 추출 (Playwright → JS 렌더링 후 텍스트)"""
+    # Playwright 우선 (설치돼있으면 자동), 없으면 requests 폴백
+    text, err = fetch_page_text(url, prefer="playwright", timeout=timeout)
+    if text:
+        return text, None
+    return None, err or "fetch failed"
 
 
 def _has_real_product_data(text):
@@ -255,6 +244,7 @@ def main():
     p.add_argument("url", help="세일 사이트 URL")
     args = p.parse_args()
 
+    print(f"Playwright 설치: {'OK' if playwright_available() else '없음 (requests 폴백)'}")
     print(f"[1/3] URL 가져오는 중: {args.url[:80]}")
     text, err = extract_page_text(args.url)
     if err:

@@ -11,8 +11,13 @@ git clone https://github.com/rowna-lux/rowna-erp.git
 cd rowna-erp\scripts
 
 # 전체 공통 패키지 설치
-pip install selenium webdriver-manager requests beautifulsoup4 lxml python-dotenv pandas bcrypt
+pip install selenium webdriver-manager requests beautifulsoup4 lxml python-dotenv pandas bcrypt playwright
+playwright install chromium
 ```
+
+**⚠️ Playwright 필수** (JavaScript 렌더링 사이트 - SSENSE, Mytheresa, NAP 등):
+- `pip install playwright` 설치 후
+- `playwright install chromium` 로 Chromium 바이너리 다운로드 (~200MB, 1회)
 
 ## 🔧 .env 설정
 

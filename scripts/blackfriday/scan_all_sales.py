@@ -58,10 +58,10 @@ def main():
         print(f"\n[{i}/{len(SALE_SITES)}] {name}")
         print(f"  {url}")
         try:
-            # 각 URL analyzer 실행
+            # 각 URL analyzer 실행 (Playwright 렌더링 포함, 타임아웃 넉넉히)
             r = subprocess.run(
                 [sys.executable, str(url_analyzer), url],
-                capture_output=True, text=True, timeout=120,
+                capture_output=True, text=True, timeout=180,
                 encoding="utf-8", errors="replace",
             )
             if r.returncode == 0:

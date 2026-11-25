@@ -24,8 +24,9 @@ try:
     from bs4 import BeautifulSoup
     from dotenv import load_dotenv
     from common.notify import send as notify_send
+    from common.fetcher import fetch_html, is_available as playwright_available
 except ImportError as e:
-    print(f"[설치 필요] pip install requests beautifulsoup4 lxml python-dotenv")
+    print(f"[설치 필요] pip install requests beautifulsoup4 lxml python-dotenv playwright")
     print(f"import 실패: {e}")
     sys.exit(1)
 
@@ -103,16 +104,13 @@ def brand_match(text):
     return None
 
 
-def fetch(url, timeout=15):
-    """차단 회피 — 랜덤 딜레이 + 재시도"""
+def fetch(url, timeout=30):
+    """차단 회피 — 랜덤 딜레이 + Playwright 렌더링"""
     time.sleep(random.uniform(1, 3))
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=timeout)
-        if r.status_code == 200:
-            return r.text
-        log(f"⚠ {url[:60]} → HTTP {r.status_code}")
-    except Exception as e:
-        log(f"⚠ {url[:60]} → {e}")
+    html, err = fetch_html(url, prefer="playwright", timeout=timeout)
+    if html:
+        return html
+    log(f"⚠ {url[:60]} → {err}")
     return None
 
 
