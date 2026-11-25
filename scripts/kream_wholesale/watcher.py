@@ -141,7 +141,16 @@ def process_image(image_bytes, source="clipboard"):
         notify_send("도매 리스트 분석 실패", f"에러: {parsed['error']}")
         return
 
+    # 환각 방지: 도매 리스트가 아니면 skip (메일 X)
+    if parsed.get("is_wholesale") is False:
+        log(f"⚠ 도매 리스트 아님 - 메일 발송 생략 (클립보드 이미지가 도매 리스트가 아닌 것 같음)")
+        return
+
     items_count = len(parsed.get("items", []))
+    if items_count == 0:
+        log(f"⚠ 품목 0건 - 메일 발송 생략")
+        return
+
     log(f"✓ OpenAI 분석 완료: {items_count}개 품목")
 
     # 2. 크림 시세 조회
