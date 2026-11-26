@@ -313,7 +313,7 @@ ERP.acts.ssattrauto = async function () {
   try {
     for (;;) {
       if (!(ERP.helperOn && ERP.helperOn())) { ERP.toast("로우나 도우미 연결을 기다리는 중…"); stallAlert("도우미(크롬 확장) 연결 끊김"); await new Promise(function (r) { setTimeout(r, 60000); }); continue; }
-      var redo = await ERP.acts.ssattrrun({ dataset: { redo: "1" } });
+      var redo = null;   /* 11/26 대표님 지시: 예전 상품 다시하기(redo)를 먼저 돌면 최신 상품에 영영 못 감 → 끔, 안 한 최신 상품부터 바로 */
       if (redo && redo.stopped) break;
       if (redo && redo.loggedOut) { stallAlert("스마트스토어 로그인 풀림 — 로그인하면 자동으로 이어서 해요"); await new Promise(function (r) { setTimeout(r, 300000); }); continue; }   /* 5분마다 로그인 확인 후 이어서 */
       if (redo && redo.failStop) { if (++tries > 30) break; ERP.toast("연속 실패라 1분 쉬고 다시 해요(스마트스토어 로그인이 풀렸으면 로그인해 주세요)."); stallAlert("연속 실패(로그인 풀림 추정)"); await new Promise(function (r) { setTimeout(r, 60000); }); continue; }
