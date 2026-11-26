@@ -259,13 +259,14 @@ ERP.acts.ssattrrun = async function (btn) {
   if (btn && btn.dataset && btn.dataset.sold) { list = list.filter(function (t) { return t.sold > 0; }); lim = Infinity; }
   var HIGHEND_BRAND = /샤넬|에르메스|루이비통|디올/;   /* 11/19 대표님 지시: 백화점 하이엔드 매입(상품코드 없음·해당 브랜드)은 이번 자동입력 대상에서 빼고, 렉스몬드 상품코드 있는 상품만 먼저 */
   var isRex = function (t) { return !!t.code && !HIGHEND_BRAND.test(t.brand || ""); };
-  list = list.filter(isRex).concat(list.filter(function (t) { return !isRex(t); }));
+  list = list.filter(isRex);   /* 11/26 대표님 지시: 상품코드 없음·하이엔드는 아예 제외 */
   var WIN = /패딩|다운|코트|무스탕|머플러|목도리|니트|스웨터|가디건|카디건|캐시미어|울(?!트)|에코퍼|리얼퍼|퍼 |플리스|후리스|장갑|비니|귀마개|부츠|어그|점퍼|파카|발라클라바/;   /* 11/7 대표님 지시: 겨울 상품 먼저 */
   var isW = function (t) { return WIN.test((t.name || "") + " " + (t.cat || "")); };
   list = list.filter(isW).concat(list.filter(function (t) { return !isW(t); }));
   var mp = s.map || {}, hasO = function (t) { return !!(mp[t.ch] || t.origin); };   /* 11/8: 수정화면 번호를 아는 상품(바로 열림) 먼저, 검색으로 찾아야 하는 상품은 뒤로 */
   list = list.filter(hasO).concat(list.filter(function (t) { return !hasO(t); }));
-  list = list.filter(function (t) { return !done[t.ch]; }).concat(list.filter(function (t) { return !!done[t.ch]; }));   /* 11/16: 숨은 속성까지 다시 채우기(v6) — 아직 안 한 상품 먼저, 예전에 한 상품은 뒤에서 다시 */
+  list.sort(function (a, b) { return (!!done[a.ch] - !!done[b.ch]) || (Number(b.ch) - Number(a.ch)); });   /* 11/26 대표님 지시: 안 한 상품 중 최신 등록(채널상품번호 큰 것)부터 */
+  if (false) list = list.filter(function (t) { return !done[t.ch]; }).concat(list.filter(function (t) { return !!done[t.ch]; }));   /* 11/16: 숨은 속성까지 다시 채우기(v6) — 아직 안 한 상품 먼저, 예전에 한 상품은 뒤에서 다시 */
   ERP.toast("상품속성 자동입력 시작: 남은 " + list.length + "개 중 " + (lim === Infinity ? "전부" : lim + "개"));
   for (var i = 0; i < list.length && n < lim && !stopReq && lockMine(); i++) {
     var row = await one(list[i], s, {});
