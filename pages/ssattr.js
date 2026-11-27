@@ -267,7 +267,10 @@ ERP.acts.ssattrrun = async function (btn) {
   list = list.filter(isW).concat(list.filter(function (t) { return !isW(t); }));
   var mp = s.map || {}, hasO = function (t) { return !!(mp[t.ch] || t.origin); };   /* 11/8: 수정화면 번호를 아는 상품(바로 열림) 먼저, 검색으로 찾아야 하는 상품은 뒤로 */
   list = list.filter(hasO).concat(list.filter(function (t) { return !hasO(t); }));
-  list.sort(function (a, b) { return (!!done[a.ch] - !!done[b.ch]) || (Number(b.ch) - Number(a.ch)); });   /* 11/26 대표님 지시: 안 한 상품 중 최신 등록(채널상품번호 큰 것)부터 */
+  var WIN2 = /패딩|다운|코트|무스탕|머플러|목도리|니트|스웨터|가디건|카디건|캐시미어|울(?!트)|에코퍼|리얼퍼|퍼 |플리스|후리스|장갑|비니|귀마개|부츠|어그|UGG|점퍼|파카|발라클라바|바람막이|윈드브레이커|아노락|구스|덕다운|베스트|조끼|숄|스카프/i;
+  var SUM2 = /반팔|반바지|숏츠|쇼츠|샌들|슬리퍼|린넨|수영|비키니|민소매|나시|캐미솔|티셔츠|자켓|재킷|셔츠|블레이저/;
+  var tier = function (t) { var x = (t.name || "") + " " + (t.cat || ""); return WIN2.test(x) ? 0 : SUM2.test(x) ? 2 : 1; };   /* 11/28 대표님 지시: 겨울(패딩·바람막이·어그 등) 먼저, 자켓 등 여름은 맨 나중 */
+  list.sort(function (a, b) { return (!!done[a.ch] - !!done[b.ch]) || (tier(a) - tier(b)) || (Number(b.ch) - Number(a.ch)); });   /* 11/26 대표님 지시: 안 한 상품 중 최신 등록(채널상품번호 큰 것)부터 */
   if (false) list = list.filter(function (t) { return !done[t.ch]; }).concat(list.filter(function (t) { return !!done[t.ch]; }));   /* 11/16: 숨은 속성까지 다시 채우기(v6) — 아직 안 한 상품 먼저, 예전에 한 상품은 뒤에서 다시 */
   try {   /* 11/27 대표님 지시: 컴퓨터 2대로 나눠서 — localStorage 'rowna-ssattr-part' = "0/2"(채널번호 짝수) 또는 "1/2"(홀수). 다른 컴퓨터는 기록이 따로라 이렇게 나눠야 중복 안 함 */
     var PART = String(localStorage.getItem("rowna-ssattr-part") || "").match(/^(\d+)\/(\d+)$/);
