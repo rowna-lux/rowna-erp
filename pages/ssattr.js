@@ -268,6 +268,15 @@ ERP.acts.ssattrrun = async function (btn) {
   list = list.filter(hasO).concat(list.filter(function (t) { return !hasO(t); }));
   list.sort(function (a, b) { return (!!done[a.ch] - !!done[b.ch]) || (Number(b.ch) - Number(a.ch)); });   /* 11/26 대표님 지시: 안 한 상품 중 최신 등록(채널상품번호 큰 것)부터 */
   if (false) list = list.filter(function (t) { return !done[t.ch]; }).concat(list.filter(function (t) { return !!done[t.ch]; }));   /* 11/16: 숨은 속성까지 다시 채우기(v6) — 아직 안 한 상품 먼저, 예전에 한 상품은 뒤에서 다시 */
+  try {   /* 11/27 대표님 지시: 특정 브랜드 먼저(이미 한 상품도 다시 확인). localStorage 'rowna-ssattr-first' = {re:"에르노|herno", since:시각} */
+    var FIRST = JSON.parse(localStorage.getItem("rowna-ssattr-first") || "null");
+    if (FIRST && FIRST.re && !(btn && btn.dataset && btn.dataset.fails)) {
+      var fre = new RegExp(FIRST.re, "i"), again = {}; (s.log || []).forEach(function (x) { if ((x.at || "") > (FIRST.since || "")) again[x.ch] = 1; });
+      var pri = (await targets()).filter(function (t) { return isRex(t) && !again[t.ch] && fre.test((t.brand || "") + " " + (t.name || "")); }), ps = {}; pri.forEach(function (t) { ps[t.ch] = 1; });
+      pri.sort(function (a, b) { return Number(b.ch) - Number(a.ch); });
+      list = pri.concat(list.filter(function (t) { return !ps[t.ch]; }));
+    }
+  } catch (e) {}
   ERP.toast("상품속성 자동입력 시작: 남은 " + list.length + "개 중 " + (lim === Infinity ? "전부" : lim + "개"));
   for (var i = 0; i < list.length && n < lim && !stopReq && lockMine(); i++) {
     var row = await one(list[i], s, {});
