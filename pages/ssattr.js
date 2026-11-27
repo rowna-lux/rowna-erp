@@ -190,6 +190,7 @@ async function writePage(origin, attrs, pick, tags, skipConv) {   /* skipConv: �
   return { tagReg: tr ? (tr.added || []).filter(function (x) { return (tr.reg || []).indexOf(x) >= 0; }) : null, tagInfo: tr ? { checked: tr.checked, removed: (tr.removed || []).length, rmFail: tr.rmFail || [] } : null, tagsNow: ti >= 0 && res[ti] ? parseChips(res[ti].html) : null, dialogs: r.dialogs || [], conv: conv, applied: applied, opsFailed: res.filter(function (x, i) { return x && !x.ok && !x.skipped && (C0 < 0 || i < 2 || i > 8) && opt.indexOf(i) < 0; }).map(function (x) { return x.error; }), saveMsg: ((t1 + "\n" + t2).match(/[^\n]*(수정되었|저장되었|완료되었|오류|실패|입력해 주세요|확인해 주세요)[^\n]*/g) || []).slice(0, 4) };
 }
 var lastProg = Date.now();
+var NOCONV = true;   /* 11/27 대표님 지시: 스마트에디터 변환은 빼고 속성만 — 스토어봇 가격 변경 → 사방넷 상품수정 송신 때 변환이 되돌려짐(속성은 남음). 사방넷 문의 후 다시 켤지 결정 */
 var AIM = "gpt-4.1-mini";   /* 11/2 대표님 지시: 비용 최소화 — gpt-4.1(입력 $2·출력 $8 /100만토큰) 대신 mini(입력 $0.40·출력 $1.60), 약 1/5 비용 */
 var TOK = { i: 0, o: 0 };   /* 상품마다 쓴 토큰 수(비용 계산용) */
 async function loginOk() {   /* 스마트스토어 로그인이 풀렸는지 확인(풀린 채로 돌면 모든 상품이 '실패'로 기록돼 건너뛰어지던 문제) */
@@ -208,7 +209,7 @@ async function one(t, s, opts) {
     if (origin) p = await readPage(origin);
     else { p = await readViaSearch(t.ch); origin = row.origin = p.origin; s.map = s.map || {}; s.map[t.ch] = origin; save(s); }
     mk("읽기");
-    var needConv = /으로 변환하기/.test(p.text || ""), c = { pick: {}, why: p.attrs.length ? "속성 이미 입력됨" : "속성칸 없음" }, rex = null;
+    var needConv = !NOCONV && /으로 변환하기/.test(p.text || ""), c = { pick: {}, why: p.attrs.length ? "속성 이미 입력됨" : "속성칸 없음" }, rex = null;
     if (p.attrs.length && p.attrs.some(function (a) { return !a.selected.length; })) {
       rex = await rexInfo(t.code); row.rex = rex.found ? rex.url : "못 찾음(" + rex.why + ")"; mk("렉스");
       c = await choose(t, p.attrs, rex); mk("AI속성");
@@ -226,7 +227,7 @@ async function one(t, s, opts) {
     if (needConv) { preConv = await convertOnly(origin); mk("변환"); }   /* 스마트에디터 변환은 따로 먼저(같이 하면 4분 넘어 시간 초과) */
     if (preConv && !Object.keys(c.pick).length && !(HV25 ? cands.length : tp.reg.length)) {   /* 11/15 속도: 변환 단계에서 이미 저장까지 하므로, 넣을 속성·태그가 없으면 수정 화면을 한 번 더 열어 저장하지 않음(상품당 약 45초 절약) */
       row.conv = preConv; row.status = preConv === "변환 완료" ? "저장 완료" : preConv.indexOf("변환 버튼 없음") === 0 ? "할 일 없음(이미 입력·변환됨)" : "일부 실패"; if (row.status === "일부 실패") row.err = preConv; return row; }
-    var w = await writePage(origin, p.attrs, c.pick, HV25 ? cands : tp.reg, !!preConv && preConv === "변환 완료"); if (preConv) w.conv = preConv; if (w.tagReg) { row.tags = w.tagReg; row.tagInfo = w.tagInfo; } row.tagsNow = w.tagsNow; row.saveMsg = w.saveMsg; row.conv = w.conv; if (w.dialogs.length) row.saveMsg = w.dialogs.concat(row.saveMsg || []);
+    var w = await writePage(origin, p.attrs, c.pick, HV25 ? cands : tp.reg, NOCONV || (!!preConv && preConv === "변환 완료")); if (preConv) w.conv = preConv; if (w.tagReg) { row.tags = w.tagReg; row.tagInfo = w.tagInfo; } row.tagsNow = w.tagsNow; row.saveMsg = w.saveMsg; row.conv = w.conv; if (w.dialogs.length) row.saveMsg = w.dialogs.concat(row.saveMsg || []);
     mk("저장");
     var convBad = needConv && w.conv !== "변환 완료";
     row.status = w.applied && !w.opsFailed.length && !convBad ? "저장 완료" : "일부 실패"; if (w.opsFailed.length) row.err = w.opsFailed.join(" / ");
