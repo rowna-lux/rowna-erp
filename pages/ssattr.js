@@ -268,6 +268,10 @@ ERP.acts.ssattrrun = async function (btn) {
   list = list.filter(hasO).concat(list.filter(function (t) { return !hasO(t); }));
   list.sort(function (a, b) { return (!!done[a.ch] - !!done[b.ch]) || (Number(b.ch) - Number(a.ch)); });   /* 11/26 대표님 지시: 안 한 상품 중 최신 등록(채널상품번호 큰 것)부터 */
   if (false) list = list.filter(function (t) { return !done[t.ch]; }).concat(list.filter(function (t) { return !!done[t.ch]; }));   /* 11/16: 숨은 속성까지 다시 채우기(v6) — 아직 안 한 상품 먼저, 예전에 한 상품은 뒤에서 다시 */
+  try {   /* 11/27 대표님 지시: 컴퓨터 2대로 나눠서 — localStorage 'rowna-ssattr-part' = "0/2"(채널번호 짝수) 또는 "1/2"(홀수). 다른 컴퓨터는 기록이 따로라 이렇게 나눠야 중복 안 함 */
+    var PART = String(localStorage.getItem("rowna-ssattr-part") || "").match(/^(\d+)\/(\d+)$/);
+    if (PART && +PART[2] > 1) { var pk = +PART[1], pn = +PART[2]; list = list.filter(function (t) { return Number(String(t.ch).slice(-6)) % pn === pk; }); }
+  } catch (e) {}
   try {   /* 11/27 대표님 지시: 특정 브랜드 먼저(이미 한 상품도 다시 확인). localStorage 'rowna-ssattr-first' = {re:"에르노|herno", since:시각} */
     var FIRST = JSON.parse(localStorage.getItem("rowna-ssattr-first") || "null");
     if (FIRST && FIRST.re && !(btn && btn.dataset && btn.dataset.fails)) {
@@ -277,7 +281,8 @@ ERP.acts.ssattrrun = async function (btn) {
       list = pri.concat(list.filter(function (t) { return !ps[t.ch]; }));
     }
   } catch (e) {}
-  ERP.toast("상품속성 자동입력 시작: 남은 " + list.length + "개 중 " + (lim === Infinity ? "전부" : lim + "개"));
+  if (PART && +PART[2] > 1) list = list.filter(function (t) { return Number(String(t.ch).slice(-6)) % +PART[2] === +PART[1]; });   /* 브랜드 우선 목록에도 같은 나눔 적용 */
+  ERP.toast("상품속성 자동입력 시작" + (PART ? " (" + PART[0] + " 담당)" : "") + ": 남은 " + list.length + "개 중 " + (lim === Infinity ? "전부" : lim + "개"));
   for (var i = 0; i < list.length && n < lim && !stopReq && lockMine(); i++) {
     var row = await one(list[i], s, {});
     if (row.status === "실패" && /오류 429|credits|quota/i.test(row.err || "")) { stopReq = true; ERP.toast("⚠ ChatGPT(OpenAI) 크레딧이 떨어져서 멈췄어요. 충전 후 다시 시작해 주세요."); return { n: n, left: list.length - i, stopped: true }; }   /* AI 크레딧 소진은 상품 실패가 아님 — 기록하지 않고 멈춤(10/31 53건 잘못 기록됨) */
