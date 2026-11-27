@@ -337,7 +337,9 @@ ERP.acts.ssattrauto = async function () {
       if (redo && redo.stopped) break;
       if (redo && redo.loggedOut) { stallAlert("스마트스토어 로그인 풀림 — 로그인하면 자동으로 이어서 해요"); await new Promise(function (r) { setTimeout(r, 300000); }); continue; }   /* 5분마다 로그인 확인 후 이어서 */
       if (redo && redo.failStop) { if (++tries > 30) break; ERP.toast("연속 실패라 1분 쉬고 다시 해요(스마트스토어 로그인이 풀렸으면 로그인해 주세요)."); stallAlert("연속 실패(로그인 풀림 추정)"); await new Promise(function (r) { setTimeout(r, 60000); }); continue; }
+      if (!lockMine()) { ERP.toast("다른 ERP 탭이 진행 중이라 이 탭은 멈춰요."); break; }   /* 11/28: 잠금을 뺏기면 빈 루프로 계속 돌며 탭이 얼던 문제 */
       var full = await ERP.acts.ssattrrun({ dataset: {} });
+      if (full && full.n === 0 && !lockMine()) { ERP.toast("다른 ERP 탭이 진행 중이라 이 탭은 멈춰요."); break; }
       if (full && full.stopped) break;
       if (full && full.loggedOut) { stallAlert("스마트스토어 로그인 풀림 — 로그인하면 자동으로 이어서 해요"); await new Promise(function (r) { setTimeout(r, 300000); }); continue; }   /* 5분마다 로그인 확인 후 이어서 */
       if (full && full.failStop) { if (++tries > 30) break; ERP.toast("연속 실패라 1분 쉬고 다시 해요(스마트스토어 로그인이 풀렸으면 로그인해 주세요)."); stallAlert("연속 실패(로그인 풀림 추정)"); await new Promise(function (r) { setTimeout(r, 60000); }); continue; }
