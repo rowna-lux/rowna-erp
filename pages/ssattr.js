@@ -297,8 +297,9 @@ function lockOk() {   /* ERP 탭이 여러 개 열려도 한 탭만 돌게 */
   try { var l = JSON.parse(localStorage.getItem("rowna-ssattr-lock") || "null"); return !l || l.id === MYID || Date.now() - l.ts > 120000; } catch (e) { return true; }
 }
 var TAKE = /[?&]take=1/.test(location.search);   /* ?take=1: 멈춘 옛 탭이 잠금을 쥐고 있을 때 강제로 이 탭이 진행 */
-function lockMine() { if (TAKE) return true; try { var l = JSON.parse(localStorage.getItem("rowna-ssattr-lock") || "null"); return !l || l.id === MYID || Date.now() - l.ts > 120000; } catch (e) { return true; } }   /* 11/15: 다른 탭이 잠금을 가져가면 이 탭은 물러남(옛 코드 탭이 계속 돌던 문제) */
-function lockBeat() { if (!lockMine()) { stopReq = true; return; } try { localStorage.setItem("rowna-ssattr-lock", JSON.stringify({ id: MYID, ts: Date.now() })); } catch (e) {} }
+var TOOK = false;   /* 11/27: take=1은 처음 넘겨받을 때만. 넘겨받은 뒤 다른 탭이 더 나중에 넘겨받으면 이 탭이 물러남(탭 2개가 같이 돌며 기록을 덮어쓰던 문제) */
+function lockMine() { if (TAKE && !TOOK) return true; try { var l = JSON.parse(localStorage.getItem("rowna-ssattr-lock") || "null"); return !l || l.id === MYID || Date.now() - l.ts > 120000; } catch (e) { return true; } }   /* 11/15: 다른 탭이 잠금을 가져가면 이 탭은 물러남(옛 코드 탭이 계속 돌던 문제) */
+function lockBeat() { if (!lockMine()) { stopReq = true; return; } try { localStorage.setItem("rowna-ssattr-lock", JSON.stringify({ id: MYID, ts: Date.now() })); TOOK = true; } catch (e) {} }
 ERP.acts.ssattrauto = async function () {
   if (autoOn) { ERP.toast("이미 자동 진행 중이에요."); return; }
   for (var lw = 0; !lockOk() && lw < 10; lw++) await new Promise(function (r) { setTimeout(r, 30000); });   /* 새로고침 직후엔 이전 화면의 표시가 2분간 남아 있어서 기다렸다가 시작 */
