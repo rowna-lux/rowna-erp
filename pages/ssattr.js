@@ -267,7 +267,7 @@ ERP.acts.ssattrrun = async function (btn) {
   list = list.filter(isW).concat(list.filter(function (t) { return !isW(t); }));
   var mp = s.map || {}, hasO = function (t) { return !!(mp[t.ch] || t.origin); };   /* 11/8: 수정화면 번호를 아는 상품(바로 열림) 먼저, 검색으로 찾아야 하는 상품은 뒤로 */
   list = list.filter(hasO).concat(list.filter(function (t) { return !hasO(t); }));
-  var WIN2 = /패딩|다운|코트|무스탕|머플러|목도리|니트|스웨터|가디건|카디건|캐시미어|울(?!트)|에코퍼|리얼퍼|퍼 |플리스|후리스|장갑|비니|귀마개|부츠|어그|UGG|점퍼|파카|발라클라바|바람막이|윈드브레이커|아노락|구스|덕다운|베스트|조끼|숄|스카프/i;
+  var WIN2 = /패딩|다운|코트|무스탕|머플러|목도리|니트|스웨터|가디건|카디건|캐시미어|울(?!트)|에코퍼|리얼퍼|퍼자켓|퍼 자켓|퍼코트|퍼 코트|플리스|후리스|장갑|비니|귀마개|부츠|어그|UGG|점퍼|파카|발라클라바|바람막이|윈드브레이커|아노락|구스|덕다운|패딩조끼|숄(?!더)|스카프/i;   /* 슬리퍼·숄더백 오인 방지 */
   var SUM2 = /반팔|반바지|숏츠|쇼츠|샌들|슬리퍼|린넨|수영|비키니|민소매|나시|캐미솔|티셔츠|자켓|재킷|셔츠|블레이저/;
   var tier = function (t) { var x = (t.name || "") + " " + (t.cat || ""); return WIN2.test(x) ? 0 : SUM2.test(x) ? 2 : 1; };   /* 11/28 대표님 지시: 겨울(패딩·바람막이·어그 등) 먼저, 자켓 등 여름은 맨 나중 */
   list.sort(function (a, b) { return (!!done[a.ch] - !!done[b.ch]) || (tier(a) - tier(b)) || (Number(b.ch) - Number(a.ch)); });   /* 11/26 대표님 지시: 안 한 상품 중 최신 등록(채널상품번호 큰 것)부터 */
