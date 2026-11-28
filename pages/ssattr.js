@@ -262,6 +262,7 @@ ERP.acts.ssattrrun = async function (btn) {
   HIGHEND_BRAND = /샤넬|에르메스|루이\s?비통|디올|chanel|herm[eè]s|louis\s?vuitton|dior/i;   /* 11/27: 브랜드 칸이 영문(DIOR)이라 한글만 보던 필터가 디올을 통과시킴 → 영문·상품명까지 확인 */
   var isRex = function (t) { return !!t.code && !HIGHEND_BRAND.test((t.brand || "") + " " + (t.name || "")); };
   list = list.filter(isRex);   /* 11/26 대표님 지시: 상품코드 없음·하이엔드는 아예 제외 */
+  try { var SALE = JSON.parse(localStorage.getItem("rowna-ssattr-sale") || "null"); if (SALE && SALE.ch && SALE.ch.length) { var saleSet = {}; SALE.ch.forEach(function (c) { saleSet[String(c)] = 1; }); list = list.filter(function (t) { return saleSet[String(t.ch)]; }); } } catch (e) {}   /* 11/28 대표님 지시: 전체 말고 '판매중' 상품만 — 커머스API로 받은 판매중 채널번호 목록이 있으면 그것만 */
   var SKIP_BRAND = /톰\s?브라운|thom\s?browne/i;   /* 11/28 대표님 지시: 톰브라운은 '상품속성 화면을 못 찾음'만 반복 → 원인 찾을 때까지 빼고, 나중에 한번에 */
   if (false) list = list.filter(function (t) { return !SKIP_BRAND.test((t.brand || "") + " " + (t.name || "")); });   /* 원인 찾음(삭제된 상품) → 톰브라운 다시 포함. 톰브라운 저장 완료 103건 있음 */
   var WIN = /패딩|다운|코트|무스탕|머플러|목도리|니트|스웨터|가디건|카디건|캐시미어|울(?!트)|에코퍼|리얼퍼|퍼 |플리스|후리스|장갑|비니|귀마개|부츠|어그|점퍼|파카|발라클라바/;   /* 11/7 대표님 지시: 겨울 상품 먼저 */
