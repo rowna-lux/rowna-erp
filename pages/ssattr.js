@@ -131,7 +131,7 @@ async function readPage(origin) {
   var r = await ERP.helperAsk("act", { url: editUrl(origin), ops: [{ op: "waitText", text: "상품속성", ms: 30000, gap: 0 }, { op: "waitText", text: "상품속성 선택 테이블", ms: 8000 }, { op: "click", text: "속성 더 입력하기" }, { op: "wait", ms: 1500 }, { op: "html", sel: "#attribute-table", max: 200000 }, { op: "text" },
     { op: "click", sel: "#anchor-tag .title-line" }, { op: "wait", ms: 1200 }, { op: "html", sel: "#anchor-tag", max: 60000 }] });   /* 11/15: 신발·옷 등 속성표가 늦게 그려지는 상품에서 0.8초 만에 읽어 '속성칸 없음'으로 잘못 넘어가던 문제 — 속성표 글자가 보일 때까지(최대 8초) 기다림 */
   var ok = r.results[0] && r.results[0].ok, html = r.results[4] && r.results[4].html || "", text = (r.results[5] && r.results[5].text) || "";   /* 11/16 대표님 지시(빼먹지 말고 세세하게): '속성 더 입력하기'를 눌러 숨은 속성(조임방식·계절·사용대상·스타일 등)까지 읽음 */
-  if (!ok) throw new Error(/존재하지|없는 상품/.test(text) ? "수정 화면 없음(번호 확인 필요)" : "상품속성 화면을 못 찾음");
+  if (!ok) throw new Error(/삭제된 상품/.test(text) ? "삭제된 상품(스마트스토어에서 삭제됨)" : /존재하지|없는 상품/.test(text) ? "수정 화면 없음(번호 확인 필요)" : "상품속성 화면을 못 찾음");   /* 11/28: '화면을 못 찾음' 실패를 직접 열어 보니 '삭제된 상품입니다' — 대상 목록(ss_targets)이 예전 거라 지워진 상품이 섞여 있음 */
   var tagHtml = (r.results[8] && r.results[8].ok && r.results[8].html) || null;   /* 태그 칸을 열어 기존 태그도 같이 읽음(페이지 한 번 덜 엶) */
   return { attrs: html ? parseAttrs(html) : [], text: text, have: tagHtml !== null ? parseChips(tagHtml) : null };
 }
@@ -263,7 +263,7 @@ ERP.acts.ssattrrun = async function (btn) {
   var isRex = function (t) { return !!t.code && !HIGHEND_BRAND.test((t.brand || "") + " " + (t.name || "")); };
   list = list.filter(isRex);   /* 11/26 대표님 지시: 상품코드 없음·하이엔드는 아예 제외 */
   var SKIP_BRAND = /톰\s?브라운|thom\s?browne/i;   /* 11/28 대표님 지시: 톰브라운은 '상품속성 화면을 못 찾음'만 반복 → 원인 찾을 때까지 빼고, 나중에 한번에 */
-  list = list.filter(function (t) { return !SKIP_BRAND.test((t.brand || "") + " " + (t.name || "")); });
+  if (false) list = list.filter(function (t) { return !SKIP_BRAND.test((t.brand || "") + " " + (t.name || "")); });   /* 원인 찾음(삭제된 상품) → 톰브라운 다시 포함. 톰브라운 저장 완료 103건 있음 */
   var WIN = /패딩|다운|코트|무스탕|머플러|목도리|니트|스웨터|가디건|카디건|캐시미어|울(?!트)|에코퍼|리얼퍼|퍼 |플리스|후리스|장갑|비니|귀마개|부츠|어그|점퍼|파카|발라클라바/;   /* 11/7 대표님 지시: 겨울 상품 먼저 */
   var isW = function (t) { return WIN.test((t.name || "") + " " + (t.cat || "")); };
   list = list.filter(isW).concat(list.filter(function (t) { return !isW(t); }));
